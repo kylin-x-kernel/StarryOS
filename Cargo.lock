@@ -233,8 +233,8 @@ dependencies = [
 
 [[package]]
 name = "axcpu"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axcpu.git?tag=dev-v03#1dc46de5d5a0b6befba9fa25a560386e5d9e19c6"
+version = "0.2.2"
+source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=main#53455db3978450785e38b983e2da1a1fd1d2a685"
 dependencies = [
  "aarch64-cpu",
  "axbacktrace",
@@ -288,12 +288,12 @@ dependencies = [
 [[package]]
 name = "axdriver_base"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 
 [[package]]
 name = "axdriver_block"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "axdriver_base",
  "log",
@@ -303,7 +303,7 @@ dependencies = [
 [[package]]
 name = "axdriver_display"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "axdriver_base",
 ]
@@ -311,7 +311,7 @@ dependencies = [
 [[package]]
 name = "axdriver_input"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "axdriver_base",
  "strum",
@@ -320,7 +320,7 @@ dependencies = [
 [[package]]
 name = "axdriver_net"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "axdriver_base",
  "log",
@@ -330,7 +330,7 @@ dependencies = [
 [[package]]
 name = "axdriver_pci"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "virtio-drivers",
 ]
@@ -338,7 +338,7 @@ dependencies = [
 [[package]]
 name = "axdriver_virtio"
 version = "0.1.2"
-source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=dev-v01#498df4ecde85b8acc2553d93102ad32d76339110"
+source = "git+https://github.com/kylin-x-kernel/axdriver_crates.git#a887828dbf5c7b5ffb7688dd0afc64259e1b4f4a"
 dependencies = [
  "axdriver_base",
  "axdriver_block",
@@ -543,8 +543,8 @@ dependencies = [
 
 [[package]]
 name = "axplat"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#72b148262f4f58a3a6c64c23d0f377e6469b662a"
+version = "0.2.0"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#243fdc9265ba472cffffddc1cae9a47371caf8e3"
 dependencies = [
  "axplat-macros",
  "bitflags 2.10.0",
@@ -558,8 +558,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-aarch64-peripherals"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#72b148262f4f58a3a6c64c23d0f377e6469b662a"
+version = "0.2.0"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#243fdc9265ba472cffffddc1cae9a47371caf8e3"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -577,8 +577,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-aarch64-qemu-virt"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#72b148262f4f58a3a6c64c23d0f377e6469b662a"
+version = "0.2.0"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#243fdc9265ba472cffffddc1cae9a47371caf8e3"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -590,8 +590,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#72b148262f4f58a3a6c64c23d0f377e6469b662a"
+version = "0.2.0"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git#243fdc9265ba472cffffddc1cae9a47371caf8e3"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -617,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-riscv64-qemu-virt"
-version = "0.3.0"
-source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#72b148262f4f58a3a6c64c23d0f377e6469b662a"
+version = "0.2.0"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#243fdc9265ba472cffffddc1cae9a47371caf8e3"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -1322,6 +1322,12 @@ dependencies = [
  "equivalent",
  "foldhash 0.2.0",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
 
 [[package]]
 name = "heapless"
