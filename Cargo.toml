@@ -135,6 +135,14 @@ tag = "dev-v03"
 features = ["fp-simd", "irq", "rtc"]
 optional = true
 
+[patch.crates-io]
+axcpu = { git = "https://github.com/kylin-x-kernel/axcpu.git", branch="dev" }
+axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch="dev"}
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git"}
+
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
 all-features = true
