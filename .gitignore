@@ -11,3 +11,4 @@
 /.cargo
 /.crates*
 /mnt
+*.swp
