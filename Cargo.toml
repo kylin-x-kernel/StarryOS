@@ -143,7 +143,7 @@ axbacktrace = { git = "https://github.com/Starry-OS/axbacktrace.git", rev = "09c
 
 axcpu = { git = "https://github.com/kylin-x-kernel/axcpu.git",branch="main" }
 axerrno = { git = "https://github.com/Starry-OS/axerrno.git", rev = "58be232" }
-axfs-ng-vfs = { git = "https://github.com/Starry-OS/axfs-ng-vfs.git", rev = "6cf8893" }
+axfs-ng-vfs = { git = "https://github.com/Starry-OS/axfs-ng-vfs.git", rev = "3926fb4" }
 axio = { git = "https://github.com/Starry-OS/axio.git", rev = "ebb0c6b" }
 axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "main"}
 axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "main" }
