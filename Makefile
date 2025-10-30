@@ -55,4 +55,6 @@ la:
 vf2:
 	$(MAKE) ARCH=riscv64 APP_FEATURES=vf2 MYPLAT=axplat-riscv64-visionfive2 BUS=mmio build
 
+crosvm:
+	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=crosvm MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
 .PHONY: build run justrun debug disasm clean

@@ -108,6 +108,29 @@ qemu = [
 smp = ["axfeat/smp", "axplat-riscv64-visionfive2?/smp"]
 
 vf2 = ["dep:axplat-riscv64-visionfive2", "axfeat/driver-sdmmc"]
+crosvm = [
+    "axfeat/driver-virtio-blk",
+
+    "axfeat/driver-virtio-socket",
+    "axfeat/vsock",
+    "starry-api/vsock",
+
+    "axfeat/fs-times",
+    "starry-api/dev-log",
+
+    "axfeat/crosvm",
+    "dep:axplat-aarch64-crosvm-virt",
+    "pci",
+
+    # auxilary features
+    "axfeat/fs-times",
+    "starry-api/dev-log",
+]
+
+# Stubs
+pci = ["axfeat/bus-pci"]
+mmio = ["axfeat/bus-mmio"]
+>>>>>>> f00a6e3 (Crosvm  adapt)
 
 [dependencies]
 axdriver.workspace = true
@@ -135,14 +158,21 @@ tag = "dev-v03"
 features = ["fp-simd", "irq", "rtc"]
 optional = true
 
+[dependencies.axplat-aarch64-crosvm-virt]
+path = "local_crates/axplat-aarch64-crosvm-virt"
+features = ["irq", "fp-simd"]
+optional = true
+
 [patch.crates-io]
 axcpu = { git = "https://github.com/kylin-x-kernel/axcpu.git", branch="dev" }
 axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
 axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch="dev"}
-axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git"}
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch="dev"}
 
+fdtree_rs = { path = "local_crates/fdtree-rs" }
+arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
 all-features = true

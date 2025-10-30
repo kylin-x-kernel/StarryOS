@@ -107,6 +107,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "arm-gic"
+version = "0.1.0"
+source = "git+https://github.com/kylin-x-kernel/arm-gic.git?branch=main#89e0e57c0fc7c7c89290210ca55c0eca6e5459cb"
+dependencies = [
+ "bitflags 2.10.0",
+]
+
+[[package]]
 name = "arm-gic-driver"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -279,8 +287,10 @@ dependencies = [
  "axdriver_virtio",
  "axdriver_vsock",
  "axhal",
+ "axsync",
  "cfg-if",
  "crate_interface",
+ "hashbrown 0.15.5",
  "log",
  "smallvec",
 ]
@@ -554,6 +564,25 @@ dependencies = [
  "kspin",
  "memory_addr",
  "percpu",
+]
+
+[[package]]
+name = "axplat-aarch64-crosvm-virt"
+version = "0.2.0"
+dependencies = [
+ "aarch64-cpu",
+ "arm-gic",
+ "axconfig-macros",
+ "axcpu",
+ "axplat",
+ "axplat-aarch64-peripherals",
+ "dw_apb_uart",
+ "fdtree_rs",
+ "kspin",
+ "lazyinit",
+ "log",
+ "page_table_entry",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -1137,6 +1166,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dw_apb_uart"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93d496c8faa9dc676ebfa225432e1e3b57645c9268ead889286546f6d39356d"
+dependencies = [
+ "tock-registers 0.8.1",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1207,6 +1245,10 @@ dependencies = [
  "quote",
  "syn 2.0.111",
 ]
+
+[[package]]
+name = "fdtree_rs"
+version = "0.1.0"
 
 [[package]]
 name = "flatten_objects"
@@ -2124,6 +2166,7 @@ dependencies = [
  "axfs",
  "axhal",
  "axlog",
+ "axplat-aarch64-crosvm-virt",
  "axplat-riscv64-visionfive2",
  "axruntime",
  "axsync",
