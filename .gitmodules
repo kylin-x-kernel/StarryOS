@@ -27,3 +27,6 @@
 [submodule "local_crates/arm-gic"]
 	path = local_crates/arm-gic
 	url = https://github.com/kylin-x-kernel/arm-gic.git
+[submodule "local_crates/starry-ptrace"]
+	path = local_crates/starry-ptrace
+	url = https://github.com/kylin-x-kernel/starry-ptrace.git

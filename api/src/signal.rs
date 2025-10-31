@@ -27,7 +27,16 @@ pub fn check_signals(
             do_exit(128 + signo as i32, true);
         }
         SignalOSAction::Stop => {
-            // TODO: implement stop
+            // If under ptrace, emulate signal-delivery stop instead of exiting.
+            // This is critical for PTRACE_TRACEME flows where the tracee raises SIGSTOP.
+            #[cfg(feature = "ptrace")]
+            {
+                // Enter ptrace signal stop; tracer will resume us.
+                starry_ptrace::signal_stop(signo as i32, uctx);
+                return true;
+            }
+            // Fallback (no ptrace support): exit with SIGHUP-equivalent code for now.
+            // TODO: implement proper job control stop (WIFSTOPPED) semantics.
             do_exit(1, true);
         }
         SignalOSAction::Continue => {

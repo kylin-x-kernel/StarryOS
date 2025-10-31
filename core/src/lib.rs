@@ -18,3 +18,6 @@ pub mod shm;
 pub mod task;
 pub mod time;
 pub mod vfs;
+
+// Optional extension hooks (feature-only logic should live outside core)
+pub mod hooks;

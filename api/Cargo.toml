@@ -11,6 +11,7 @@ input = ["dep:axinput"]
 memtrack = ["axfeat/backtrace", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
+ptrace = ["starry-core/ptrace", "dep:starry-ptrace"]
 
 [dependencies]
 axalloc.workspace = true
@@ -63,6 +64,7 @@ syscalls = { git = "https://github.com/jasonwhite/syscalls.git", rev = "92624de"
 zerocopy = { version = "0.8.26", features = ["derive"] }
 
 starry-core.workspace = true
+starry-ptrace = { package = "starry-ptrace", workspace = true, optional = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52"

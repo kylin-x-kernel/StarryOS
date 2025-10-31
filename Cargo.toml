@@ -73,6 +73,7 @@ starry-vm = "0.2"
 
 starry-core = { path = "./core" }
 starry-api = { path = "./api" }
+starry-ptrace = { package = "starry-ptrace", path = "./local_crates/starry-ptrace" }
 
 [package]
 name = "starry"
@@ -84,6 +85,7 @@ repository.workspace = true
 
 [features]
 default = []
+ptrace = ["starry-core/ptrace", "starry-api/ptrace"]
 qemu = [
     "axfeat/driver-virtio-blk",
     "axfeat/driver-virtio-net",

@@ -165,6 +165,10 @@ pub fn do_exit(exit_code: i32, group_exit: bool) {
 
     info!("{} exit with code: {}", curr.id_name(), exit_code);
 
+    // Clear ptrace state when exiting to prevent waitpid confusion
+    #[cfg(feature = "ptrace")]
+    starry_ptrace::clear_on_exit();
+
     let clear_child_tid = thr.clear_child_tid() as *mut u32;
     if clear_child_tid.vm_write(0).is_ok() {
         let key = FutexKey::new_current(clear_child_tid as usize);

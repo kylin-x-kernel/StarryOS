@@ -18,6 +18,12 @@ export NO_AXSTD := y
 export AX_LIB := axfeat
 export APP_FEATURES := qemu
 
+# Enable ptrace feature by default (can be overridden: make PTRACE=n)
+PTRACE ?= y
+ifeq ($(PTRACE), y)
+	APP_FEATURES += ptrace
+endif
+
 ifeq ($(MEMTRACK), y)
 	APP_FEATURES += starry-api/memtrack
 endif

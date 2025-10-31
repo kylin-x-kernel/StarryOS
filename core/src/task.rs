@@ -226,6 +226,10 @@ pub struct ProcessData {
 
     /// The default mask for file permissions.
     umask: AtomicU32,
+
+    /// Optional extension state for ptrace. See [`starry_ptrace::state::PtraceState`].
+    #[cfg(feature = "ptrace")]
+    pub ptrace_state: axsync::Mutex<Option<alloc::boxed::Box<dyn core::any::Any + Send + Sync>>>,
 }
 
 impl ProcessData {
@@ -261,6 +265,9 @@ impl ProcessData {
             futex_table: Arc::new(FutexTable::new()),
 
             umask: AtomicU32::new(0o022),
+
+            #[cfg(feature = "ptrace")]
+            ptrace_state: axsync::Mutex::new(None),
         })
     }
 
