@@ -40,9 +40,12 @@ axinput = { path = "arceos/modules/axinput" }
 axlog = { path = "arceos/modules/axlog" }
 axmm = { path = "arceos/modules/axmm" }
 axnet = { path = "arceos/modules/axnet" }
+axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt", features = ["irq", "fp-simd"] }
 axruntime = { path = "arceos/modules/axruntime" }
 axsync = { path = "arceos/modules/axsync" }
 axtask = { path = "arceos/modules/axtask", features = ["task-ext"] }
+dice = { path = "local_crates/dice"}
+mbedtls = { path = "local_crates/rust-mbedtls/mbedtls", default-features = false, features = ["no_std_deps"]}
 
 axbacktrace = "0.1"
 axerrno = "0.1"
@@ -120,6 +123,7 @@ crosvm = [
     "axfeat/fs-times",
     "starry-api/dev-log",
 
+    "starry-api/crosvm",
     "axfeat/crosvm",
     "dep:axplat-aarch64-crosvm-virt",
     "pci",
@@ -159,8 +163,7 @@ features = ["fp-simd", "irq", "rtc"]
 optional = true
 
 [dependencies.axplat-aarch64-crosvm-virt]
-path = "local_crates/axplat-aarch64-crosvm-virt"
-features = ["irq", "fp-simd"]
+workspace = true
 optional = true
 
 [patch.crates-io]

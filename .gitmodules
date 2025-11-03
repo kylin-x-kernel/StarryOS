@@ -23,3 +23,11 @@
 [submodule "local_crates/arm-gic"]
 	path = local_crates/arm-gic
 	url = https://github.com/kylin-x-kernel/arm-gic.git
+[submodule "local_crates/dice"]
+	path = local_crates/dice
+	url = ssh://dev.futlab.me:29418/security/rust-dice
+	branch = master
+[submodule "local_crates/rust-mbedtls"]
+	path = local_crates/rust-mbedtls
+	url = ssh://dev.futlab.me:29418/security/rust-mbedtls
+	branch = smx-mbedtls-sys-auto_v2.28.12
