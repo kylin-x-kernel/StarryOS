@@ -68,5 +68,13 @@ pub fn sys_execve(
 
     uctx.set_ip(entry_point.as_usize());
     uctx.set_sp(user_stack_base.as_usize());
+
+    // If this process is being traced, stop before executing the new program
+    #[cfg(feature = "ptrace")]
+    {
+        use starry_ptrace::{stop_current_and_wait, StopReason};
+        stop_current_and_wait(StopReason::Exec, uctx);
+    }
+
     Ok(0)
 }
