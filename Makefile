@@ -4,6 +4,7 @@ export ARCH := aarch64
 export LOG := warn
 export BACKTRACE := y
 export MEMTRACK := n
+export PTRACE := y
 
 # QEMU Options
 export BLK := y
