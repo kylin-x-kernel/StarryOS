@@ -1,6 +1,7 @@
 use axerrno::AxResult;
+use starry_process::Pid;
 
-pub fn sys_ptrace(request: u32, pid: i32, addr: usize, data: usize) -> AxResult<isize> {
+pub fn sys_ptrace(request: u32, pid: Pid, addr: usize, data: usize) -> AxResult<isize> {
     #[cfg(feature = "ptrace")]
     {
         // Delegate to the decoupled ptrace crate when feature is enabled.
