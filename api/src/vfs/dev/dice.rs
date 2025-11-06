@@ -5,6 +5,8 @@ use starry_core::vfs::DeviceOps;
 use memory_addr::VirtAddr;
 use alloc::{vec,vec::Vec};
 use axplat_aarch64_crosvm_virt::fdt::dice_reg;
+use spin::{Lazy, Mutex};
+use rand_chacha::{ChaCha8Rng,rand_core::SeedableRng,rand_core::RngCore};
 /// DICE节点信息
 #[derive(Debug, Clone, Copy)]
 pub struct DiceNodeInfo<'a> {
@@ -29,8 +31,6 @@ impl DiceNodeInfo<'static>{
         handover_size: usize,
         handover_out_size: usize,
     ) -> AxResult<usize> {
-        trace!("[dice_syscall] Getting handover from device tree DICE node");
-        
         let (cdi_attest, cdi_seal, chain) = self.parse_handover_data()?;
         let handover_out_size_ptr = handover_out_size as *mut usize;
         let len = cdi_attest.len() + cdi_seal.len() + chain.len();
@@ -50,7 +50,8 @@ impl DiceNodeInfo<'static>{
         handover_buffer[..cdi_attest.len()].copy_from_slice(&cdi_attest);
         handover_buffer[cdi_attest.len()..cdi_attest.len() + cdi_seal.len()].copy_from_slice(&cdi_seal);
         handover_buffer[cdi_attest.len() + cdi_seal.len()..len].copy_from_slice(&chain);
-
+        
+        warn!("dice : get handover success.");
         Ok(len)
     }
     
@@ -58,7 +59,6 @@ impl DiceNodeInfo<'static>{
         use dice::{dice_main_flow_chain_codehash, dice_parse_handover};
 
         let (addr, size) = self.regions;
-        let size = size as usize;
 
         let handover_data = if size > MAX_DICE_DATA_SIZE || size == 0 {
             return Err(AxError::InvalidInput);
@@ -75,12 +75,10 @@ impl DiceNodeInfo<'static>{
             }
             buffer
         };
-
         let mut handover_buf = vec![0u8; size as usize];
         let hash:Vec<u8> = get_process_hash()?;
         let handover = dice_main_flow_chain_codehash(&handover_data, &hash, &mut handover_buf)
             .map_err(|_| AxError::InvalidInput)?;
-
         let (cdi_attest, cdi_seal, chain) =
             dice_parse_handover(&handover).map_err(|_| AxError::InvalidInput)?;
 
@@ -100,8 +98,7 @@ impl DeviceOps for DiceNodeInfo<'static>{
     fn ioctl(&self, cmd: u32, arg: usize) -> AxResult<usize> {
         if cmd == 0x90007A00{
             let ptr = arg as *const usize;
-            let mut handover = Vec::new();
-            unsafe{core::ptr::copy_nonoverlapping(ptr, handover.as_mut_ptr(),3)};
+            let mut handover = unsafe { core::slice::from_raw_parts_mut(ptr as * mut usize,3)};
             return self.sys_dice_get_handover(handover[0],handover[1],handover[2]);
         }
         Err(AxError::BadIoctl)
@@ -132,4 +129,17 @@ fn get_process_hash() -> AxResult<Vec<u8>> {
 
     info!("resm3_resultsult: {:x?}", sm3_result);
     Ok(sm3_result)
+}
+
+static GLOBAL_RAND: Lazy<Mutex<ChaCha8Rng>> = Lazy::new(|| {
+    let seed = axhal::time::current_ticks();
+    Mutex::new(ChaCha8Rng::seed_from_u64(seed))
+});
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_rand(output: usize, len: usize) -> u32 {
+    let buf = unsafe { core::slice::from_raw_parts_mut(output as *mut u8, len) };
+    let mut rand = GLOBAL_RAND.lock();
+    rand.fill_bytes(buf);
+    return 0;
 }
