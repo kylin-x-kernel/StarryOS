@@ -32,6 +32,15 @@ if [ "$(id -u)" -eq 0 ]; then
   exit 1
 fi
 
+# Check if the target is installed, install if needed
+echo "Checking for aarch64-unknown-linux-musl target..."
+if ! rustup target list --installed | grep -q "aarch64-unknown-linux-musl"; then
+  echo "Target not found, installing aarch64-unknown-linux-musl..."
+  rustup target add aarch64-unknown-linux-musl
+else
+  echo "Target aarch64-unknown-linux-musl is already installed."
+fi
+
 echo "Compiling strace as regular user..."
 cd "$PROJECT_ROOT/userspace/strace"
 cargo build --release --target aarch64-unknown-linux-musl
