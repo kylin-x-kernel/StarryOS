@@ -30,3 +30,6 @@
 [submodule "local_crates/starry-ptrace"]
 	path = local_crates/starry-ptrace
 	url = https://github.com/kylin-x-kernel/starry-ptrace.git
+[submodule "userspace/strace"]
+	path = userspace/strace
+	url = https://github.com/kylin-x-kernel/starry-strace.git
