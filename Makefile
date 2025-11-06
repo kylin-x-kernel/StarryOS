@@ -4,6 +4,7 @@ export ARCH := aarch64
 export LOG := warn
 export BACKTRACE := y
 export MEMTRACK := n
+export PTRACE := y
 
 # QEMU Options
 export BLK := y
@@ -39,10 +40,19 @@ img:
 	fi
 	@cp $(IMG) arceos/disk.img
 
+# Build disk image with strace for ptrace feature
+strace-disk:
+ifeq ($(PTRACE), y)
+	@echo "Building disk image with strace..."
+	@bash scripts/build-strace-disk.sh
+else
+	@echo "Skipping strace disk build (PTRACE=$(PTRACE))"
+endif
+
 defconfig justrun clean:
 	@make -C arceos $@
 
-build run debug disasm: defconfig
+build run debug disasm: defconfig strace-disk
 	@make -C arceos $@
 
 # Aliases
@@ -57,4 +67,4 @@ vf2:
 
 crosvm:
 	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=crosvm MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
-.PHONY: build run justrun debug disasm clean
+.PHONY: build run justrun debug disasm clean strace-disk img

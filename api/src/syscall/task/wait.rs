@@ -93,8 +93,8 @@ pub fn sys_waitpid(pid: i32, exit_code: *mut i32, options: u32) -> AxResult<isiz
         #[cfg(feature = "ptrace")]
         {
             for child in &children {
-                if let Some(status) = starry_ptrace::check_ptrace_stop(child.pid() as i32) {
-                    error!("waitpid: returning ptrace stop for pid={} status=0x{:x}", child.pid(), status);
+                if let Some(status) = starry_ptrace::check_ptrace_stop(child.pid()) {
+                    debug!("waitpid: returning ptrace stop for pid={} status=0x{:x}", child.pid(), status);
                     if let Some(exit_code) = exit_code.nullable() {
                         exit_code.vm_write(status)?;
                     }
@@ -104,7 +104,7 @@ pub fn sys_waitpid(pid: i32, exit_code: *mut i32, options: u32) -> AxResult<isiz
         }
 
         if let Some(child) = children.iter().find(|child| child.is_zombie()) {
-            error!("waitpid: child pid={} is zombie, exit_code=0x{:x}", child.pid(), child.exit_code());
+            debug!("waitpid: child pid={} is zombie, exit_code=0x{:x}", child.pid(), child.exit_code());
             if !options.contains(WaitOptions::WNOWAIT) {
                 child.free();
             }

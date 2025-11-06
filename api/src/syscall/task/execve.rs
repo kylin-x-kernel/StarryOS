@@ -42,6 +42,13 @@ pub fn sys_execve(
         return Err(AxError::WouldBlock);
     }
 
+        // If this process is being traced, stop before executing the new program
+    #[cfg(feature = "ptrace")]
+    {
+        use starry_ptrace::{stop_current_and_wait, StopReason};
+        stop_current_and_wait(StopReason::Exec, uctx);
+    }
+
     let mut aspace = proc_data.aspace.lock();
     let (entry_point, user_stack_base) =
         load_user_app(&mut aspace, Some(path.as_str()), &args, &envs)?;
@@ -68,5 +75,6 @@ pub fn sys_execve(
 
     uctx.set_ip(entry_point.as_usize());
     uctx.set_sp(user_stack_base.as_usize());
+
     Ok(0)
 }
