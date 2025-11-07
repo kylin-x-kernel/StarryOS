@@ -1,5 +1,5 @@
 //! Special devices
-#[cfg(feature = "crosvm")]
+#[cfg(feature = "dice")]
 mod dice;
 #[cfg(feature = "input")]
 mod event;
@@ -296,7 +296,7 @@ fn builder(fs: Arc<SimpleFs>) -> DirMaker {
         SimpleDir::new_maker(fs.clone(), Arc::new(event::input_devices(fs.clone()))),
     );
 
-    #[cfg(feature = "crosvm")]
+    #[cfg(feature = "dice")]
     root.add(
         "dice",
         Device::new(
