@@ -113,6 +113,7 @@ qemu = [
 ]
 
 vf2 = ["dep:axplat-riscv64-visionfive2", "axfeat/driver-sdmmc-gpt"]
+dice = ["crosvm", "starry-api/dice"]
 crosvm = [
     "axfeat/driver-virtio-blk",
 
@@ -123,7 +124,6 @@ crosvm = [
     "axfeat/fs-times",
     "starry-api/dev-log",
 
-    "starry-api/crosvm",
     "axfeat/crosvm",
     "dep:axplat-aarch64-crosvm-virt",
     "pci",

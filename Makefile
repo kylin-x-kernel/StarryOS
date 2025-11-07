@@ -51,4 +51,7 @@ vf2:
 
 crosvm:
 	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=crosvm MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
+
+dice:
+	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=dice MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
 .PHONY: build run justrun debug disasm clean
