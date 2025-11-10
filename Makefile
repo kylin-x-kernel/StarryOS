@@ -1,5 +1,6 @@
 # Build Options
-export ARCH := riscv64
+export RUSTC_BOOTSTRAP := 1
+export ARCH := aarch64
 export LOG := warn
 export BACKTRACE := y
 export MEMTRACK := n
@@ -7,7 +8,7 @@ export MEMTRACK := n
 # QEMU Options
 export BLK := y
 export NET := y
-export VSOCK := n
+export VSOCK := y
 export MEM := 1G
 export ICOUNT := n
 
@@ -48,4 +49,6 @@ la:
 vf2:
 	$(MAKE) ARCH=riscv64 APP_FEATURES=vf2 MYPLAT=axplat-riscv64-visionfive2 BUS=dummy build
 
+crosvm:
+	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=crosvm MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
 .PHONY: build run justrun debug disasm clean
