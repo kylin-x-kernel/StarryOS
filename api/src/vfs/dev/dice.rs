@@ -1,32 +1,41 @@
 //! DICE模块，用于处理 DICE handover数据
+use alloc::{vec, vec::Vec};
 use core::any::Any;
-use axerrno::{AxResult,AxError};
-use starry_core::vfs::DeviceOps;
-use memory_addr::VirtAddr;
-use alloc::{vec,vec::Vec};
+
+use axerrno::{AxError, AxResult};
 use axplat_aarch64_crosvm_virt::fdt::dice_reg;
+use memory_addr::VirtAddr;
+use rand_chacha::{
+    ChaCha8Rng,
+    rand_core::{RngCore, SeedableRng},
+};
 use spin::{Lazy, Mutex};
-use rand_chacha::{ChaCha8Rng,rand_core::SeedableRng,rand_core::RngCore};
+use starry_core::vfs::DeviceOps;
 /// DICE节点信息
 #[derive(Debug, Clone, Copy)]
 pub struct DiceNodeInfo<'a> {
     /// 兼容性字符串（静态借用）
-    pub compatible: &'a str,
+    pub _compatible: &'a str,
     /// 内存区域信息 (起始地址, 大小)
     pub regions: (VirtAddr, usize),
     /// 是否标记为no-map
-    pub no_map: bool,
+    pub _no_map: bool,
 }
 
 const DICE_COMPATIBLE: &str = "kylin,open-dice";
 const MAX_DICE_DATA_SIZE: usize = 0x1000; // 4KB
 
-impl DiceNodeInfo<'static>{
-    pub fn new() -> Self{
-        DiceNodeInfo { compatible:DICE_COMPATIBLE, regions:dice_reg().unwrap(), no_map:false }
+impl DiceNodeInfo<'static> {
+    pub fn new() -> Self {
+        DiceNodeInfo {
+            _compatible: DICE_COMPATIBLE,
+            regions: dice_reg().unwrap(),
+            _no_map: false,
+        }
     }
 
-    fn sys_dice_get_handover(&self,
+    fn sys_dice_get_handover(
+        &self,
         handover_ptr: usize,
         handover_size: usize,
         handover_out_size: usize,
@@ -48,14 +57,15 @@ impl DiceNodeInfo<'static>{
             unsafe { core::slice::from_raw_parts_mut(handover_ptr as *mut u8, handover_size) };
 
         handover_buffer[..cdi_attest.len()].copy_from_slice(&cdi_attest);
-        handover_buffer[cdi_attest.len()..cdi_attest.len() + cdi_seal.len()].copy_from_slice(&cdi_seal);
+        handover_buffer[cdi_attest.len()..cdi_attest.len() + cdi_seal.len()]
+            .copy_from_slice(&cdi_seal);
         handover_buffer[cdi_attest.len() + cdi_seal.len()..len].copy_from_slice(&chain);
-        
+
         warn!("dice : get handover success.");
         Ok(len)
     }
-    
-    fn parse_handover_data(&self) -> AxResult<(Vec<u8>, Vec<u8>, Vec<u8>)>{
+
+    fn parse_handover_data(&self) -> AxResult<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         use dice::{dice_main_flow_chain_codehash, dice_parse_handover};
 
         let (addr, size) = self.regions;
@@ -71,12 +81,16 @@ impl DiceNodeInfo<'static>{
             unsafe {
                 buffer.set_len(size);
                 // 安全拷贝内存
-                core::ptr::copy_nonoverlapping(addr.as_usize() as *const u8, buffer.as_mut_ptr(), size);
+                core::ptr::copy_nonoverlapping(
+                    addr.as_usize() as *const u8,
+                    buffer.as_mut_ptr(),
+                    size,
+                );
             }
             buffer
         };
         let mut handover_buf = vec![0u8; size as usize];
-        let hash:Vec<u8> = get_process_hash()?;
+        let hash: Vec<u8> = get_process_hash()?;
         let handover = dice_main_flow_chain_codehash(&handover_data, &hash, &mut handover_buf)
             .map_err(|_| AxError::InvalidInput)?;
         let (cdi_attest, cdi_seal, chain) =
@@ -86,7 +100,7 @@ impl DiceNodeInfo<'static>{
     }
 }
 
-impl DeviceOps for DiceNodeInfo<'static>{
+impl DeviceOps for DiceNodeInfo<'static> {
     fn read_at(&self, _buf: &mut [u8], _offset: u64) -> AxResult<usize> {
         unreachable!()
     }
@@ -96,10 +110,10 @@ impl DeviceOps for DiceNodeInfo<'static>{
     }
 
     fn ioctl(&self, cmd: u32, arg: usize) -> AxResult<usize> {
-        if cmd == 0x90007A00{
+        if cmd == 0x90007A00 {
             let ptr = arg as *const usize;
-            let mut handover = unsafe { core::slice::from_raw_parts_mut(ptr as * mut usize,3)};
-            return self.sys_dice_get_handover(handover[0],handover[1],handover[2]);
+            let handover = unsafe { core::slice::from_raw_parts_mut(ptr as *mut usize, 3) };
+            return self.sys_dice_get_handover(handover[0], handover[1], handover[2]);
         }
         Err(AxError::BadIoctl)
     }
@@ -111,6 +125,7 @@ impl DeviceOps for DiceNodeInfo<'static>{
 
 fn get_process_hash() -> AxResult<Vec<u8>> {
     use alloc::format;
+
     use axfs_ng::FS_CONTEXT;
     use axtask::current;
     use mbedtls::hash::{Md, Type};
@@ -123,8 +138,7 @@ fn get_process_hash() -> AxResult<Vec<u8>> {
 
     let mut sm3_result = vec![0u8; 32];
     let mut ctx = Md::new(Type::SM3).map_err(|_| AxError::InvalidInput)?;
-    ctx.update(&data)
-        .map_err(|_| AxError::InvalidInput)?;
+    ctx.update(&data).map_err(|_| AxError::InvalidInput)?;
     let _len = ctx.finish(&mut sm3_result);
 
     info!("resm3_resultsult: {:x?}", sm3_result);

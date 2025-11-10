@@ -44,8 +44,6 @@ axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt",
 axruntime = { path = "arceos/modules/axruntime" }
 axsync = { path = "arceos/modules/axsync" }
 axtask = { path = "arceos/modules/axtask", features = ["task-ext"] }
-dice = { path = "local_crates/dice"}
-mbedtls = { path = "local_crates/rust-mbedtls/mbedtls", default-features = false, features = ["no_std_deps"]}
 
 axbacktrace = "0.1"
 axerrno = "0.1"
@@ -55,6 +53,7 @@ axpoll = "0.1"
 bitflags = "2.10"
 bytemuck = { version = "1.23", features = ["unsound_ptr_pod_impl"] }
 cfg-if = "1.0"
+dice = "0.1.0"
 event-listener = { version = "5.4.0", default-features = false }
 extern-trait = "0.2"
 hashbrown = "0.15.4"
@@ -68,6 +67,7 @@ linux-raw-sys = { version = "0.11", default-features = false, features = [
     "prctl",
     "system",
 ] }
+mbedtls = { version = "0.13.3", package = "mbedtls",default-features = false, features = ["no_std_deps"] }
 memory_addr = "0.4"
 scope-local = "0.1"
 slab = { version = "0.4.9", default-features = false }
