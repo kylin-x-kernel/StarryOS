@@ -26,7 +26,7 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         return;
     };
 
-    trace!("Syscall {:?}", sysno);
+    trace!("Syscall {sysno:?}");
 
     // Hook point: syscall entry
     #[cfg(feature = "ptrace")]
@@ -611,11 +611,11 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         Sysno::timer_create | Sysno::timer_gettime | Sysno::timer_settime => Ok(0),
 
         _ => {
-            warn!("Unimplemented syscall: {}", sysno);
+            warn!("Unimplemented syscall: {sysno}");
             Err(AxError::Unsupported)
         }
     };
-    debug!("Syscall {} return {:?}", sysno, result);
+    debug!("Syscall {sysno} return {result:?}");
 
     uctx.set_retval(result.unwrap_or_else(|err| -LinuxError::from(err).code() as _) as _);
 
