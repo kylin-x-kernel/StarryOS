@@ -115,7 +115,7 @@ impl DeviceOps for DiceNodeInfo<'static> {
             let handover = unsafe { core::slice::from_raw_parts_mut(ptr as *mut usize, 3) };
             return self.sys_dice_get_handover(handover[0], handover[1], handover[2]);
         }
-        Err(AxError::BadIoctl)
+        Err(AxError::InvalidInput)
     }
 
     fn as_any(&self) -> &dyn Any {
