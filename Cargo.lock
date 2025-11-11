@@ -602,17 +602,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-aarch64-peripherals"
-<<<<<<< HEAD
 version = "0.3.0"
-<<<<<<< HEAD
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
-=======
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#f054273dfa96a7ee4bec4324527ce88cb3491312"
-=======
-version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
->>>>>>> update submodules
->>>>>>> update submodules
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -631,17 +622,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-aarch64-qemu-virt"
-<<<<<<< HEAD
 version = "0.3.0"
-<<<<<<< HEAD
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
-=======
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#f054273dfa96a7ee4bec4324527ce88cb3491312"
-=======
-version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
->>>>>>> update submodules
->>>>>>> update submodules
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -653,17 +635,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
-<<<<<<< HEAD
 version = "0.3.0"
-<<<<<<< HEAD
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
-=======
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#f054273dfa96a7ee4bec4324527ce88cb3491312"
-=======
-version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git#024416bf4d22622a824c07260e8bcab61cac8458"
->>>>>>> update submodules
->>>>>>> update submodules
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -684,7 +657,6 @@ source = "git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03#0df071
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
 ]
 
@@ -696,24 +668,12 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
 name = "axplat-riscv64-qemu-virt"
-<<<<<<< HEAD
 version = "0.3.0"
-<<<<<<< HEAD
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
-=======
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#f054273dfa96a7ee4bec4324527ce88cb3491312"
-=======
-version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
->>>>>>> update submodules
->>>>>>> update submodules
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -748,17 +708,8 @@ dependencies = [
 
 [[package]]
 name = "axplat-x86-pc"
-<<<<<<< HEAD
 version = "0.3.0"
-<<<<<<< HEAD
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
-=======
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#f054273dfa96a7ee4bec4324527ce88cb3491312"
-=======
-version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
->>>>>>> update submodules
->>>>>>> update submodules
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -879,11 +830,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -906,11 +853,7 @@ checksum = "d3ca019570363e800b05ad4fd890734f28ac7b72f563ad8a35079efb793616f8"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -963,11 +906,7 @@ checksum = "f9abbd1bc6865053c427f7198e6af43bfdedc55ab791faed4fbd361d789575ff"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1013,15 +952,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-<<<<<<< HEAD
 version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
-=======
-version = "4.5.51"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c26d721170e0295f191a69bd9a1f93efcdb0aff38684b61ab5750468972e5f5"
->>>>>>> update submodules
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1029,15 +962,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-<<<<<<< HEAD
 version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
-=======
-version = "4.5.51"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75835f0c7bf681bfd05abe44e965760fea999a5286c6eb2d59883634fd02011a"
->>>>>>> update submodules
 dependencies = [
  "anstream",
  "anstyle",
@@ -1054,11 +981,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1135,11 +1058,7 @@ checksum = "70272a03a2cef15589bac05d3d15c023752f5f8f2da8be977d983a9d9e6250fb"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1238,11 +1157,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1272,12 +1187,8 @@ dependencies = [
  "convert_case",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "rustc_version",
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
  "unicode-xid",
 ]
 
@@ -1311,11 +1222,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1326,11 +1233,7 @@ checksum = "2f9ed6b3789237c8a0c1c505af1c7eb2c560df6186f01b098c3a1064ea532f38"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1367,11 +1270,7 @@ checksum = "ba8f5038f5845165d06fe1453fe4130ad546d3314818bbda57e208e7b0cffe08"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1557,15 +1456,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "indexmap"
-<<<<<<< HEAD
 version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ad4bb2b565bca0645f4d68c5c9af97fba094e9791da685bf83cb5f3ce74acf2"
-=======
-version = "2.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6717a8d2a5a929a1a2eb43a12812498ed141a0bcfb7e8f7844fbdbe4303bba9f"
->>>>>>> update submodules
 dependencies = [
  "equivalent",
  "hashbrown 0.16.1",
@@ -1706,11 +1599,7 @@ checksum = "e5cec0ec4228b4853bb129c84dbf093a27e6c7a20526da046defc334a1b017f7"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1851,11 +1740,7 @@ checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1891,11 +1776,7 @@ dependencies = [
  "proc-macro2",
  "proc-macro2-diagnostics",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -1965,31 +1846,7 @@ checksum = "8a9f4cc54a2e471ff72f1499461ba381ad4eae9cbd60d29c258545b995e406e0"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
-]
-
-[[package]]
-name = "pin-project"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "677f1add503faace112b9f1373e43e9e054bfdd22ff1a63c1bc485eaec6a6a8a"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2035,11 +1892,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2061,11 +1914,7 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2085,11 +1934,7 @@ checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
  "version_check",
  "yansi",
 ]
@@ -2212,11 +2057,7 @@ checksum = "e8c4aa1ea1af6dcc83a61be12e8189f9b293c3ba5a487778a4cd89fb060fdbbc"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2599,11 +2440,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2632,15 +2469,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-<<<<<<< HEAD
 version = "2.0.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "390cc9a294ab71bdb1aa2e99d13be9c753cd2d7bd6560c77118597410c4d2e87"
-=======
-version = "2.0.110"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a99801b5bd34ede4cf3fc688c5919368fea4e4814a4664359503e6015b280aea"
->>>>>>> update submodules
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2669,11 +2500,7 @@ checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2809,11 +2636,7 @@ checksum = "65c67ce935f3b4329e473ecaff7bab444fcdc3d1d19f8bae61fabfa90b84f93e"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2941,11 +2764,7 @@ checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
 
 [[package]]
@@ -2956,9 +2775,5 @@ checksum = "d8a8d209fdf45cf5138cbb5a506f6b52522a25afccc534d1475dad8e31105c6a"
 dependencies = [
  "proc-macro2",
  "quote",
-<<<<<<< HEAD
  "syn 2.0.111",
-=======
- "syn 2.0.110",
->>>>>>> update submodules
 ]
