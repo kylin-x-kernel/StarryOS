@@ -11,7 +11,7 @@ input = ["dep:axinput"]
 memtrack = ["axfeat/backtrace", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
-dice = ["dep:dice","dep:mbedtls","dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
+dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
 
 [dependencies]
 axalloc.workspace = true
@@ -38,7 +38,6 @@ bitmaps = { version = "3.2.1", default-features = false }
 bytemuck.workspace = true
 cfg-if.workspace = true
 chrono = { version = "0.4.41", default-features = false }
-dice = { workspace = true, optional = true }
 event-listener.workspace = true
 flatten_objects = "0.2.4"
 gimli = { version = "*", default-features = false, optional = true }
@@ -49,7 +48,6 @@ kspin.workspace = true
 lazy_static = { workspace = true }
 linkme.workspace = true
 linux-raw-sys = { workspace = true, features = ["ioctl", "loop_device"] }
-mbedtls = { workspace = true, optional = true }
 memory_addr.workspace = true
 num_enum = { version = "0.7", default-features = false }
 rand = { version = "0.9.1", default-features = false, features = [
