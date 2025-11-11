@@ -12,6 +12,7 @@ input = ["dep:axinput"]
 memtrack = ["axfeat/dwarf", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
+dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
 
 [dependencies]
 axalloc.workspace = true
@@ -29,6 +30,7 @@ axio.workspace = true
 axlog.workspace = true
 axmm.workspace = true
 axnet.workspace = true
+axplat-aarch64-crosvm-virt = { workspace = true, optional = true }
 axpoll.workspace = true
 axsync.workspace = true
 axtask.workspace = true
@@ -53,6 +55,7 @@ rand = { version = "0.9.1", default-features = false, features = [
     "alloc",
     "small_rng",
 ] }
+rand_chacha = { version = "0.3", default-features = false, optional = true }
 ringbuf = { version = "0.4.8", default-features = false, features = ["alloc"] }
 scope-local.workspace = true
 slab.workspace = true
