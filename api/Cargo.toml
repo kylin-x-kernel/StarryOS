@@ -9,13 +9,10 @@ repository.workspace = true
 
 [features]
 input = ["dep:axinput"]
-memtrack = ["axfeat/backtrace", "axalloc/tracking", "dep:gimli"]
+memtrack = ["axfeat/dwarf", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
-tee_test = []
-tee_test_mock_user_access = []
-tee = ["syscalls/tee", "dep:tee_raw_sys", "starry-core/tee"]
 
 [dependencies]
 axalloc.workspace = true
@@ -26,7 +23,7 @@ axdriver.workspace = true
 axerrno.workspace = true
 axfeat.workspace = true
 axfs-ng-vfs.workspace = true
-axfs-ng.workspace = true
+axfs.workspace = true
 axhal.workspace = true
 axinput = { workspace = true, optional = true }
 axio.workspace = true
@@ -66,16 +63,13 @@ spin.workspace = true
 starry-process.workspace = true
 starry-signal.workspace = true
 starry-vm.workspace = true
+syscalls = { git = "https://github.com/Starry-OS/syscalls.git", rev = "efac241", default-features = false }
 zerocopy = { version = "0.8.26", features = ["derive"] }
 
 starry-core.workspace = true
-
-syscalls = { version = "0.7", default-features = false }
-tee_raw_sys = {version ="0.1", optional=true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 riscv = "0.14"
-
