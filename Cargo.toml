@@ -40,6 +40,7 @@ axinput = { path = "arceos/modules/axinput" }
 axlog = { path = "arceos/modules/axlog" }
 axmm = { path = "arceos/modules/axmm" }
 axnet = { path = "arceos/modules/axnet" }
+axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt", features = ["irq", "fp-simd"] }
 axruntime = { path = "arceos/modules/axruntime" }
 axsync = { path = "arceos/modules/axsync" }
 axtask = { path = "arceos/modules/axtask", features = ["task-ext"] }
@@ -110,6 +111,7 @@ qemu = [
 ]
 
 vf2 = ["dep:axplat-riscv64-visionfive2", "axfeat/driver-sdmmc-gpt"]
+dice = ["crosvm", "starry-api/dice"]
 crosvm = [
     "axfeat/driver-virtio-blk",
 
@@ -159,8 +161,7 @@ features = ["fp-simd", "irq", "rtc"]
 optional = true
 
 [dependencies.axplat-aarch64-crosvm-virt]
-path = "local_crates/axplat-aarch64-crosvm-virt"
-features = ["irq", "fp-simd"]
+workspace = true
 optional = true
 
 [patch.crates-io]
@@ -174,7 +175,6 @@ axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_cra
 axplat-aarch64-peripherals =  { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "main"}
 axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch="main"}
 axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git"}
-
 page_table_entry = { git = "https://github.com/Starry-OS/page_table_multiarch.git", rev = "9df46c8" }
 page_table_multiarch = { git = "https://github.com/Starry-OS/page_table_multiarch.git", rev = "9df46c8" }
 
