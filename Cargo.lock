@@ -2442,8 +2442,7 @@ dependencies = [
 
 [[package]]
 name = "syscalls"
-version = "0.6.18"
-source = "git+https://github.com/jasonwhite/syscalls.git?rev=92624de#92624de3dee33427fde46da083809d7e86a721ec"
+version = "0.7.0"
 
 [[package]]
 name = "thiserror"
