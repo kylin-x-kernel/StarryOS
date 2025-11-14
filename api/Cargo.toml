@@ -13,6 +13,7 @@ memtrack = ["axfeat/dwarf", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
+tee = ["syscalls/tee"]
 
 [dependencies]
 axalloc.workspace = true
@@ -73,3 +74,4 @@ x86 = "0.52"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 riscv = "0.14"
+
