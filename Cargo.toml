@@ -192,6 +192,7 @@ starry-vm = { git = "https://github.com/Starry-OS/starry-vm.git", rev = "4c91a6b
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
 syscalls = { path = "local_crates/syscalls" }
+tee_raw_sys = { path = "local_crates/tee_raw_sys" }
 
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]

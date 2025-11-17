@@ -2279,6 +2279,7 @@ dependencies = [
  "starry-signal",
  "starry-vm",
  "syscalls",
+ "tee_raw_sys",
  "x86",
  "zerocopy 0.8.27",
 ]
@@ -2443,6 +2444,10 @@ dependencies = [
 [[package]]
 name = "syscalls"
 version = "0.7.0"
+
+[[package]]
+name = "tee_raw_sys"
+version = "0.1.0"
 
 [[package]]
 name = "thiserror"
