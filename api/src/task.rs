@@ -89,6 +89,43 @@ pub fn new_user_task(
                     while check_signals(thr, &mut uctx, None) {}
                 }
 
+                // Check if process is stopped and block until continued
+                if thr.proc_data.proc.is_stopped() {
+                    use core::{future::poll_fn, task::Poll};
+
+                    use axtask::future::block_on;
+
+                    info!(
+                        "Task {} blocked (process {} stopped)",
+                        curr.id().as_u64(),
+                        thr.proc_data.proc.pid()
+                    );
+
+                    block_on(poll_fn(|cx| {
+                        if !thr.proc_data.proc.is_stopped() {
+                            Poll::Ready(())
+                        } else {
+                            thr.proc_data.child_exit_event.register(cx.waker());
+                            Poll::Pending
+                        }
+                    }));
+
+                    info!(
+                        "Task {} resumed (process {} continued)",
+                        curr.id().as_u64(),
+                        thr.proc_data.proc.pid()
+                    );
+
+                    // Once resumed, the process is in Continued state, which
+                    // will be reported to parent via
+                    // waitpid(WCONTINUED). The process continues
+                    // execution normally until parent acknowledges.
+                }
+
+                if !unblock_next_signal() {
+                    while check_signals(thr, &mut uctx, None) {}
+                }
+
                 set_timer_state(&curr, TimerState::User);
                 // Clear interrupt state
                 let _ = curr.interrupted();
@@ -159,11 +196,14 @@ pub fn exit_robust_list(head: *const RobustListHead) -> AxResult<()> {
     Ok(())
 }
 
-pub fn do_exit(exit_code: i32, group_exit: bool) {
+pub fn do_exit(exit_code: i32, group_exit: bool, signal: Option<Signo>, core_dumped: bool) {
     let curr = current();
     let thr = curr.as_thread();
 
-    info!("{} exit with code: {}", curr.id_name(), exit_code);
+    info!(
+        "{:?} exit with code: {}, signal: {:?}, core_dumped: {}",
+        thr.proc_data.proc, exit_code, signal, core_dumped
+    );
 
     let clear_child_tid = thr.clear_child_tid() as *mut u32;
     if clear_child_tid.vm_write(0).is_ok() {
@@ -184,7 +224,11 @@ pub fn do_exit(exit_code: i32, group_exit: bool) {
 
     let process = &thr.proc_data.proc;
     if process.exit_thread(curr.id().as_u64() as Pid, exit_code) {
-        process.exit();
+        if let Some(signo) = signal {
+            process.exit_with_signal(signo as i32, core_dumped);
+        } else {
+            process.exit();
+        }
         if let Some(parent) = process.parent() {
             if let Some(signo) = thr.proc_data.exit_signal {
                 let _ = send_signal_to_process(parent.pid(), Some(SignalInfo::new_kernel(signo)));
@@ -220,8 +264,46 @@ pub fn raise_signal_fatal(sig: SignalInfo) -> AxResult<()> {
         task.interrupt();
     } else {
         // No task wants to handle the signal, abort the task
-        do_exit(signo as i32, true);
+        do_exit(128 + signo as i32, true, None, false);
     }
 
     Ok(())
+}
+
+pub fn do_stop(stop_signal: i32) {
+        let curr = current();
+    let curr_thread = curr.as_thread();
+    let curr_process = &curr_thread.proc_data.proc;
+
+    info!(
+        "Process {} stopping due to signal {}",
+        curr_process.pid(),
+        stop_signal
+    );
+    curr_process.stop_by_signal(stop_signal);
+
+    if let Some(parent) = curr_process.parent()
+        && let Ok(data) = get_process_data(parent.pid())
+    {
+        data.child_exit_event.wake();
+    }
+}
+
+pub fn do_continue() {
+    let curr = current();
+    let curr_thread = curr.as_thread();
+    let curr_process = &curr_thread.proc_data.proc;
+
+    info!(
+        "Process {} continuing from stopped state",
+        curr_process.pid()
+    );
+    curr_process.continue_from_stop();
+    curr_thread.proc_data.child_exit_event.wake();
+
+    if let Some(parent) = curr_process.parent()
+        && let Ok(data) = get_process_data(parent.pid())
+    {
+        data.child_exit_event.wake();
+    }
 }

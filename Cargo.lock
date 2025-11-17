@@ -2222,7 +2222,6 @@ dependencies = [
 [[package]]
 name = "starry-process"
 version = "0.2.0"
-source = "git+https://github.com/Starry-OS/starry-process.git?rev=6327455#63274556bddcf111dec9d7f03362f7008c90a6da"
 dependencies = [
  "kspin",
  "lazyinit",
@@ -2704,3 +2703,7 @@ dependencies = [
  "quote",
  "syn 2.0.106",
 ]
+
+[[patch.unused]]
+name = "starry-process"
+version = "0.2.0"

@@ -5,8 +5,9 @@ use axhal::uspace::UserContext;
 use axtask::current;
 use starry_core::task::{AsThread, Thread};
 use starry_signal::{SignalOSAction, SignalSet};
+use axlog::info;
 
-use crate::task::do_exit;
+use crate::task::{do_continue, do_exit, do_stop};
 
 pub fn check_signals(
     thr: &Thread,
@@ -20,18 +21,22 @@ pub fn check_signals(
     let signo = sig.signo();
     match os_action {
         SignalOSAction::Terminate => {
-            do_exit(signo as i32, true);
+            info!("{:?} terminated by signal {:?}", thr.proc_data.proc, signo);
+            do_exit(128 + signo as i32, true, Some(signo), false);
         }
         SignalOSAction::CoreDump => {
-            // TODO: implement core dump
-            do_exit(128 + signo as i32, true);
+            // TODO: implement core dump, 
+            // now the core_dumped is set to true as a indication without actual core dump
+            info!("{:?} core dumped by signal {:?}", thr.proc_data.proc, signo);
+            do_exit(128 + signo as i32, true, Some(signo), true);
         }
         SignalOSAction::Stop => {
-            // TODO: implement stop
-            do_exit(1, true);
+            info!("{:?} stopped by signal {:?}", thr.proc_data.proc, signo);
+            do_stop(signo as i32);
         }
         SignalOSAction::Continue => {
-            // TODO: implement continue
+            info!("{:?} continued by signal {:?}", thr.proc_data.proc, signo);
+            do_continue();
         }
         SignalOSAction::Handler => {
             // do nothing

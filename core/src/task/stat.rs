@@ -76,14 +76,28 @@ impl TaskStat {
         let pid = proc.pid();
         let comm = task.name();
         let comm = comm[..comm.len().min(16)].to_owned();
-        let state = match task.state() {
-            TaskState::Running | TaskState::Ready => 'R',
-            TaskState::Blocked => 'S',
-            TaskState::Exited => 'Z',
+
+        // Get process group info first to minimize lock holding
+        let group = proc.group();
+        let pgrp = group.pgid();
+        let session = group.session().sid();
+        drop(group);  // Release group reference early
+
+        // Check state after releasing group locks
+        let state = if proc.is_stopped() {
+            'T'
+        } else {
+            match task.state() {
+                TaskState::Running | TaskState::Ready => 'R',
+                TaskState::Blocked => 'S',
+                TaskState::Exited => 'Z',
+            }
         };
+
         let ppid = proc.parent().map_or(0, |p| p.pid());
-        let pgrp = proc.group().pgid();
-        let session = proc.group().session().sid();
+        let num_threads = proc.threads().len() as u32;
+        let exit_code = proc.exit_code();
+
         Ok(Self {
             pid,
             comm: comm.to_owned(),
@@ -91,9 +105,9 @@ impl TaskStat {
             ppid,
             pgrp,
             session,
-            num_threads: proc.threads().len() as u32,
+            num_threads,
             exit_signal: proc_data.exit_signal.unwrap_or(Signo::SIGCHLD) as u8,
-            exit_code: proc.exit_code(),
+            exit_code,
             ..Default::default()
         })
     }

@@ -2,3 +2,7 @@
 	path = arceos
 	url = https://github.com/Starry-OS/arceos
 	branch = main
+[submodule "local_crates/starry-process"]
+	path = local_crates/starry-process
+	url = https://github.com/TomGoh/starry-process
+	branch = feat/sigstop-cont

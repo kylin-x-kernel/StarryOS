@@ -498,6 +498,33 @@ pub fn send_signal_to_process(pid: Pid, sig: Option<SignalInfo>) -> AxResult<()>
     if let Some(sig) = sig {
         let signo = sig.signo();
         info!("Send signal {signo:?} to process {pid}");
+
+        // Handle SIGCONT specially: if target process is stopped, continue it
+        // immediately
+        if signo == Signo::SIGCONT && proc_data.proc.is_stopped() {
+            info!("Process {pid} is stopped, continuing immediately");
+            proc_data.proc.continue_from_stop();
+            proc_data.child_exit_event.wake();
+
+            // Wake parent if it exists
+            if let Some(parent) = proc_data.proc.parent()
+                && let Ok(parent_data) = get_process_data(parent.pid())
+            {
+                parent_data.child_exit_event.wake();
+            }
+        }
+
+        // Handle SIGKILL specially: if target process is stopped, continue it so it can
+        // be killed
+        if signo == Signo::SIGKILL && proc_data.proc.is_stopped() {
+            info!("Process {pid} is stopped, continuing to allow SIGKILL");
+            proc_data.proc.continue_from_stop();
+            // Don't transition to Continued state - go directly to Running
+            // so the process can be killed immediately
+            proc_data.proc.ack_continued();
+            proc_data.child_exit_event.wake();
+        }
+
         if let Some(tid) = proc_data.signal.send_signal(sig)
             && let Ok(task) = get_task(tid)
         {
