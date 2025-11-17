@@ -19,6 +19,8 @@ pub mod task;
 pub mod terminal;
 pub mod time;
 pub mod vfs;
+#[cfg(feature = "tee")]
+pub mod tee;
 
 /// Initialize.
 pub fn init() {
