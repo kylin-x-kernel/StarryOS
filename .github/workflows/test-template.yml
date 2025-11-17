@@ -60,5 +60,9 @@ jobs:
         run: |
           make ARCH=${{ inputs.arch }} img
 
+      - name: Warm up build env
+        run: |
+          make ARCH=${{ inputs.arch }} build
+
       - name: Test
         run: scripts/ci-test.py ${{ inputs.arch }}

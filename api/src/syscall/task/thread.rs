@@ -1,5 +1,6 @@
 use axerrno::{AxError, AxResult};
 use axtask::current;
+#[cfg(target_arch = "x86_64")]
 use num_enum::TryFromPrimitive;
 use starry_core::task::AsThread;
 
@@ -25,6 +26,7 @@ pub fn sys_gettid() -> AxResult<isize> {
 ///
 /// It is only avaliable on x86_64, and is not convenient
 /// to generate automatically via c_to_rust binding.
+#[cfg(target_arch = "x86_64")]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(i32)]
 enum ArchPrctlCode {
