@@ -196,6 +196,46 @@ pub fn exit_robust_list(head: *const RobustListHead) -> AxResult<()> {
     Ok(())
 }
 
+/// Terminates the current thread and potentially the entire process.
+///
+/// This function handles the cleanup for a thread that is exiting. If this is the
+/// last thread in the process, it will also handle the full process termination.
+///
+/// A thread can exit for several reasons:
+/// - It called the `exit` or `exit_group` syscall.
+/// - It was terminated by a fatal signal.
+///
+/// The termination procedure involves several steps:
+///
+/// 1. **TID Futex Cleanup**: If the `clear_child_tid` attribute was set by `clone()`,
+///    this function writes 0 to the specified user-space address and wakes up any
+///    threads waiting on that futex. This is used to notify a parent thread when
+///    a child thread exits.
+///
+/// 2. **Robust Futex Cleanup**: It processes the robust futex list, releasing any
+///    futexes held by the exiting thread to prevent deadlocks.
+///
+/// 3. **Thread Exit**: It marks the current thread as exited within the process's
+///    thread list.
+///
+/// 4. **Process Termination (if last thread)**: If this is the last thread, it
+///    triggers process-wide cleanup:
+///    - Sets the final exit code or signal status of the process.
+///    - Notifies the parent process by sending `SIGCHLD` and waking up any
+///      `waitpid` calls.
+///    - Cleans up resources like shared memory.
+///
+/// 5. **Group Exit**: If `group_exit` is true, it ensures all other threads in the
+///    same process are also terminated by sending them `SIGKILL`.
+///
+/// 6. **Task Scheduling**: Finally, it marks the current kernel task as exited,
+///    so the scheduler will not run it anymore and can deallocate its resources.
+///
+/// # Arguments
+/// * `exit_code` - The exit code of the process, or the signal number if terminated by a signal.
+/// * `group_exit` - If `true`, terminate all threads in the process's thread group.
+/// * `signal` - If the process was terminated by a signal, this contains the signal number.
+/// * `core_dumped` - If `true`, indicates that a core dump was generated.
 pub fn do_exit(exit_code: i32, group_exit: bool, signal: Option<Signo>, core_dumped: bool) {
     let curr = current();
     let thr = curr.as_thread();
@@ -270,6 +310,17 @@ pub fn raise_signal_fatal(sig: SignalInfo) -> AxResult<()> {
     Ok(())
 }
 
+/// Stops the current process in response to a signal.
+///
+/// This function is called when a stop signal (like `SIGSTOP`, `SIGTSTP`, etc.)
+/// is delivered to the process. It sets the process state to "stopped" and
+/// notifies the parent process. The parent can then inspect the stopped child
+/// via `waitpid()` with the `WUNTRACED` option.
+///
+/// The task will block in the main task loop until a `SIGCONT` is received.
+///
+/// # Arguments
+/// * `stop_signal` - The signal number that caused the process to stop.
 pub fn do_stop(stop_signal: i32) {
         let curr = current();
     let curr_thread = curr.as_thread();
@@ -289,6 +340,17 @@ pub fn do_stop(stop_signal: i32) {
     }
 }
 
+/// Resumes a stopped process in response to `SIGCONT`.
+///
+/// This function is called when a `SIGCONT` signal is delivered to a stopped
+/// process. It sets the process state back to "running" and notifies the parent
+/// process (if it's waiting with `WCONTINUED`).
+///
+/// It also wakes up any threads of the process that were blocked in the main
+/// task loop, allowing them to resume execution.
+/// 
+/// Notice that the state of the process after being continued are not guranteed.
+/// There is no auto-restart mechanism after a syscall has been interrupted.
 pub fn do_continue() {
     let curr = current();
     let curr_thread = curr.as_thread();

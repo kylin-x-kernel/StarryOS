@@ -61,6 +61,49 @@ impl WaitPid {
     }
 }
 
+/// Waits for a child process to change state.
+///
+/// This function implements the `wait4` and `waitpid` syscalls. It suspends the
+/// execution of the current process until a child specified by `pid` has changed
+/// state.
+///
+/// # Arguments
+/// * `pid` - Specifies the set of child processes to wait for:
+///   - `< -1`: Wait for any child process whose process group ID is equal to the
+///     absolute value of `pid`.
+///   - `-1`: Wait for any child process.
+///   - `0`: Wait for any child process whose process group ID is equal to that of
+///     the calling process.
+///   - `> 0`: Wait for the child whose process ID is equal to `pid`.
+/// * `exit_code` - A pointer to an integer where the status information of the
+///   terminated child will be stored. The status can be inspected with macros
+///   like `WIFEXITED`, `WIFSIGNALED`, etc.
+/// * `options` - A bitmask of flags that modify the behavior of the call.
+///
+/// # State Changes
+/// `sys_waitpid` waits for children that have:
+/// - **Terminated (Zombie)**: The child has exited. Its PID and exit status are
+///   returned. Unless `WNOWAIT` is set, the child process is reaped (its kernel
+///   data structures are freed).
+/// - **Stopped**: If `WUNTRACED` is set, it returns for children that have been
+///   stopped by a signal. The status indicates the signal that caused the stop.
+/// - **Continued**: If `WCONTINUED` is set, it returns for stopped children that
+///   have been resumed by `SIGCONT`.
+///
+/// # Blocking Behavior
+/// - By default, the call blocks until a child changes state.
+/// - If `WNOHANG` is specified and no child has changed state, it returns `0`
+///   immediately.
+/// - The call can be interrupted by a signal, in which case it will return
+///   `Err(AxError::Interrupted)`.
+///
+/// # Return Value
+/// - On success, returns the process ID of the child that changed state.
+/// - If `WNOHANG` was specified and no child has changed state, `0` is returned.
+/// - On error, returns `Err(AxError)`. Common errors include:
+///   - `ECHILD`: The process does not have any children to wait for.
+///   - `EINTR`: The call was interrupted by a signal.
+///   - `EINVAL`: Invalid options were provided.
 pub fn sys_waitpid(pid: i32, exit_code: *mut i32, options: u32) -> AxResult<isize> {
     let options =
         WaitOptions::from_bits(options).ok_or(AxError::Other(LinuxError::EINVAL))?;
