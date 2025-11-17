@@ -107,7 +107,7 @@ pub fn sys_waitpid(pid: i32, exit_code: *mut i32, options: u32) -> AxResult<isiz
         let children = proc
             .children()
             .into_iter()
-            .filter(|child| pid.apply(&child))
+            .filter(|child| pid.apply(child))
             .collect::<Vec<_>>();
 
         info!("sys_waitpid: checking {} children", children.len());
