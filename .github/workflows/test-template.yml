@@ -60,6 +60,10 @@ jobs:
         run: |
           make ARCH=${{ inputs.arch }} img
 
+      - uses: arceos-org/setup-musl@v1
+        with:
+          arch: ${{ inputs.arch }}
+
       - name: Warm up build env
         run: |
           make ARCH=${{ inputs.arch }} build
