@@ -19,6 +19,9 @@ use self::{
     time::*,
 };
 
+#[cfg(feature = "tee")]
+use crate::tee::handle_tee_syscall;
+
 pub fn handle_syscall(uctx: &mut UserContext) {
     let Some(sysno) = Sysno::new(uctx.sysno()) else {
         warn!("Invalid syscall number: {}", uctx.sysno());
@@ -606,10 +609,23 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         Sysno::timer_create | Sysno::timer_gettime | Sysno::timer_settime => Ok(0),
 
         _ => {
-            warn!("Unimplemented syscall: {sysno}");
-            Err(AxError::Unsupported)
+            #[cfg(feature = "tee")]
+            {
+                if let Some(res) = handle_tee_syscall(sysno, uctx) {
+                    res
+                } else {
+                    warn!("Unimplemented syscall: {sysno}");
+                    Err(AxError::Unsupported)
+                }
+            }
+            #[cfg(not(feature = "tee"))]
+            {
+                warn!("Unimplemented syscall: {sysno}");
+                Err(AxError::Unsupported)
+            }
         }
     };
+
     debug!("Syscall {sysno} return {result:?}");
 
     uctx.set_retval(result.unwrap_or_else(|err| -LinuxError::from(err).code() as _) as _);
