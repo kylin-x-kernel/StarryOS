@@ -24,3 +24,6 @@
 	path = local_crates/syscalls
 	url = https://github.com/kylin-x-kernel/syscalls.git
 	branch = main
+[submodule "local_crates/tee_raw_sys"]
+	path = local_crates/tee_raw_sys
+	url = https://github.com/kylin-x-kernel/tee_raw_sys.git
