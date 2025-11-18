@@ -28,6 +28,13 @@ pub fn handle_syscall(uctx: &mut UserContext) {
 
     trace!("Syscall {sysno:?}");
 
+    #[cfg(feature = "ptrace")]
+    {
+        if let Some(hook) = starry_core::hooks::get_syscall_hook() {
+            hook.on_syscall_entry(uctx);
+        }
+    }
+
     let result = match sysno {
         // fs ctl
         Sysno::ioctl => sys_ioctl(uctx.arg0() as _, uctx.arg1() as _, uctx.arg2() as _),
@@ -436,6 +443,12 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         Sysno::setsid => sys_setsid(),
         Sysno::getpgid => sys_getpgid(uctx.arg0() as _),
         Sysno::setpgid => sys_setpgid(uctx.arg0() as _, uctx.arg1() as _),
+        Sysno::ptrace => sys_ptrace(
+            uctx.arg0() as _,
+            uctx.arg1() as _,
+            uctx.arg2() as _,
+            uctx.arg3() as _,
+        ),
 
         // signal
         Sysno::rt_sigprocmask => sys_rt_sigprocmask(
@@ -606,4 +619,11 @@ pub fn handle_syscall(uctx: &mut UserContext) {
     debug!("Syscall {sysno} return {result:?}");
 
     uctx.set_retval(result.unwrap_or_else(|err| -LinuxError::from(err).code() as _) as _);
+
+    #[cfg(feature = "ptrace")]
+    {
+        if let Some(hook) = starry_core::hooks::get_syscall_hook() {
+            hook.on_syscall_exit(uctx);
+        }   
+    }
 }
