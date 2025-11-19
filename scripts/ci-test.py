@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import os
 import socket
 import subprocess
 import sys
@@ -13,14 +14,20 @@ parser.add_argument("arch")
 args = parser.parse_args()
 arch = args.arch
 
+make_cmd = [
+    "make",
+    "ARCH=" + arch,
+    "ACCEL=n",
+    "justrun",
+    "QEMU_ARGS=-monitor none -serial tcp::4444,server=on",
+]
+
+vsock = os.environ.get("VSOCK")
+if vsock:
+    make_cmd.append(f"VSOCK={vsock}")
+
 p = subprocess.Popen(
-    [
-        "make",
-        "ARCH=" + arch,
-        "ACCEL=n",
-        "justrun",
-        "QEMU_ARGS=-monitor none -serial tcp::4444,server=on",
-    ],
+    make_cmd,
     stderr=subprocess.PIPE,
     text=True,
 )

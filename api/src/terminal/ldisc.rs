@@ -349,7 +349,7 @@ impl<R: TtyRead, W: TtyWrite> LineDiscipline<R, W> {
             term.special_char(VMIN) as usize
         };
 
-        if buf.len() < vmin as usize {
+        if buf.len() < vmin {
             return Err(AxError::WouldBlock);
         }
 
