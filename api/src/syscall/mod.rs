@@ -611,12 +611,7 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         _ => {
             #[cfg(feature = "tee")]
             {
-                if let Some(res) = handle_tee_syscall(sysno, uctx) {
-                    res
-                } else {
-                    warn!("Unimplemented syscall: {sysno}");
-                    Err(AxError::Unsupported)
-                }
+                handle_tee_syscall(sysno, uctx)
             }
             #[cfg(not(feature = "tee"))]
             {
