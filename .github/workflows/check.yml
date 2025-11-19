@@ -53,5 +53,15 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
 
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: clippy
+          targets: ${{ matrix.target }}
+
+      - name: Add target
+        run: rustup +nightly target add ${{ matrix.target }}
+
       - name: Clippy
-        run: cargo clippy --target ${{ matrix.target }} -F qemu -- -D warnings
+        run: cargo +nightly clippy --target ${{ matrix.target }} -F qemu -- -D warnings
