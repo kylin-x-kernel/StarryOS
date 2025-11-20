@@ -88,18 +88,18 @@ dependencies = [
 
 [[package]]
 name = "anstyle-query"
-version = "1.1.4"
+version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e231f6134f61b71076a3eab506c379d4f36122f2af15a9ff04415ea4c3339e2"
+checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
  "windows-sys",
 ]
 
 [[package]]
 name = "anstyle-wincon"
-version = "3.0.10"
+version = "3.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e0633414522a32ffaac8ac6cc8f748e090c5717661fddeea04219e2344f5f2a"
+checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
@@ -240,7 +240,7 @@ dependencies = [
 [[package]]
 name = "axcpu"
 version = "0.2.2"
-source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=main#e6b6bb83506bda741937dd9fbc945a7719c13bec"
+source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=main#9b9441796ee31db44ddd9d60335266ba7e07f394"
 dependencies = [
  "aarch64-cpu",
  "axbacktrace",
@@ -544,7 +544,7 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "axplat-macros",
  "bitflags 2.10.0",
@@ -577,7 +577,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -597,7 +597,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -610,7 +610,7 @@ dependencies = [
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -638,7 +638,7 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -646,9 +646,9 @@ dependencies = [
  "kspin",
  "lazyinit",
  "log",
+ "plic",
  "riscv",
  "riscv_goldfish",
- "riscv_plic",
  "sbi-rt",
  "uart_16550",
 ]
@@ -674,13 +674,13 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#024416bf4d22622a824c07260e8bcab61cac8458"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
 dependencies = [
  "axconfig-macros",
  "axcpu",
  "axplat",
  "bitflags 2.10.0",
- "heapless 0.9.1",
+ "heapless 0.9.2",
  "int_ratio",
  "kspin",
  "lazyinit",
@@ -918,9 +918,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.51"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c26d721170e0295f191a69bd9a1f93efcdb0aff38684b61ab5750468972e5f5"
+checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -928,9 +928,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.51"
+version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75835f0c7bf681bfd05abe44e965760fea999a5286c6eb2d59883634fd02011a"
+checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
 dependencies = [
  "anstream",
  "anstyle",
@@ -982,6 +982,12 @@ name = "const-str"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "451d0640545a0553814b4c646eb549343561618838e9b42495f466131fe3ad49"
+
+[[package]]
+name = "const_fn"
+version = "0.4.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f8a2ca5ac02d09563609681103aada9e1777d54fc57a5acd7a41404f9c93b6e"
 
 [[package]]
 name = "convert_case"
@@ -1408,9 +1414,9 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
+checksum = "2af2455f757db2b292a9b1768c4b70186d443bcb3b316252d6b540aec1cd89ed"
 dependencies = [
  "hash32",
  "stable_deref_trait",
@@ -2057,14 +2063,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07aac72f95e774476db82916d79f2d303191310393830573c1ab5c821b21660a"
 
 [[package]]
-name = "riscv_plic"
-version = "0.2.0"
-source = "git+https://github.com/Starry-OS/riscv_plic.git?tag=v0.2.0#be7776f3c790c2155718c610b437cce664b440e7"
-dependencies = [
- "tock-registers 0.10.1",
-]
-
-[[package]]
 name = "rlsf"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2480,12 +2478,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b9e2fdb3a1e862c0661768b7ed25390811df1947a8acbfbefe09b47078d93c4"
 
 [[package]]
-name = "tock-registers"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d2d250f87fb3fb6f225c907cf54381509f47b40b74b1d1f12d2dccbc915bdfe"
-
-[[package]]
 name = "toml_datetime"
 version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2635,77 +2627,12 @@ checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 
 [[package]]
 name = "windows-sys"
-version = "0.60.2"
+version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
-dependencies = [
- "windows-targets",
-]
-
-[[package]]
-name = "windows-targets"
-version = "0.53.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4945f9f551b88e0d65f3db0bc25c33b8acea4d9e41163edf90dcd0b19f9069f3"
+checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
- "windows_i686_gnullvm",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
 ]
-
-[[package]]
-name = "windows_aarch64_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9d8416fa8b42f5c947f8482c43e7d89e73a173cead56d044f6a56104a6d1b53"
-
-[[package]]
-name = "windows_aarch64_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9d782e804c2f632e395708e99a94275910eb9100b2114651e04744e9b125006"
-
-[[package]]
-name = "windows_i686_gnu"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "960e6da069d81e09becb0ca57a65220ddff016ff2d6af6a223cf372a506593a3"
-
-[[package]]
-name = "windows_i686_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7359d10048f68ab8b09fa71c3daccfb0e9b559aed648a8f95469c27057180c"
-
-[[package]]
-name = "windows_i686_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
-
-[[package]]
-name = "windows_x86_64_gnu"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c3842cdd74a865a8066ab39c8a7a473c0778a3f29370b5fd6b4b9aa7df4a499"
-
-[[package]]
-name = "windows_x86_64_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ffa179e2d07eee8ad8f57493436566c7cc30ac536a3379fdf008f47f6bb7ae1"
-
-[[package]]
-name = "windows_x86_64_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "winnow"
@@ -2742,12 +2669,13 @@ dependencies = [
 
 [[package]]
 name = "x86_64"
-version = "0.15.2"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f042214de98141e9c8706e8192b73f56494087cc55ebec28ce10f26c5c364ae"
+checksum = "575f620d283cb63500b96c4bcaa12523c6a278d89b85ea35c97ad43ba754fd1e"
 dependencies = [
  "bit_field",
  "bitflags 2.10.0",
+ "const_fn",
  "rustversion",
  "volatile 0.4.6",
 ]
