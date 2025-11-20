@@ -8,6 +8,8 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      TOOLCHAIN: nightly-2025-05-20
     strategy:
       fail-fast: false
       matrix:
@@ -34,15 +36,15 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
 
-      - name: Install nightly toolchain
+      - name: Install pinned nightly toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: ${{ env.TOOLCHAIN }}
           components: clippy
           targets: ${{ matrix.target }}
 
       - name: Add target
-        run: rustup +nightly target add ${{ matrix.target }}
+        run: rustup +${{ env.TOOLCHAIN }} target add ${{ matrix.target }}
 
       - name: Clippy
-        run: cargo +nightly clippy --target ${{ matrix.target }} -F qemu -- -D warnings
+        run: cargo +${{ env.TOOLCHAIN }} clippy --target ${{ matrix.target }} -F qemu -- -D warnings
