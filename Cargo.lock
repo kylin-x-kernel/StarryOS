@@ -240,7 +240,7 @@ dependencies = [
 [[package]]
 name = "axcpu"
 version = "0.2.2"
-source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=main#9b9441796ee31db44ddd9d60335266ba7e07f394"
+source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=watchdog#2fa6fea2911966d33d7a8da81721e3c7698fef5b"
 dependencies = [
  "aarch64-cpu",
  "axbacktrace",
@@ -577,7 +577,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=watchdog#e3905d1dc6d0d60739856b11afa6d74cccc802f9"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -597,12 +597,13 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.2.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=main#9958005ea2a8a32ef25f0e9ba0c87c2c60e73b31"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=watchdog#e3905d1dc6d0d60739856b11afa6d74cccc802f9"
 dependencies = [
  "axconfig-macros",
  "axcpu",
  "axplat",
  "axplat-aarch64-peripherals",
+ "axwatchdog",
  "log",
  "page_table_entry",
 ]
@@ -723,7 +724,9 @@ dependencies = [
  "axmm",
  "axnet",
  "axplat",
+ "axplat-aarch64-peripherals",
  "axtask",
+ "axwatchdog",
  "chrono",
  "crate_interface",
  "indoc",
@@ -771,6 +774,15 @@ dependencies = [
  "pin-project",
  "spin 0.10.0",
  "weak-map",
+]
+
+[[package]]
+name = "axwatchdog"
+version = "0.1.0"
+source = "git+https://github.com/kylin-x-kernel/axwatchdog.git?branch=main#ba914d860dc279d85efecd9c497c5354471f2d43"
+dependencies = [
+ "axplat-aarch64-peripherals",
+ "log",
 ]
 
 [[package]]
