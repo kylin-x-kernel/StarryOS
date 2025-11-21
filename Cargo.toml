@@ -43,7 +43,7 @@ axinput = { path = "arceos/modules/axinput" }
 axlog = { path = "arceos/modules/axlog" }
 axmm = { path = "arceos/modules/axmm" }
 axnet = { path = "arceos/modules/axnet" }
-axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt", features = ["irq", "fp-simd"] }
+axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt"}
 axruntime = { path = "arceos/modules/axruntime" }
 axsync = { path = "arceos/modules/axsync" }
 axtask = { path = "arceos/modules/axtask", features = ["task-ext"] }
@@ -134,6 +134,7 @@ crosvm = [
     # auxilary features
     "axfeat/fs-times",
     "starry-api/dev-log",
+    "smp"
 ]
 
 # Stubs
@@ -168,6 +169,7 @@ optional = true
 [dependencies.axplat-aarch64-crosvm-virt]
 workspace = true
 optional = true
+features = ["irq", "fp-simd", "smp"] 
 
 [patch.crates-io]
 axcpu = { git = "https://github.com/kylin-x-kernel/axcpu.git",branch="main" }
