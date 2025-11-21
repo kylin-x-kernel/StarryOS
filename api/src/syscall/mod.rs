@@ -10,7 +10,10 @@ mod sys;
 mod task;
 mod time;
 
-use axerrno::{AxError, LinuxError};
+#[cfg(not(feature = "tee"))]
+use axerrno::AxError;
+
+use axerrno::LinuxError;
 use axhal::uspace::UserContext;
 use syscalls::Sysno;
 
