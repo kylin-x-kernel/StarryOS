@@ -106,6 +106,9 @@ qemu = [
     # auxilary features
     "axfeat/fs-times",
     "starry-api/dev-log",
+
+    # default open tee
+    "tee",
 ]
 smp = ["axfeat/smp", "axplat-riscv64-visionfive2?/smp"]
 
