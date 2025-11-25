@@ -14,3 +14,7 @@
 *.swp
 *.swo
 
+# Code statistics cache
+/.cache/
+/code-stats/
+
