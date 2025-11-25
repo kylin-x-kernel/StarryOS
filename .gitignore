@@ -1,0 +1,20 @@
+/.idea
+.DS_Store
+*.elf
+*.bin
+*.dbg
+**/target/
+/.axconfig.*
+*.img
+/kernel-rv
+/kernel-la
+/.cargo
+/.crates*
+/mnt
+*.swp
+*.swo
+
+# Code statistics cache
+/.cache/
+/code-stats/
+
