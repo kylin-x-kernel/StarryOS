@@ -1,0 +1,153 @@
+name: Code Statistics
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      output_branch:
+        description: '输出结果的分支名称（默认：code-stats-results）'
+        required: false
+        default: 'code-stats-results'
+  schedule:
+    # 每天凌晨 2 点执行
+    - cron: '0 2 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-stats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout StarryOS
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Checkout test harness
+        uses: actions/checkout@v4
+        with:
+          repository: kylin-x-kernel/starry-test-harness
+          path: starry-test-harness
+
+      - name: Install dependencies
+        run: |
+          # 安装 tokei
+          cargo install --locked tokei
+          
+          # 安装 yq
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          
+          # 验证安装
+          tokei --version
+          yq --version
+
+      - name: Create whitelist config
+        run: |
+          cat > .code-stats-whitelist.yml << 'EOF'
+          branch: master
+          repos:
+            - https://github.com/kylin-x-kernel/starry-ptrace
+          EOF
+
+      - name: Run code statistics
+        run: |
+          bash starry-test-harness/scripts/code_stats.sh \
+            --workspace "${{ github.workspace }}" \
+            --whitelist .code-stats-whitelist.yml \
+            --output ./code-stats
+
+      - name: Generate timestamp
+        id: timestamp
+        run: echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+      - name: Upload statistics as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-statistics-${{ steps.timestamp.outputs.date }}
+          path: |
+            code-stats/loc.json
+            code-stats/loc.md
+          retention-days: 90
+
+      - name: Commit and push to results branch
+        env:
+          OUTPUT_BRANCH: ${{ github.event.inputs.output_branch || 'code-stats-results' }}
+          TIMESTAMP: ${{ steps.timestamp.outputs.date }}
+        run: |
+          # 配置 git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 创建或切换到结果分支
+          git fetch origin ${OUTPUT_BRANCH}:${OUTPUT_BRANCH} || git checkout -b ${OUTPUT_BRANCH}
+          git checkout ${OUTPUT_BRANCH} || git checkout --orphan ${OUTPUT_BRANCH}
+          
+          # 清理工作目录（保留统计结果）
+          git rm -rf . || true
+          
+          # 创建目录结构
+          mkdir -p reports/${TIMESTAMP}
+          
+          # 复制统计结果
+          cp code-stats/loc.json reports/${TIMESTAMP}/
+          cp code-stats/loc.md reports/${TIMESTAMP}/
+          cp code-stats/loc.json reports/latest.json
+          cp code-stats/loc.md reports/latest.md
+          
+          # 创建索引文件
+          cat > reports/README.md << 'EOF'
+          # StarryOS 代码统计历史报告
+          
+          ## 最新报告
+          
+          - [最新统计 (JSON)](./latest.json)
+          - [最新统计 (Markdown)](./latest.md)
+          
+          ## 历史报告
+          
+          EOF
+          
+          # 列出所有历史报告
+          for dir in reports/*/; do
+            if [ -d "$dir" ]; then
+              dirname=$(basename "$dir")
+              echo "- [\`${dirname}\`](./${dirname}/loc.md)" >> reports/README.md
+            fi
+          done
+          
+          # 添加元信息
+          cat > reports/latest-info.json << EOF
+          {
+            "timestamp": "${TIMESTAMP}",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "workflow_run": "${{ github.run_id }}"
+          }
+          EOF
+          
+          # 提交更改
+          git add reports/
+          git commit -m "📊 代码统计报告 - ${TIMESTAMP}" || echo "No changes to commit"
+          
+          # 推送到远程
+          git push -f origin ${OUTPUT_BRANCH}
+          
+          echo " 统计结果已推送到分支: ${OUTPUT_BRANCH}"
+          echo " 查看报告: https://github.com/${{ github.repository }}/tree/${OUTPUT_BRANCH}/reports"
+
+      - name: Display statistics summary
+        if: always()
+        run: |
+          echo "##  代码统计摘要" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f code-stats/loc.md ]; then
+            cat code-stats/loc.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "统计文件未生成" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo " 统计结果已保存到分支: \`${{ github.event.inputs.output_branch || 'code-stats-results' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo " [查看历史报告](https://github.com/${{ github.repository }}/tree/${{ github.event.inputs.output_branch || 'code-stats-results' }}/reports)" >> $GITHUB_STEP_SUMMARY
