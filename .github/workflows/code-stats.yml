@@ -106,7 +106,26 @@ jobs:
           
           # 创建或切换到结果分支
           git fetch origin ${OUTPUT_BRANCH} || true
-          git checkout ${OUTPUT_BRANCH} 2>/dev/null || git checkout --orphan ${OUTPUT_BRANCH}
+          
+          # 检查分支是否存在
+          if git show-ref --verify --quiet refs/remotes/origin/${OUTPUT_BRANCH}; then
+            # 分支存在，切换并清空（保留 .git）
+            git checkout ${OUTPUT_BRANCH}
+            # 强制删除所有内容但保留 .git 目录
+            shopt -s dotglob nullglob
+            for item in *; do
+              if [ "$item" != ".git" ]; then
+                rm -rf "$item"
+              fi
+            done
+            # 清空 git 索引
+            git rm -rf --cached . 2>/dev/null || true
+          else
+            # 分支不存在，创建孤立分支
+            git checkout --orphan ${OUTPUT_BRANCH}
+            # 清空暂存区
+            git rm -rf . 2>/dev/null || true
+          fi
           
           # 确保 reports 目录存在
           mkdir -p reports/${TIMESTAMP}
