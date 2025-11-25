@@ -18,6 +18,8 @@ concurrency:
 jobs:
   code-stats:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  
     steps:
       - name: Checkout StarryOS
         uses: actions/checkout@v4
