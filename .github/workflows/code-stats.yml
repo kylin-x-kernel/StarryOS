@@ -80,21 +80,22 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
+          # 备份统计结果到临时目录
+          mkdir -p /tmp/code-stats-backup
+          cp -r code-stats/* /tmp/code-stats-backup/
+          
           # 创建或切换到结果分支
-          git fetch origin ${OUTPUT_BRANCH}:${OUTPUT_BRANCH} || git checkout -b ${OUTPUT_BRANCH}
-          git checkout ${OUTPUT_BRANCH} || git checkout --orphan ${OUTPUT_BRANCH}
+          git fetch origin ${OUTPUT_BRANCH} || true
+          git checkout ${OUTPUT_BRANCH} 2>/dev/null || git checkout --orphan ${OUTPUT_BRANCH}
           
-          # 清理工作目录（保留统计结果）
-          git rm -rf . || true
-          
-          # 创建目录结构
+          # 确保 reports 目录存在
           mkdir -p reports/${TIMESTAMP}
           
-          # 复制统计结果
-          cp code-stats/loc.json reports/${TIMESTAMP}/
-          cp code-stats/loc.md reports/${TIMESTAMP}/
-          cp code-stats/loc.json reports/latest.json
-          cp code-stats/loc.md reports/latest.md
+          # 从临时目录复制统计结果
+          cp /tmp/code-stats-backup/loc.json reports/${TIMESTAMP}/
+          cp /tmp/code-stats-backup/loc.md reports/${TIMESTAMP}/
+          cp /tmp/code-stats-backup/loc.json reports/latest.json
+          cp /tmp/code-stats-backup/loc.md reports/latest.md
           
           # 创建索引文件
           cat > reports/README.md << 'EOF'
@@ -129,7 +130,7 @@ jobs:
           
           # 提交更改
           git add reports/
-          git commit -m "📊 代码统计报告 - ${TIMESTAMP}" || echo "No changes to commit"
+          git commit -m " 代码统计报告 - ${TIMESTAMP}" || echo "No changes to commit"
           
           # 推送到远程
           git push -f origin ${OUTPUT_BRANCH}
