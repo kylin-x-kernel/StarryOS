@@ -43,19 +43,37 @@ jobs:
           tokei --version
           yq --version
 
-      - name: Create whitelist config
+      - name: Clone whitelist repositories
         run: |
-          cat > .code-stats-whitelist.yml << 'EOF'
-          branch: master
-          repos:
-            - https://github.com/kylin-x-kernel/starry-ptrace
+          # 白名单仓库会克隆到 local_crates/ 目录
+          # 格式: 分支名|仓库URL|目录名
+          
+          cat > repos.txt << 'EOF'
+          master|https://github.com/kylin-x-kernel/starry-ptrace|starry-ptrace
+          master|https://github.com/kylin-x-kernel/starry-test-harness|starry-test-harness
           EOF
+          
+          # 添加更多仓库示例：
+          # main|https://github.com/org/repo|repo
+          
+          # 批量克隆到 local_crates
+          while IFS='|' read -r branch repo name; do
+            [[ -z "$branch" ]] && continue
+            target="local_crates/$name"
+            if [[ -d "$target" ]]; then
+              echo "[skip] $target already exists"
+            else
+              echo "[clone] $repo ($branch) → $target"
+              git clone -b "$branch" --depth 1 "$repo" "$target"
+            fi
+          done < repos.txt
 
       - name: Run code statistics
         run: |
-          bash starry-test-harness/scripts/code_stats.sh \
+          # 统计主仓库（排除 local_crates）和 local_crates 下所有子目录
+          python3 starry-test-harness/scripts/generate_loc_report.py \
             --workspace "${{ github.workspace }}" \
-            --whitelist .code-stats-whitelist.yml \
+            --clone-dir local_crates \
             --output ./code-stats
 
       - name: Generate timestamp
