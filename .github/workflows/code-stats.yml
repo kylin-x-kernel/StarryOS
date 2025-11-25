@@ -111,7 +111,7 @@ jobs:
           if git show-ref --verify --quiet refs/remotes/origin/${OUTPUT_BRANCH}; then
             # 分支存在，切换并清空（保留 .git）
             git checkout ${OUTPUT_BRANCH}
-            # 强制删除所有内容但保留 .git 目录
+            # 保留 .git 目录
             shopt -s dotglob nullglob
             for item in *; do
               if [ "$item" != ".git" ]; then
