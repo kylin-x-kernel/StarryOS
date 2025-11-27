@@ -106,7 +106,54 @@ jobs:
           
           # 创建或切换到结果分支
           git fetch origin ${OUTPUT_BRANCH} || true
-          git checkout ${OUTPUT_BRANCH} 2>/dev/null || git checkout --orphan ${OUTPUT_BRANCH}
+          
+          # 检查分支是否存在
+          if git show-ref --verify --quiet refs/remotes/origin/${OUTPUT_BRANCH}; then
+            # 分支存在，切换
+            git checkout ${OUTPUT_BRANCH}
+            
+            # 检查是否有非 reports 的文件/目录（说明分支被污染了）
+            shopt -s dotglob nullglob
+            needs_cleanup=false
+            for item in *; do
+              if [ "$item" != ".git" ] && [ "$item" != "reports" ]; then
+                needs_cleanup=true
+                break
+              fi
+            done
+            
+            if [ "$needs_cleanup" = true ]; then
+              echo "Branch contains non-report files. Performing cleanup..."
+              
+              # 备份旧的 reports 目录（如果存在）
+              if [ -d "reports" ]; then
+                echo "Backing up old reports..."
+                cp -r reports /tmp/old-reports-backup
+              fi
+              
+              # 清理工作区（保留 .git）
+              for item in *; do
+                if [ "$item" != ".git" ]; then
+                  rm -rf "$item"
+                fi
+              done
+              # 清空 git 索引
+              git rm -rf --cached . 2>/dev/null || true
+              
+              # 恢复旧的 reports 目录
+              if [ -d "/tmp/old-reports-backup" ]; then
+                echo "Restoring old reports..."
+                cp -r /tmp/old-reports-backup reports
+              fi
+            else
+              echo "Branch is clean. Skipping cleanup."
+            fi
+          else
+            # 分支不存在，创建孤立分支
+            git checkout --orphan ${OUTPUT_BRANCH}
+            # 清空暂存区
+            git rm -rf . 2>/dev/null || true
+          fi
           
           # 确保 reports 目录存在
           mkdir -p reports/${TIMESTAMP}
