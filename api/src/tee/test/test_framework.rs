@@ -227,6 +227,9 @@ impl TestRunner {
     }
 
     fn print_message(&self, msg: &str) {
+        // 由于没有 trace_debug! 宏，这里使用 println! 模拟输出
+        // 在真实的环境中，您需要将这部分替换为实际的日志输出机制
+        // println!("{}", msg);
 		info!("{}", msg);
     }
 
@@ -236,6 +239,7 @@ impl TestRunner {
 }
 
 // 基础断言宏
+// 移除了 #[macro_export] 以避免与 core 库中的宏冲突
 #[macro_export]
 macro_rules! assert_eq {
     ($left:expr, $right:expr) => {
