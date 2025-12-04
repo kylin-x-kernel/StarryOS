@@ -12,9 +12,7 @@ impl default::Default for tee_pobj {
 		}
 	}
 }
-
-
-// #[cfg(any(test, testing))]
+#[cfg(feature = "tee_test")]
 pub mod tests_tee_pobj {
     //-------- test framework import --------
 	use crate::tee::TestDescriptor;
