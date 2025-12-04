@@ -4,12 +4,13 @@ use axerrno::{AxError, AxResult};
 use alloc::{
     sync::{Arc},
 };
-
+use tee_raw_sys::*;
 use tee_raw_sys::libc_compat::size_t;
 use flatten_objects::FlattenObjects;
 use spin::RwLock;
 
 use super::{
+	TeeResult,
     tee_fs::tee_file_handle,
 	tee_pobj::tee_pobj,
 };
@@ -46,19 +47,49 @@ impl default::Default for tee_obj {
 	}
 }
 
-pub fn tee_obj_add(obj: tee_obj)-> AxResult<tee_obj_id_type> 
+pub fn tee_obj_add(obj: tee_obj)-> TeeResult<tee_obj_id_type> 
 {
 	let mut table = TEE_OBJ_TABLE.write();
 	Ok(table.insert(Arc::new(obj)) as tee_obj_id_type)
 }
 
-pub fn tee_obj_get(obj_id : tee_obj_id_type) -> AxResult<Arc<tee_obj>>
+pub fn tee_obj_get(obj_id : tee_obj_id_type) -> TeeResult<Arc<tee_obj>>
 {
 		let mut table = TEE_OBJ_TABLE.read();
 		if let Some(obj) = table.get(obj_id as usize) {
 			Ok(obj.clone())
 		} else {
-			Err(AxError::InvalidInput)
+			Err(TEE_ERROR_BAD_STATE)
 		}
 }
 
+#[cfg(feature = "tee_test")]
+pub mod tests_tee_obj {
+    //-------- test framework import --------
+	use crate::tee::TestDescriptor;
+    use crate::test_fn;
+    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
+	use crate::tee::TestResult;
+
+    //-------- local tests import --------
+    use super::*;
+
+    test_fn! {
+        using TestResult;
+
+		fn test_tee_obj_add_get() {
+			let mut obj = tee_obj::default();
+			obj.busy = true;
+			let obj_id = tee_obj_add(obj).expect("Failed to add tee_obj");
+			info!("Added tee_obj with id {}", obj_id);
+			let retrieved_obj = tee_obj_get(obj_id).expect("Failed to get tee_obj");
+			assert_eq!(retrieved_obj.busy, true);
+		}
+    }
+
+    tests_name! {
+        TEST_TEE_OBJ;
+        //------------------------
+		test_tee_obj_add_get,
+	}
+}
