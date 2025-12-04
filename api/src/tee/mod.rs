@@ -11,8 +11,13 @@ mod tee_fs;
 mod tee_obj;
 mod tee_pobj;
 mod tee_svc_cryp;
+mod user_access;
+
+#[cfg(feature = "tee_test")]
 mod tee_unit_test;
+#[cfg(feature = "tee_test")]
 mod test;
+mod libutee;
 mod time;
 
 use log::*;
@@ -21,9 +26,12 @@ use time::*;
 use axerrno::{AxError, AxResult};
 use axhal::uspace::UserContext;
 use syscalls::Sysno;
-
+#[cfg(feature = "tee_test")]
 use test::test_framework::{TestDescriptor, TestRunner};
+#[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
+
+pub type TeeResult<T = ()> = Result<T, u32>;
 
 pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> AxResult<isize> {
     // Handle TEE-specific syscalls here

@@ -11,6 +11,7 @@ use alloc::string::String;
 use core::ffi::c_char;
 use axerrno::{AxError, AxResult};
 use crate::mm::vm_load_string;
+#[cfg(feature = "tee_test")]
 use super::{
     test::test_examples::tee_test_example,
     tee_unit_test::tee_test_unit,
@@ -32,7 +33,9 @@ pub(crate) fn sys_tee_scn_log(buf: *const c_char, len: usize) -> AxResult<isize>
     ctx.push_str("abc");
     info!("after push {}", *ctx);
 
+    #[cfg(feature = "tee_test")]
     tee_test_example();
+    #[cfg(feature = "tee_test")]
     tee_test_unit();
     Ok(0)
 }
