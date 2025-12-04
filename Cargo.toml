@@ -92,6 +92,7 @@ repository.workspace = true
 [features]
 default = []
 tee = ["starry-api/tee"]
+tee_test = ["starry-api/tee_test", "starry-api/tee_test_mock_user_access"]
 qemu = [
     "axfeat/display",
     "axfeat/input",
@@ -109,6 +110,7 @@ qemu = [
 
     # default open tee
     "tee",
+    "tee_test",
 ]
 smp = ["axfeat/smp", "axplat-riscv64-visionfive2?/smp"]
 
