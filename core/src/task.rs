@@ -9,6 +9,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{
+    any::Any,
     cell::RefCell,
     ops::Deref,
     sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicUsize, Ordering},
@@ -52,8 +53,12 @@ impl<T> Deref for AssumeSync<T> {
     }
 }
 
+pub trait TeeSessionCtxTrait {
+    fn as_any(&self) -> &dyn Any;
+}
+
 /// The inner data of a thread.
-pub struct Thread {
+pub struct ThreadInner {
     /// The process data shared by all threads in the process.
     pub proc_data: Arc<ProcessData>,
 
@@ -82,12 +87,15 @@ pub struct Thread {
 
     /// Ready to exit
     exit: AtomicBool,
+
+    /// Tee session context
+    pub tee_session_ctx: Mutex<Option<Box<dyn TeeSessionCtxTrait>>>,
 }
 
-impl Thread {
-    /// Create a new [`Thread`].
-    pub fn new(tid: u32, proc_data: Arc<ProcessData>) -> Box<Self> {
-        Box::new(Thread {
+impl ThreadInner {
+    /// Create a new [`ThreadInner`].
+    pub fn new(tid: u32, proc_data: Arc<ProcessData>) -> Self {
+        ThreadInner {
             signal: ThreadSignalManager::new(tid, proc_data.signal.clone()),
             proc_data,
             clear_child_tid: AtomicUsize::new(0),
@@ -95,7 +103,8 @@ impl Thread {
             time: AssumeSync(RefCell::new(TimeManager::new())),
             oom_score_adj: AtomicI32::new(200),
             exit: AtomicBool::new(false),
-        })
+            tee_session_ctx: Mutex::new(None),
+        }
     }
 
     /// Get the clear child tid field.
@@ -139,10 +148,29 @@ impl Thread {
     pub fn set_exit(&self) {
         self.exit.store(true, Ordering::Release);
     }
+
+    /// Set the tee session context.
+    pub fn set_tee_session_ctx(&self, ctx: Box<dyn TeeSessionCtxTrait>) {
+        let mut guard = self.tee_session_ctx.lock();
+        if guard.is_none() {
+            *guard = Some(ctx);
+        }
+    }
+}
+
+/// Extended thread data for the monolithic kernel.
+pub struct Thread(Box<ThreadInner>);
+
+impl Deref for Thread {
+    type Target = ThreadInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[extern_trait]
-unsafe impl TaskExt for Box<Thread> {
+unsafe impl TaskExt for Thread {
     fn on_enter(&self) {
         let scope = self.proc_data.scope.read();
         unsafe { ActiveScope::set(&scope) };
@@ -168,8 +196,14 @@ pub trait AsThread {
 
 impl AsThread for TaskInner {
     fn try_as_thread(&self) -> Option<&Thread> {
-        self.task_ext()
-            .map(|ext| unsafe { ext.downcast_ref::<Box<Thread>>() }.as_ref())
+        self.task_ext().map(|ext| unsafe { ext.downcast_ref() })
+    }
+}
+
+impl Thread {
+    /// Create a new [`Thread`].
+    pub fn new(tid: u32, proc_data: Arc<ProcessData>) -> Self {
+        Self(Box::new(ThreadInner::new(tid, proc_data)))
     }
 }
 
