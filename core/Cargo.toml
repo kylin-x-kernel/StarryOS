@@ -51,3 +51,6 @@ xmas-elf = "0.9"
 
 [target.'cfg(not(any(target_arch = "aarch64", target_arch = "loongarch64")))'.dependencies]
 axmm = { workspace = true, features = ["copy"] }
+
+[features]
+tee = []
