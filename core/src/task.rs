@@ -9,6 +9,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{
+    any::Any,
     cell::RefCell,
     ops::Deref,
     sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicUsize, Ordering},
@@ -52,6 +53,10 @@ impl<T> Deref for AssumeSync<T> {
     }
 }
 
+pub trait TeeSessionCtxTrait {
+    fn as_any(&self) -> &dyn Any;
+}
+
 /// The inner data of a thread.
 pub struct Thread {
     /// The process data shared by all threads in the process.
@@ -82,6 +87,9 @@ pub struct Thread {
 
     /// Ready to exit
     exit: AtomicBool,
+
+    /// Tee session context
+    pub tee_session_ctx: Mutex<Option<Box<dyn TeeSessionCtxTrait>>>,
 }
 
 impl Thread {
@@ -95,7 +103,8 @@ impl Thread {
             time: AssumeSync(RefCell::new(TimeManager::new())),
             oom_score_adj: AtomicI32::new(200),
             exit: AtomicBool::new(false),
-        })
+            tee_session_ctx: Mutex::new(None),
+        }
     }
 
     /// Get the clear child tid field.
@@ -138,6 +147,14 @@ impl Thread {
     /// Set the thread to exit.
     pub fn set_exit(&self) {
         self.exit.store(true, Ordering::Release);
+    }
+
+    /// Set the tee session context.
+    pub fn set_tee_session_ctx(&self, ctx: Box<dyn TeeSessionCtxTrait>) {
+        let mut guard = self.tee_session_ctx.lock();
+        if guard.is_none() {
+            *guard = Some(ctx);
+        }
     }
 }
 
