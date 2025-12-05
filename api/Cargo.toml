@@ -15,7 +15,7 @@ dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice", "dep:rand_chacha"]
 tee_test = []
 tee_test_mock_user_access = []
-tee = ["syscalls/tee", "dep:tee_raw_sys"]
+tee = ["syscalls/tee", "dep:tee_raw_sys", "starry-core/tee"]
 
 [dependencies]
 axalloc.workspace = true
