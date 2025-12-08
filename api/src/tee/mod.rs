@@ -12,6 +12,7 @@ mod tee_obj;
 mod tee_pobj;
 mod tee_svc_cryp;
 mod user_access;
+mod tee_session;
 
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
