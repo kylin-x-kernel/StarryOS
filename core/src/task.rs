@@ -55,6 +55,7 @@ impl<T> Deref for AssumeSync<T> {
 #[cfg(feature = "tee")]
 pub trait TeeSessionCtxTrait {
     fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// The inner data of a thread.
