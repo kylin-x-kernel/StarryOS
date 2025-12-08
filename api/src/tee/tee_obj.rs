@@ -3,16 +3,24 @@ use slab::Slab;
 use axerrno::{AxError, AxResult};
 use alloc::{
     sync::{Arc},
+	boxed::Box,
 };
 use tee_raw_sys::*;
 use tee_raw_sys::libc_compat::size_t;
 use flatten_objects::FlattenObjects;
 use spin::RwLock;
+use axtask::current;
+use starry_core::{task::{AsThread, TeeSessionCtxTrait}};
 
 use super::{
 	TeeResult,
     tee_fs::tee_file_handle,
 	tee_pobj::tee_pobj,
+	tee_session:: {
+		tee_session_ctx,
+		with_tee_session_ctx_mut,
+		with_tee_session_ctx,
+	},
 };
 
 pub type tee_obj_id_type = usize;
@@ -49,18 +57,20 @@ impl default::Default for tee_obj {
 
 pub fn tee_obj_add(obj: tee_obj)-> TeeResult<tee_obj_id_type> 
 {
-	let mut table = TEE_OBJ_TABLE.write();
-	Ok(table.insert(Arc::new(obj)) as tee_obj_id_type)
+	with_tee_session_ctx_mut(|ctx| {
+		let id = ctx.objects.insert(Arc::new(obj));
+		Ok(id as tee_obj_id_type)
+	})
 }
 
 pub fn tee_obj_get(obj_id : tee_obj_id_type) -> TeeResult<Arc<tee_obj>>
 {
-		let mut table = TEE_OBJ_TABLE.read();
-		if let Some(obj) = table.get(obj_id as usize) {
-			Ok(obj.clone())
-		} else {
-			Err(TEE_ERROR_BAD_STATE)
+	with_tee_session_ctx(|ctx| {
+		match ctx.objects.get(obj_id) {
+			Some(obj) => Ok(Arc::clone(obj)),
+			None => Err(TEE_ERROR_ITEM_NOT_FOUND),
 		}
+	})
 }
 
 #[cfg(feature = "tee_test")]
