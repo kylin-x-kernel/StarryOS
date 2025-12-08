@@ -6,9 +6,7 @@
 
 use crate::mm::vm_load_string;
 use crate::tee;
-use alloc::string::String;
-use alloc::sync::Arc;
-use alloc::{alloc::alloc, alloc::dealloc, vec::Vec};
+use alloc::{alloc::alloc, alloc::dealloc, boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use axerrno::{AxError, AxResult};
 use core::{
     alloc::Layout, any::Any, ffi::c_char, ffi::c_uint, ffi::c_ulong, mem::size_of, ptr::NonNull,
@@ -19,9 +17,9 @@ use tee_raw_sys::*;
 
 use super::{
     TeeResult,
+    libutee::utee_defines::tee_u32_to_big_endian,
     tee_obj::{tee_obj, tee_obj_add},
-    user_access::{copy_from_user, copy_to_user},
-    libutee::utee_defines::{tee_u32_to_big_endian},
+    user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64},
 };
 #[repr(C)]
 struct tee_cryp_obj_type_attrs {
@@ -206,6 +204,40 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 5] = [
     ),
 ];
 
+trait attr_ops {
+    fn from_user(attr: &mut [u8], buffer: &[u8]) -> TEE_Result;
+
+    fn to_user(attr: &[u8],  buffer: &mut [u8], size: &mut u64) -> TEE_Result;
+
+    fn to_binary(attr: &[u8], data: &mut [u8], offs: &mut usize) -> TEE_Result;
+
+    fn from_binary(attr: &mut [u8], data: &[u8], offs: &mut usize) -> bool;
+
+    fn from_obj(attr: &mut [u8], src_attr: &[u8]) -> TEE_Result;
+
+    fn free(attr: &mut [u8]);
+
+    fn clear(attr: &mut [u8]);
+}
+
+fn get_user_u64_as_size_t(dst: &mut usize, src: & u64) -> TeeResult {
+    let mut d: u64 = 0;
+
+    // copy_from_user: 读取用户态数据
+    copy_from_user_u64(&mut d, src)?;
+
+    // 检查是否溢出：在 32bit 平台，usize = u32，不能装下全部的 u64
+    if d > usize::MAX as u64 {
+        return Err(TEE_ERROR_OVERFLOW);
+    }
+
+    *dst = d as usize;
+
+    Ok(())
+}
+
+
+
 pub fn tee_obj_set_type(O: &mut tee_obj, obj_type: u32, max_key_size: size_t) -> AxResult<isize> {
     Ok(0)
 }
@@ -216,6 +248,18 @@ pub(crate) fn syscall_cryp_obj_alloc(obj_type: c_ulong, max_key_size: c_ulong) -
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
     tee_obj_add(obj).map(|id| id as c_uint);
     Ok(0)
+}
+
+fn tee_svc_cryp_obj_find_type_attr_idx(
+    attr_id: u32,
+    type_props: &tee_cryp_obj_type_props,
+) -> isize {
+    for (n, attr) in type_props.type_attrs.iter().enumerate() {
+        if attr_id == attr.attr_id {
+            return n as isize;
+        }
+    }
+    -1
 }
 
 pub fn tee_svc_find_type_props(
@@ -230,7 +274,7 @@ pub fn tee_svc_find_type_props(
 }
 
 /// 从用户空间导入密钥属性
-/// 
+///
 /// attr: 密钥属性包装器
 /// buffer: 用户空间缓冲区
 fn op_attr_secret_value_from_user(
@@ -264,35 +308,12 @@ fn op_attr_secret_value_to_user(
 ) -> TeeResult {
     // --- 1. copy_from_user(&s, size, sizeof(s)) ---
     let mut s: u64 = 0;
-    // 把 &mut u64 转换为 &mut [u8]
-    let s_bytes: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(&mut s as *mut u64 as *mut u8, core::mem::size_of::<u64>())
-    };
-    let size_bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            size_ref as *const u64 as *const u8,
-            core::mem::size_of::<u64>(),
-        )
-    };
-    copy_from_user(s_bytes, size_bytes, core::mem::size_of::<u64>())?;
+    copy_from_user_u64(&mut s, size_ref)?;
 
     let key_size = attr.secret().key_size as u64;
 
     // --- 2. 将 key_size 回写到用户的 size 指针 ---
-    let size_ref_bytes: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            size_ref as *mut u64 as *mut u8,
-            core::mem::size_of::<u64>(),
-        )
-    };
-    let key_size_bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            &key_size as *const u64 as *const u8,
-            core::mem::size_of::<u64>(),
-        )
-    };
-
-    copy_to_user(size_ref_bytes, key_size_bytes, core::mem::size_of::<u64>())?;
+    copy_to_user_u64(size_ref, &key_size)?;
 
     // --- 3. 检查 buffer 是否足够大 ---
     let data = attr.data(); // 尾随数组 &[u8]
@@ -312,34 +333,30 @@ fn op_attr_secret_value_to_user(
     Ok(())
 }
 
-fn op_u32_to_binary_helper(v:u32, data: &mut [u8], offs: &mut size_t) -> TeeResult {
-	let field: u32;
-	let next_offs: size_t;
+fn op_u32_to_binary_helper(v: u32, data: &mut [u8], offs: &mut size_t) -> TeeResult {
+    let field: u32;
+    let next_offs: size_t;
 
-	next_offs = offs.checked_add(size_of::<u32>()).ok_or(
-		TEE_ERROR_OVERFLOW
-	)?;
+    next_offs = offs
+        .checked_add(size_of::<u32>())
+        .ok_or(TEE_ERROR_OVERFLOW)?;
 
-	if data.len() >= next_offs {
-		field = tee_u32_to_big_endian(v);
-		let field_bytes: &[u8] = unsafe {
-			core::slice::from_raw_parts(
-				&field as *const u32 as *const u8,
-				core::mem::size_of::<u32>(),
-			)
-		};
-		data[*offs..*offs + size_of::<u32>()].copy_from_slice(field_bytes);
-	}
-	*offs = next_offs;
+    if data.len() >= next_offs {
+        field = tee_u32_to_big_endian(v);
+        let field_bytes: &[u8] = unsafe {
+            core::slice::from_raw_parts(
+                &field as *const u32 as *const u8,
+                core::mem::size_of::<u32>(),
+            )
+        };
+        data[*offs..*offs + size_of::<u32>()].copy_from_slice(field_bytes);
+    }
+    *offs = next_offs;
 
-	Ok(())
+    Ok(())
 }
 
-fn op_u32_from_binary_helper(
-    v: &mut u32,
-    data: &[u8],
-    offs: &mut size_t,
-) -> TeeResult {
+fn op_u32_from_binary_helper(v: &mut u32, data: &[u8], offs: &mut size_t) -> TeeResult {
     let field: u32;
 
     if data.len() < *offs + size_of::<u32>() {
@@ -347,7 +364,11 @@ fn op_u32_from_binary_helper(
     }
 
     let field_bytes = &data[*offs..*offs + size_of::<u32>()];
-    field = u32::from_be_bytes(field_bytes.try_into().map_err(|_| TEE_ERROR_BAD_PARAMETERS)?);
+    field = u32::from_be_bytes(
+        field_bytes
+            .try_into()
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?,
+    );
     *v = field;
     *offs += size_of::<u32>();
 
@@ -355,7 +376,7 @@ fn op_u32_from_binary_helper(
 }
 
 /// 将密钥属性序列化到二进制缓冲区
-/// 
+///
 /// data: 目标缓冲区,可以为空 []
 fn op_attr_secret_value_to_binary(
     attr: &tee_cryp_obj_secret_wrapper,
@@ -380,84 +401,244 @@ fn op_attr_secret_value_to_binary(
     Ok(())
 }
 
-// static TEE_Result op_attr_secret_value_to_user(void *attr,
-// 					       struct ts_session *sess __unused,
-// 					       void *buffer, uint64_t *size)
-// {
-// 	TEE_Result res;
-// 	struct tee_cryp_obj_secret *key = attr;
-// 	uint64_t s;
-// 	uint64_t key_size;
+fn op_attr_secret_value_from_binary(
+    attr: &mut tee_cryp_obj_secret_wrapper,
+    data: &[u8],
+    offs: &mut size_t,
+) -> TeeResult {
+    let key = attr.secret();
+    let mut s: u32 = 0;
 
-// 	res = copy_from_user(&s, size, sizeof(s));
-// 	if (res != TEE_SUCCESS)
-// 		return res;
+    op_u32_from_binary_helper(&mut s, data, offs)?;
 
-// 	key_size = key->key_size;
-// 	res = copy_to_user(size, &key_size, sizeof(key_size));
-// 	if (res != TEE_SUCCESS)
-// 		return res;
+    if offs
+        .checked_add(s as usize)
+        .ok_or(TEE_ERROR_BAD_PARAMETERS)?
+        > data.len()
+    {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
 
-// 	if (s < key->key_size || !buffer)
-// 		return TEE_ERROR_SHORT_BUFFER;
+    // 数据大小必须适合分配的缓冲区
+    if s > key.alloc_size {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
 
-// 	return copy_to_user(buffer, key + 1, key->key_size);
-// }
+    attr.secret_mut().key_size = s;
 
-// fn op_attr_secret_value_to_user(
-//     attr: &tee_cryp_obj_secret_wrapper,
-//     buffer: Option<&mut [u8]>, // C: void *buffer
-//     size_ref: &mut u64,        // C: uint64_t *size
-// ) -> TeeResult {
-//     // --- 1. copy_from_user(&s, size, sizeof(s)) ---
-//     let mut s: u64 = 0;
-//     // 把 &mut u64 转换为 &mut [u8]
-//     let s_bytes: &mut [u8] = unsafe {
-//         core::slice::from_raw_parts_mut(&mut s as *mut u64 as *mut u8, core::mem::size_of::<u64>())
-//     };
-//     let size_bytes: &[u8] = unsafe {
-//         core::slice::from_raw_parts(
-//             size_ref as *const u64 as *const u8,
-//             core::mem::size_of::<u64>(),
-//         )
-//     };
-//     copy_from_user(s_bytes, size_bytes, core::mem::size_of::<u64>())?;
+    let data_slice = attr.data_mut();
+    data_slice[..s as usize].copy_from_slice(&data[*offs..*offs + s as usize]);
 
-//     let key_size = attr.secret().key_size as u64;
+    *offs += s as usize;
 
-//     // --- 2. 将 key_size 回写到用户的 size 指针 ---
-//     let size_ref_bytes: &mut [u8] = unsafe {
-//         core::slice::from_raw_parts_mut(
-//             size_ref as *mut u64 as *mut u8,
-//             core::mem::size_of::<u64>(),
-//         )
-//     };
-//     let key_size_bytes: &[u8] = unsafe {
-//         core::slice::from_raw_parts(
-//             &key_size as *const u64 as *const u8,
-//             core::mem::size_of::<u64>(),
-//         )
-//     };
+    Ok(())
+}
 
-//     copy_to_user(size_ref_bytes, key_size_bytes, core::mem::size_of::<u64>())?;
+fn op_attr_secret_value_from_obj(
+    attr: &mut tee_cryp_obj_secret_wrapper,
+    src_attr: &tee_cryp_obj_secret_wrapper,
+) -> TeeResult {
+    let key = attr.secret();
+    let src_key = src_attr.secret();
 
-//     // --- 3. 检查 buffer 是否足够大 ---
-//     let data = attr.data(); // 尾随数组 &[u8]
+    if src_key.key_size > key.alloc_size {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
 
-//     if s < key_size || buffer.is_none() {
-//         return Err(TEE_ERROR_SHORT_BUFFER);
-//     }
+    let key_data = attr.data_mut();
+    let src_key_data = src_attr.data();
 
-//     let buffer = buffer.unwrap();
-//     if buffer.len() < key_size as usize {
-//         return Err(TEE_ERROR_SHORT_BUFFER);
-//     }
+    key_data[..src_key.key_size as usize]
+        .copy_from_slice(&src_key_data[..src_key.key_size as usize]);
+    attr.secret_mut().key_size = src_key.key_size;
 
-//     // --- 4. 将尾随数据 copy_to_user(buffer, key + 1, key_size) ---
-//     copy_to_user(buffer, data, key_size as usize)?;
-//     Ok(())
-// }
+    Ok(())
+}
 
+fn op_attr_secret_value_clear(attr: &mut tee_cryp_obj_secret_wrapper) {
+    attr.secret_mut().key_size = 0;
+    let data_slice = attr.data_mut();
+    for byte in data_slice.iter_mut() {
+        *byte = 0;
+    }
+}
+
+/// 从用户空间导入大数属性
+///
+/// attr: 密钥属性指针
+/// buffer: 用户空间缓冲区
+fn op_attr_bignum_from_user(_attr: *mut u8, buffer: &[u8]) -> TeeResult {
+    let mut kbuf: Box<[u8]> = vec![0u8; buffer.len()].into_boxed_slice();
+
+    copy_from_user(kbuf.as_mut(), buffer, buffer.len())?;
+
+    // TODO: add call to crypto_bignum_bin2bn(bbuf, size, *bn);
+
+    Ok(())
+}
+
+/// 导出大数属性到用户空间
+///
+/// attr: 密钥属性指针
+/// buffer: 用户空间缓冲区
+/// size_ref: 用户空间大小指针
+fn op_attr_bignum_to_user(_attr: *mut u8, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+    let mut s: u64 = 0;
+
+    // copy size from user
+    copy_from_user_u64(&mut s, size_ref)?;
+    let req_size: u64 = 0; // TODO: call crypto_bignum_num_bytes
+    copy_to_user_u64(size_ref, &req_size)?;
+
+    if req_size == 0 {
+        return Ok(());
+    }
+
+    if s < req_size || buffer.is_empty() {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    let mut kbuf: Box<[u8]> = vec![0u8; req_size as _].into_boxed_slice();
+
+    // TODO: call crypto_bignum_bn2bin with _attr to fill kbuf
+
+    copy_to_user(buffer, kbuf.as_mut(), req_size as usize)?;
+
+    Ok(())
+}
+
+/// 将大数属性序列化到二进制缓冲区
+///
+/// attr: 密钥属性指针
+/// data: 目标缓冲区,可以为空 []
+/// offs: 偏移指针
+fn op_attr_bignum_to_binary(_attr: *mut u8, data: &mut [u8], offs: &mut size_t) -> TeeResult {
+    let n: u32 = 0; // TODO: call crypto_bignum_num_bytes
+    let mut next_offs: size_t;
+
+    op_u32_to_binary_helper(n, data, offs)?;
+    next_offs = offs.checked_add(n as usize).ok_or(TEE_ERROR_OVERFLOW)?;
+
+    if data.len() >= next_offs {
+        // TODO: call crypto_bignum_bn2bin to fill data[*offs..*offs + n]
+    }
+
+    *offs = next_offs;
+    Ok(())
+}
+
+fn op_attr_bignum_from_binary(_attr: *mut u8, data: &[u8], offs: &mut size_t) -> TeeResult {
+    let mut n: u32 = 0;
+
+    op_u32_from_binary_helper(&mut n, data, offs)?;
+
+    if offs
+        .checked_add(n as usize)
+        .ok_or(TEE_ERROR_BAD_PARAMETERS)?
+        > data.len()
+    {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    // TODO: call crypto_bignum_bin2bn
+
+    *offs += n as usize;
+
+    Ok(())
+}
+
+fn op_attr_bignum_from_obj(_attr: *mut u8, _src_attr: *mut u8) -> TeeResult {
+    // TODO: call crypto_bignum_copy
+    Ok(())
+}
+
+fn op_attr_bignum_clear(_attr: *mut u8) {
+    // TODO: call crypto_bignum_clear
+    unimplemented!();
+}
+
+fn op_attr_bignum_free(_attr: *mut u8) {
+    // TODO: call crypto_bignum_free
+    unimplemented!();
+}
+
+/// 从用户空间导入值属性
+///
+/// attr: 密钥属性指针
+/// buffer: 用户空间缓冲区
+/// FIXME: 这里为何不使用 copy_from_user?
+fn op_attr_value_from_user(attr: &mut [u8], user_buffer: &[u8]) -> TeeResult {
+    if user_buffer.len() != size_of::<u32>() * 2 {
+        return Err(TEE_ERROR_GENERIC);
+    }
+
+    /* Note that only the first value is copied */
+    attr.copy_from_slice(&user_buffer[..size_of::<u32>()]);
+
+    Ok(())
+}
+
+fn op_attr_value_to_user(attr: &[u8], buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+    let mut s: u64 = 0;
+    copy_from_user_u64(&mut s, size_ref)?;
+
+    let value: [u32; 2] = [unsafe { *(attr.as_ptr() as *const u32) }, 0];
+    let req_size: u64 = size_of::<[u32; 2]>() as u64;
+
+    if s < req_size || buffer.is_empty() {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    if buffer.len() < req_size as usize {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    let value_bytes: &[u8] = unsafe {
+        core::slice::from_raw_parts(&value as *const u32 as *const u8, req_size as usize)
+    };
+    buffer[..req_size as _].copy_from_slice(value_bytes);
+
+    Ok(())
+}
+
+fn op_attr_value_to_binary(attr: &[u8], data: &mut [u8], offs: &mut size_t) -> TeeResult {
+    let value: u32 = unsafe { *(attr.as_ptr() as *const u32) };
+    op_u32_to_binary_helper(value, data, offs)
+}
+
+fn op_attr_value_from_binary(attr: &mut [u8], data: &[u8], offs: &mut size_t) -> TeeResult {
+    let value_ptr = attr.as_mut_ptr() as *mut u32;
+    op_u32_from_binary_helper(unsafe { &mut *value_ptr }, data, offs)
+}
+
+fn op_attr_value_from_obj(attr: &mut [u8], src_attr: &[u8]) -> TeeResult {
+    attr[..size_of::<u32>()].copy_from_slice(&src_attr[..size_of::<u32>()]);
+    Ok(())
+}
+
+fn op_attr_value_clear(attr: &mut [u8]) {
+    attr[..4].copy_from_slice(&[0u8; size_of::<u32>()]);
+}
+
+fn op_attr_25519_to_binary(_attr: &[u8], _data: &mut [u8], _offs: &mut size_t) -> TeeResult {
+    unimplemented!();
+}
+
+fn op_attr_25519_from_binary(_attr: &mut [u8], _data: &[u8], _offs: &mut size_t) -> TeeResult {
+    unimplemented!();
+}
+
+fn op_attr_25519_from_obj(_attr: &mut [u8], _src_attr: &[u8]) -> TeeResult {
+    unimplemented!();
+}
+
+fn op_attr_25519_clear(_attr: &mut [u8]) {
+    unimplemented!();
+}
+
+fn op_attr_25519_free(_attr: &mut [u8]) {
+    unimplemented!();
+}
 
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
@@ -472,15 +653,28 @@ pub mod tests_tee_svc_cryp {
     //-------- local tests import --------
     use super::*;
 
-	test_fn! {
+    test_fn! {
         using TestResult;
 
         fn test_tee_svc_cryp_utils() {
-			// test tee_u32_to_big_endian
-			let val: u32 = 0x12345678;
-			let be_val = tee_u32_to_big_endian(val);
-			assert_eq!(be_val, 0x78563412);
-			assert_eq!(be_val.as_bytes(), &[0x12, 0x34, 0x56, 0x78]);
+            // test attr_bytes from u32
+            let a_u32: u32 = 0xAABBCCDD;
+            let attr = &a_u32;
+            let attr_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    (attr as *const u32) as *const u8,
+                    core::mem::size_of::<u32>(),
+                )
+            };
+            let value: [u32; 2] = [unsafe { *(attr_bytes.as_ptr() as *const u32) }, 0];
+            assert_eq!(value[0], 0xAABBCCDD);
+            assert_eq!(size_of_val(&value), 8);
+
+            // test tee_u32_to_big_endian
+            let val: u32 = 0x12345678;
+            let be_val = tee_u32_to_big_endian(val);
+            assert_eq!(be_val, 0x78563412);
+            assert_eq!(be_val.as_bytes(), &[0x12, 0x34, 0x56, 0x78]);
 
             // test op_u32_to_binary_helper
             let mut buffer: [u8; 8] = [0; 8];
@@ -522,61 +716,61 @@ pub mod tests_tee_svc_cryp {
             assert_eq!(props.max_size, 256);
         }
     }
-	
-	test_fn! {
+
+    test_fn! {
         using TestResult;
 
         fn test_op_attr_secret_value_from_user() {
-			// 测试基础数据
-			let user_key: [u8; 16] = [0xAA; 16];
-			let mut secret_wrapper = tee_cryp_obj_secret_wrapper::new(32);
+            // 测试基础数据
+            let user_key: [u8; 16] = [0xAA; 16];
+            let mut secret_wrapper = tee_cryp_obj_secret_wrapper::new(32);
 
-			// 从用户空间导入密钥
-			op_attr_secret_value_from_user(&mut secret_wrapper, &user_key).unwrap();
+            // 从用户空间导入密钥
+            op_attr_secret_value_from_user(&mut secret_wrapper, &user_key).unwrap();
 
-			// 验证密钥大小和内容
-			assert_eq!(secret_wrapper.secret().key_size, 16);
-			assert_eq!(secret_wrapper.secret().alloc_size, 32);
-			assert_eq!(&secret_wrapper.data()[..16], &user_key);
+            // 验证密钥大小和内容
+            assert_eq!(secret_wrapper.secret().key_size, 16);
+            assert_eq!(secret_wrapper.secret().alloc_size, 32);
+            assert_eq!(&secret_wrapper.data()[..16], &user_key);
 
-			// 测试长度超出分配大小的情况
-			let long_user_key: [u8; 40] = [0xBB; 40];
-			let result = op_attr_secret_value_from_user(&mut secret_wrapper, &long_user_key);
-			assert_eq!(result.err(), Some(TEE_ERROR_SHORT_BUFFER));
+            // 测试长度超出分配大小的情况
+            let long_user_key: [u8; 40] = [0xBB; 40];
+            let result = op_attr_secret_value_from_user(&mut secret_wrapper, &long_user_key);
+            assert_eq!(result.err(), Some(TEE_ERROR_SHORT_BUFFER));
         }
     }
 
-	test_fn! {
+    test_fn! {
         using TestResult;
 
         fn test_op_attr_secret_value_to_user() {
-			// 准备测试数据
-			let mut secret_wrapper = tee_cryp_obj_secret_wrapper::new(32);
-			let key_data: [u8; 16] = [0xCC; 16];
-			// 手动设置密钥数据和大小
-			{
-				let data_slice = secret_wrapper.data_mut();
-				data_slice[..16].copy_from_slice(&key_data);
-				secret_wrapper.secret_mut().key_size = 16;
-			}
-			// 测试函数
-			let mut size: u64 = 0;
-			// 第一次调用，size 为 0，应该返回 TEE_ERROR_SHORT_BUFFER
-			let result = op_attr_secret_value_to_user(&secret_wrapper, None, &mut size);
-			assert_eq!(result.err(), Some(TEE_ERROR_SHORT_BUFFER));
-	
-			// 第二次调用，提供足够大的 buffer
-			let mut user_buffer: [u8; 32] = [0; 32];
-			size = 32;
-			let result = op_attr_secret_value_to_user(
-				&secret_wrapper,
-				Some(&mut user_buffer),
-				&mut size,
-			);
-			assert!(result.is_ok());
-			// 验证返回的 size 和数据内容
-			assert_eq!(size, 16);
-			assert_eq!(&user_buffer[0..16], &key_data[0..16]);
+            // 准备测试数据
+            let mut secret_wrapper = tee_cryp_obj_secret_wrapper::new(32);
+            let key_data: [u8; 16] = [0xCC; 16];
+            // 手动设置密钥数据和大小
+            {
+                let data_slice = secret_wrapper.data_mut();
+                data_slice[..16].copy_from_slice(&key_data);
+                secret_wrapper.secret_mut().key_size = 16;
+            }
+            // 测试函数
+            let mut size: u64 = 0;
+            // 第一次调用，size 为 0，应该返回 TEE_ERROR_SHORT_BUFFER
+            let result = op_attr_secret_value_to_user(&secret_wrapper, None, &mut size);
+            assert_eq!(result.err(), Some(TEE_ERROR_SHORT_BUFFER));
+
+            // 第二次调用，提供足够大的 buffer
+            let mut user_buffer: [u8; 32] = [0; 32];
+            size = 32;
+            let result = op_attr_secret_value_to_user(
+                &secret_wrapper,
+                Some(&mut user_buffer),
+                &mut size,
+            );
+            assert!(result.is_ok());
+            // 验证返回的 size 和数据内容
+            assert_eq!(size, 16);
+            assert_eq!(&user_buffer[0..16], &key_data[0..16]);
         }
     }
 
@@ -604,12 +798,28 @@ pub mod tests_tee_svc_cryp {
             let expected_key_size_bytes: [u8; 4] = [0x00, 0x00, 0x00, 0x10]; // big-endian
             assert_eq!(&buffer[0..4], &expected_key_size_bytes);
             assert_eq!(&buffer[4..20], &key_data);
+
+            // test op_attr_secret_value_from_binary
+            let mut new_secret_wrapper = tee_cryp_obj_secret_wrapper::new(32);
+            let mut offs_from: size_t = 0;
+            let result = op_attr_secret_value_from_binary(
+                &mut new_secret_wrapper,
+                &buffer,
+                &mut offs_from,
+            );
+            assert!(result.is_ok());
+            // 验证偏移量
+            assert_eq!(offs_from, 4 + 16);
+            // 验证反序列化内容
+            assert_eq!(new_secret_wrapper.secret().key_size, 16);
+            assert_eq!(new_secret_wrapper.secret().alloc_size, 32);
+            assert_eq!(&new_secret_wrapper.data()[..16], &key_data);
         }
     }
 
     test_fn! {
         using TestResult;
-    
+
         fn test_op_u32_from_binary_helper() {
             let data: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
             let mut offs: size_t = 0;
@@ -647,14 +857,72 @@ pub mod tests_tee_svc_cryp {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_op_attr_value_to_user() {
+            let mut attr: [u8; 8] = [0; 8];
+            // 设置属性值为 0x11223344
+            let value: u32 = 0x11223344;
+            let value_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    &value as *const u32 as *const u8,
+                    core::mem::size_of::<u32>(),
+                )
+            };
+            attr[..4].copy_from_slice(value_bytes);
+
+            let mut size: u64 = 8;
+            let mut user_buffer: [u8; 8] = [0; 8];
+
+            let result = op_attr_value_to_user(&attr, &mut user_buffer, &mut size);
+            assert!(result.is_ok());
+            assert_eq!(size, 8);
+            assert_eq!(&user_buffer[..4], value_bytes);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_op_attr_value_from_binary() {
+            let mut attr: [u8; 8] = [0; 8];
+            let value: u32 = 0x11223344;
+            let value_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    &value as *const u32 as *const u8,
+                    core::mem::size_of::<u32>(),
+                )
+            };
+
+            //attr[..4].copy_from_slice(value_bytes);
+            let mut offs: size_t = 0;
+            let result = op_attr_value_from_binary(&mut attr, &value_bytes, &mut offs);
+            info!("result: {:?}, offs: {}, attr: {:?}", result, offs, attr);
+            assert!(result.is_ok());
+            assert_eq!(offs, 4);
+            assert_eq!(&attr[..4], &[0x11, 0x22, 0x33, 0x44]);
+
+            // // test op_attr_value_to_binary
+            let mut buffer: [u8; 8] = [0; 8];
+            let mut offs_write: size_t = 0;
+            let result = op_attr_value_to_binary(&attr, &mut buffer, &mut offs_write);
+            assert!(result.is_ok());
+            assert_eq!(offs_write, 4);
+            assert_eq!(&buffer[..4], value_bytes);
+        }
+    }
+
     tests_name! {
         TEST_TEE_SVC_CRYP;
         //------------------------
-		test_tee_svc_cryp_utils,
+        test_tee_svc_cryp_utils,
         test_tee_svc_find_type_props,
-		test_op_attr_secret_value_from_user,
-		test_op_attr_secret_value_to_user,
+        test_op_attr_secret_value_from_user,
+        test_op_attr_secret_value_to_user,
         test_op_attr_secret_value_to_binary,
         test_op_u32_from_binary_helper,
+        test_op_attr_value_to_user,
+        test_op_attr_value_from_binary,
     }
 }
