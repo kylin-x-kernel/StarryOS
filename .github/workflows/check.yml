@@ -58,6 +58,13 @@ jobs:
       - name: Add target
         run: rustup target add ${{ matrix.target }}
 
+      - name: Print workspace
+        run: |
+         pwd
+         ls -la
+         echo "===== TREE ====="
+         tree -L 2
+
       - name: Clippy
         env:
           RUSTC_BOOTSTRAP: 1
