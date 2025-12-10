@@ -106,7 +106,7 @@ impl Thread {
             exit: AtomicBool::new(false),
             #[cfg(feature = "tee")]
             tee_session_ctx: Mutex::new(None),
-        }
+        })
     }
 
     /// Get the clear child tid field.
