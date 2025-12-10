@@ -6,16 +6,15 @@
 
 use core::{
     ffi::{CStr, c_uint, c_ulong, c_void},
-    mem,
     ptr::addr_of,
     slice,
 };
 
-use alloc::{boxed::Box, ffi::CString};
+use alloc::{boxed::Box, ffi::CString, vec::Vec};
 use tee_raw_sys::{
-    TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_NOT_IMPLEMENTED, TEE_ERROR_NOT_SUPPORTED,
-    TEE_ERROR_SHORT_BUFFER, TEE_Identity, TEE_PROPSET_CURRENT_CLIENT, TEE_PROPSET_CURRENT_TA,
-    TEE_PROPSET_TEE_IMPLEMENTATION, TEE_PropSetHandle,
+    TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_ITEM_NOT_FOUND, TEE_ERROR_NOT_IMPLEMENTED,
+    TEE_ERROR_NOT_SUPPORTED, TEE_ERROR_SHORT_BUFFER, TEE_Identity, TEE_PROPSET_CURRENT_CLIENT,
+    TEE_PROPSET_CURRENT_TA, TEE_PROPSET_TEE_IMPLEMENTATION, TEE_PropSetHandle,
 };
 
 use crate::tee::{
@@ -91,7 +90,7 @@ impl TEEProps for ClientIdentity {
     }
 
     fn get(&self, buf: *mut c_void, blen: &mut u32) -> TeeResult {
-        let prop_size = mem::size_of::<TEE_Identity>() as u32;
+        let prop_size = size_of::<TEE_Identity>() as u32;
         if *blen < prop_size {
             *blen = prop_size;
             return Err(TEE_ERROR_SHORT_BUFFER);
@@ -112,9 +111,16 @@ fn get_prop_struct(prop_set: PropertySet, index: c_ulong) -> TeeResult<Box<dyn T
     match prop_set {
         PropertySet::CurrentClient => match index {
             0 => Ok(Box::new(ClientIdentity)),
-            _ => Err(TEE_ERROR_NOT_SUPPORTED),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
         },
-        _ => Err(TEE_ERROR_NOT_SUPPORTED),
+        _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+    }
+}
+
+fn get_prop_index(name: &str) -> TeeResult<u32> {
+    match name {
+        "gpd.client.identity" => Ok(0),
+        _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
     }
 }
 
@@ -194,6 +200,37 @@ pub(crate) fn sys_tee_scn_get_property(
             size_of::<c_uint>(),
         )?;
     }
+
+    Ok(())
+}
+
+pub(crate) fn sys_tee_scn_get_property_name_to_index(
+    prop_set: c_ulong,
+    name: *mut c_void,
+    name_len: c_ulong,
+    index: *mut c_uint,
+) -> TeeResult {
+    if name.is_null() || name_len <= 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    let mut kname_buf = Vec::with_capacity(name_len as usize);
+    copy_from_user(
+        &mut kname_buf,
+        unsafe { slice::from_raw_parts(name as *const u8, name_len as usize) },
+        name_len as usize,
+    )?;
+    let kname = match core::str::from_utf8(&kname_buf[..(name_len as usize - 1)]) {
+        Ok(kname) => kname,
+        Err(_) => return Err(TEE_ERROR_BAD_PARAMETERS),
+    };
+
+    let index = get_prop_index(kname)?;
+    copy_to_user(
+        unsafe { slice::from_raw_parts_mut(index as _, size_of::<c_uint>()) },
+        &index.to_be_bytes(),
+        size_of::<c_uint>(),
+    )?;
 
     Ok(())
 }

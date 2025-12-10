@@ -22,7 +22,10 @@ mod tee_unit_test;
 mod test;
 mod time;
 
+use core::arch::asm;
+
 use log::*;
+use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
 use time::*;
 
 use axerrno::{AxError, AxResult};
@@ -33,11 +36,11 @@ use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
 
-use crate::tee::property::sys_tee_scn_get_property;
+use crate::tee::property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index};
 
 pub type TeeResult<T = ()> = Result<T, u32>;
 
-pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> AxResult<isize> {
+pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeResult {
     // Handle TEE-specific syscalls here
     match _sysno {
         Sysno::tee_scn_log => sys_tee_scn_log(_uctx.arg0() as _, _uctx.arg1() as _),
@@ -59,6 +62,12 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> AxRe
                 prop_type as _,
             )
         }
-        _ => Err(AxError::Unsupported),
+        Sysno::tee_scn_get_property_name_to_index => sys_tee_scn_get_property_name_to_index(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+        ),
+        _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
 }
