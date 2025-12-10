@@ -64,4 +64,6 @@ jobs:
         run: rustup +nightly target add ${{ matrix.target }}
 
       - name: Clippy
+        env:
+          RUSTC_BOOTSTRAP: 1
         run: cargo +nightly clippy --target ${{ matrix.target }} -F qemu -- -D warnings
