@@ -15,7 +15,7 @@ dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
 tee_test = []
 tee_test_mock_user_access = []
-tee = ["syscalls/tee", "dep:tee_raw_sys", "starry-core/tee"]
+tee = ["syscalls/tee", "dep:tee_raw_sys", "starry-core/tee", "dep:mbedtls", "dep:mbedtls-sys-auto", "axalloc/tee"]
 
 [dependencies]
 axalloc.workspace = true
@@ -72,6 +72,8 @@ starry-core.workspace = true
 
 syscalls = { version = "0.7", default-features = false }
 tee_raw_sys = {version ="0.1", optional=true }
+mbedtls = { workspace = true, optional = true }
+mbedtls-sys-auto = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86 = "0.52"
