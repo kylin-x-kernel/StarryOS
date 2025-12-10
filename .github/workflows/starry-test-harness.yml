@@ -11,10 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ARCH: aarch64
-      STARRYOS_REMOTE: ${{ github.server_url }}/${{ github.repository }}
-      STARRYOS_COMMIT: ${{ github.event.pull_request.head.sha }}
-      STARRYOS_ROOT: ${{ github.workspace }}/.cache/StarryOS
+      STARRYOS_ROOT: ${{ github.workspace }}/starry-test-harness/.cache/StarryOS
     steps:
+      - name: Checkout StarryOS 
+        uses: actions/checkout@v4
+        with:
+          path: starry-test-harness/.cache/StarryOS
+          submodules: recursive
+      
       - name: Checkout Starry Test Harness
         uses: actions/checkout@v4
         with:
@@ -42,7 +46,9 @@ jobs:
 
       - name: 执行 ci-test
         working-directory: starry-test-harness
-        run: make ci-test run
+        run: |
+          export STARRYOS_COMMIT=$(git -C .cache/StarryOS rev-parse HEAD)
+          make ci-test run
 
       - name: Dump suite logs
         working-directory: starry-test-harness
