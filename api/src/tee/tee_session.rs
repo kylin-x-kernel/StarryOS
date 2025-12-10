@@ -17,6 +17,7 @@ pub struct tee_session_ctx {
     pub login_type: u32,
     pub user_id: u32,
     pub objects: Slab<Arc<tee_obj>>,
+    pub clnt_id: TEE_Identity,
 }
 
 impl TeeSessionCtxTrait for tee_session_ctx {
@@ -36,6 +37,15 @@ impl Default for tee_session_ctx {
             login_type: 0,
             user_id: 0,
             objects: Slab::new(),
+            clnt_id: TEE_Identity {
+                login: 0,
+                uuid: TEE_UUID {
+                    timeLow: 0,
+                    timeMid: 0,
+                    timeHiAndVersion: 0,
+                    clockSeqAndNode: [0; 8],
+                },
+            },
         }
     }
 }
