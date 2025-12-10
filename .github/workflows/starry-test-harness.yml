@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ARCH: aarch64
-      STARRYOS_REMOTE: https://github.com/kylin-x-kernel/StarryOS.git
-      STARRYOS_REF: main
+      STARRYOS_REMOTE: ${{ github.server_url }}/${{ github.repository }}
+      STARRYOS_COMMIT: ${{ github.sha }}
       STARRYOS_ROOT: ${{ github.workspace }}/.cache/StarryOS
     steps:
       - name: Checkout Starry Test Harness
