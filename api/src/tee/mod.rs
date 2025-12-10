@@ -14,7 +14,7 @@ mod tee_pobj;
 mod tee_session;
 mod tee_svc_cryp;
 mod user_access;
-
+mod libmbedtls;
 mod libutee;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
