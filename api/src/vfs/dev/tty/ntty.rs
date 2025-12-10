@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, sync::Arc};
 
-use axhal::irq::register_irq_waker;
+use axtask::future::register_irq_waker;
 use lazy_static::lazy_static;
 
 use super::Tty;
@@ -32,10 +32,8 @@ fn new_n_tty() -> Arc<NTtyDriver> {
         TtyConfig {
             reader: Console,
             writer: Console,
-            process_mode: if let Some(irq) = axhal::console::irq_number() {
-                ProcessMode::External(
-                    Box::new(move |waker| register_irq_waker(irq as _, &waker)) as _
-                )
+            process_mode: if let Some(irq) = axhal::console::irq_num() {
+                ProcessMode::External(Box::new(move |waker| register_irq_waker(irq, &waker)) as _)
             } else {
                 ProcessMode::Manual
             },

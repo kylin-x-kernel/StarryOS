@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 
 use axerrno::{AxError, AxResult};
-use axfs_ng::FileBackend;
+use axfs::FileBackend;
 use axhal::paging::{MappingFlags, PageSize};
 use axmm::backend::{Backend, SharedPages};
 use axtask::current;
@@ -155,16 +155,19 @@ pub fn sys_mmap(
         }
         dst_addr
     } else {
+        let align = page_size as usize;
         aspace
             .find_free_area(
                 VirtAddr::from(start),
                 length,
                 VirtAddrRange::new(aspace.base(), aspace.end()),
+                align,
             )
             .or(aspace.find_free_area(
                 aspace.base(),
                 length,
                 VirtAddrRange::new(aspace.base(), aspace.end()),
+                align,
             ))
             .ok_or(AxError::NoMemory)?
     };

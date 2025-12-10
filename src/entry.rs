@@ -3,10 +3,10 @@ use alloc::{
     sync::Arc,
 };
 
-use axfs_ng::FS_CONTEXT;
+use axfs::FS_CONTEXT;
 use axhal::uspace::UserContext;
 use axsync::Mutex;
-use axtask::{TaskExtProxy, spawn_task};
+use axtask::{AxTaskExt, spawn_task};
 use starry_api::{file::FD_TABLE, task::new_user_task, vfs::dev::tty::N_TTY};
 use starry_core::{
     mm::{copy_from_kernel, load_user_app, new_user_aspace_empty},
@@ -60,7 +60,7 @@ pub fn run_initproc(args: &[String], envs: &[String]) -> i32 {
     }
     let thr = Thread::new(pid, proc_data);
 
-    *task.task_ext_mut() = Some(unsafe { TaskExtProxy::from_impl(thr) });
+    *task.task_ext_mut() = Some(unsafe { AxTaskExt::from_impl(thr) });
 
     let task = spawn_task(task);
     add_task_to_table(&task);
