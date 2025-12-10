@@ -21,6 +21,8 @@ jobs:
           submodules: recursive  
 
       - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -54,16 +56,11 @@ jobs:
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
-
-      - name: Print workspace
-        run: |
-         pwd
-         ls -la
-         echo "===== TREE ====="
-         tree -L 2
 
       - name: Clippy
         env:
