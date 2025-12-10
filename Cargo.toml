@@ -79,6 +79,8 @@ starry-vm = "0.2"
 
 starry-core = { path = "./core" }
 starry-api = { path = "./api" }
+mbedtls = { version = "0.13.3", package = "mbedtls", default-features = false, features = ["no_std_deps"] }
+mbedtls-sys-auto = { version = "2.28.12", package = "mbedtls-sys-auto", default-features = false, features = [] }
 
 [package]
 name = "starry"
@@ -183,6 +185,8 @@ fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
 syscalls = { path = "local_crates/syscalls" }
 tee_raw_sys = { path = "local_crates/tee_raw_sys" }
+mbedtls = { git = "ssh://dev.futlab.me:29418/security/rust-mbedtls", branch = "smx-mbedtls-sys-auto_v2.28.12" }
+mbedtls-sys-auto = { git = "ssh://dev.futlab.me:29418/security/rust-mbedtls", branch = "smx-mbedtls-sys-auto_v2.28.12" }
 
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
