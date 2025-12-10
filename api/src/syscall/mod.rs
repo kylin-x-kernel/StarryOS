@@ -614,7 +614,12 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         _ => {
             #[cfg(feature = "tee")]
             {
-                handle_tee_syscall(sysno, uctx)
+                use tee_raw_sys::TEE_SUCCESS;
+
+                match handle_tee_syscall(sysno, uctx) {
+                    Ok(_) => Ok(TEE_SUCCESS as isize),
+                    Err(errno) => Ok(errno as isize),
+                }
             }
             #[cfg(not(feature = "tee"))]
             {
