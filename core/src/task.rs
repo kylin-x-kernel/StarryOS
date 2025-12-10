@@ -161,6 +161,22 @@ impl Thread {
     }
 }
 
+/// Extended thread data for the monolithic kernel.
+pub struct Thread(Box<ThreadInner>);
+
+impl Deref for Thread {
+    type Target = ThreadInner;
+
+    /// Set the tee session context.
+    #[cfg(feature = "tee")]
+    pub fn set_tee_session_ctx(&self, ctx: Box<dyn TeeSessionCtxTrait>) {
+        let mut guard = self.tee_session_ctx.lock();
+        if guard.is_none() {
+            *guard = Some(ctx);
+        }
+    }
+}
+
 #[extern_trait]
 unsafe impl TaskExt for Box<Thread> {
     fn on_enter(&self) {

@@ -73,7 +73,6 @@ spin.workspace = true
 starry-process.workspace = true
 starry-signal.workspace = true
 starry-vm.workspace = true
-
 zerocopy = { version = "0.8.26", features = ["derive"] }
 
 starry-core.workspace = true
@@ -88,3 +87,4 @@ x86 = "0.52"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 riscv = "0.14"
+
