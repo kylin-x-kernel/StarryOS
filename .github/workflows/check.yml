@@ -25,9 +25,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          cargo +nightly fmt --manifest-path api/Cargo.toml --check
-          cargo +nightly fmt --manifest-path core/Cargo.toml --check
-          find src -name "*.rs" -exec rustfmt +nightly --edition 2024 --check {} \;
+          rustfmt +nightly --edition 2024 --check $(find api core src -name "*.rs")
 
   clippy:
     runs-on: ubuntu-latest
