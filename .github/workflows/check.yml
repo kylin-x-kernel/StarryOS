@@ -17,11 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@nightly
         with:
-          components: rustfmt
+          submodules: recursive  
+
+      - uses: dtolnay/rust-toolchain@v2
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -54,10 +53,7 @@ jobs:
           arch: ${{ matrix.arch }}
 
       - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          components: clippy
-          targets: ${{ matrix.target }}
+        uses: dtolnay/rust-toolchain@v2
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
