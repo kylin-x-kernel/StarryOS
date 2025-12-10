@@ -44,7 +44,7 @@ jobs:
         with:
           submodules: "recursive"
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.arch }}
 
@@ -53,7 +53,7 @@ jobs:
           arch: ${{ matrix.arch }}
 
       - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v2
+        uses: dtolnay/rust-toolchain@v1
 
       - name: Add target
         run: rustup target add ${{ matrix.target }}
