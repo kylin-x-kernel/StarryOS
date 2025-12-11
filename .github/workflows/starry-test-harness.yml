@@ -13,17 +13,20 @@ jobs:
       ARCH: aarch64
       STARRYOS_ROOT: ${{ github.workspace }}/starry-test-harness/.cache/StarryOS
     steps:
-      - name: Checkout StarryOS 
-        uses: actions/checkout@v4
-        with:
-          path: starry-test-harness/.cache/StarryOS
-          submodules: recursive
-      
       - name: Checkout Starry Test Harness
         uses: actions/checkout@v4
         with:
           repository: kylin-x-kernel/starry-test-harness
           path: starry-test-harness
+      
+      - name: Create cache directory
+        run: mkdir -p starry-test-harness/.cache
+      
+      - name: Checkout StarryOS 
+        uses: actions/checkout@v4
+        with:
+          path: starry-test-harness/.cache/StarryOS
+          submodules: recursive
 
       - name: Install Rust cache for harness
         uses: Swatinem/rust-cache@v2
