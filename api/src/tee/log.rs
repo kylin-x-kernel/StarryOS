@@ -8,7 +8,7 @@
 use super::{
     tee_obj::tee_obj, tee_unit_test::tee_test_unit, test::test_examples::tee_test_example,
 };
-use crate::{mm::vm_load_string, tee::TeeResult};
+use crate::{mm::vm_load_any_string, tee::TeeResult};
 use alloc::{boxed::Box, collections::VecDeque, string::String, sync::Arc, vec::Vec};
 use axerrno::{AxError, AxResult};
 use core::{any::Any, ffi::c_char};
@@ -23,7 +23,7 @@ scope_local::scope_local! {
 pub(crate) fn sys_tee_scn_log(buf: *const c_char, len: usize) -> TeeResult {
     // Implementation for TEE log syscall we use info to output the log now
     info!("TEE log syscall invoked with len: {}", len);
-    let message = match vm_load_string(buf) {
+    let message = match vm_load_any_string(buf, len) {
         Ok(s) => s,
         Err(_) => return Err(TEE_ERROR_BAD_PARAMETERS),
     };
