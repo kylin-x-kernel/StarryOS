@@ -18,13 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@v1
         with:
+          toolchain: nightly
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: |
+          rustfmt +nightly --edition 2024 --check $(find api core src -name "*.rs")
 
   clippy:
     runs-on: ubuntu-latest
@@ -53,15 +54,15 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
 
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@master
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: nightly
-          components: clippy
-          targets: ${{ matrix.target }}
+          toolchain: stable
 
       - name: Add target
-        run: rustup +nightly target add ${{ matrix.target }}
+        run: rustup target add ${{ matrix.target }}
 
       - name: Clippy
-        run: cargo +nightly clippy --target ${{ matrix.target }} -F qemu -- -D warnings
+        env:
+          RUSTC_BOOTSTRAP: 1
+        run: cargo clippy --target ${{ matrix.target }} -F qemu -- -D warnings
