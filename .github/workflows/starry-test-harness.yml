@@ -11,15 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ARCH: aarch64
-      STARRYOS_REMOTE: https://github.com/kylin-x-kernel/StarryOS.git
-      STARRYOS_REF: main
-      STARRYOS_ROOT: ${{ github.workspace }}/.cache/StarryOS
+      STARRYOS_ROOT: ${{ github.workspace }}/starry-test-harness/.cache/StarryOS
     steps:
       - name: Checkout Starry Test Harness
         uses: actions/checkout@v4
         with:
           repository: kylin-x-kernel/starry-test-harness
           path: starry-test-harness
+      
+      - name: Create cache directory
+        run: mkdir -p starry-test-harness/.cache
+      
+      - name: Checkout StarryOS 
+        uses: actions/checkout@v4
+        with:
+          path: starry-test-harness/.cache/StarryOS
+          submodules: recursive
 
       - name: Install Rust cache for harness
         uses: Swatinem/rust-cache@v2
@@ -42,7 +49,9 @@ jobs:
 
       - name: 执行 ci-test
         working-directory: starry-test-harness
-        run: make ci-test run
+        run: |
+          export STARRYOS_COMMIT=$(git -C .cache/StarryOS rev-parse HEAD)
+          make ci-test run
 
       - name: Dump suite logs
         working-directory: starry-test-harness
