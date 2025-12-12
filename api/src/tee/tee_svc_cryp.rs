@@ -27,16 +27,14 @@ use tee_raw_sys::*;
 use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
+    crypto::crypto::{ecc_keypair, ecc_public_key},
     libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin},
-    libutee::utee_defines::tee_u32_to_big_endian,
+    libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     tee_obj::{tee_obj, tee_obj_add},
     user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64},
     utils::bit,
-    crypto::crypto::{
-        ecc_keypair,
-        ecc_public_key,
-    }
 };
+use tee_raw_sys::*;
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
 pub const TEE_TYPE_ATTR_REQUIRED: u32 = bit(1);
@@ -156,12 +154,15 @@ pub enum TeeCryptObjAttr {
 
 pub trait tee_crypto_ops {
     // const TEE_TYPE : u32;
-    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> where Self: Sized;
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self>
+    where
+        Self: Sized;
 }
 
 pub enum TeeCryptObj {
     ecc_keypair(ecc_keypair),
     ecc_public_key(ecc_public_key),
+    obj_secret(tee_cryp_obj_secret_wrapper),
     None,
 }
 
@@ -181,18 +182,41 @@ impl Default for TeeCryptObj {
 //     }
 // }
 impl tee_crypto_ops for TeeCryptObj {
-    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> where Self: Sized {
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self>
+    where
+        Self: Sized,
+    {
         match key_type {
             TEE_TYPE_ECC_PUBLIC_KEY => {
-                ecc_public_key::new(key_type, key_size_bits)
-                    .map(TeeCryptObj::ecc_public_key)
+                ecc_public_key::new(key_type, key_size_bits).map(TeeCryptObj::ecc_public_key)
             }
             TEE_TYPE_ECC_KEYPAIR => {
-                ecc_keypair::new(key_type, key_size_bits)
-                    .map(TeeCryptObj::ecc_keypair)
+                ecc_keypair::new(key_type, key_size_bits).map(TeeCryptObj::ecc_keypair)
             }
-            TEE_TYPE_DATA => {
-                Ok(TeeCryptObj::None)
+            TEE_TYPE_DATA => Ok(TeeCryptObj::None),
+            TEE_TYPE_AES
+            | TEE_TYPE_DES
+            | TEE_TYPE_DES3
+            | TEE_TYPE_SM4
+            | TEE_TYPE_HMAC_MD5
+            | TEE_TYPE_HMAC_SHA1
+            | TEE_TYPE_HMAC_SHA224
+            | TEE_TYPE_HMAC_SHA256
+            | TEE_TYPE_HMAC_SHA384
+            | TEE_TYPE_HMAC_SHA512
+            // | TEE_TYPE_HMAC_SHA3_224
+            // | TEE_TYPE_HMAC_SHA3_256
+            // | TEE_TYPE_HMAC_SHA3_384
+            // | TEE_TYPE_HMAC_SHA3_512
+            | TEE_TYPE_HMAC_SM3
+            | TEE_TYPE_GENERIC_SECRET
+            // | TEE_TYPE_HKDF_IKM
+            // | TEE_TYPE_CONCAT_KDF_Z
+            // | TEE_TYPE_PBKDF2_PASSWORD 
+            => {
+                // 将 key_size_bits 转换为字节数（向上取整）
+                let alloc_size = (key_size_bits + 7) / 8;
+                Ok(TeeCryptObj::obj_secret(tee_cryp_obj_secret_wrapper::new(alloc_size)))
             }
             _ => Err(TEE_ERROR_NOT_SUPPORTED),
         }
@@ -511,7 +535,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         64,
         128,
         256,
-        256 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
+        256 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
     // DES
@@ -520,7 +544,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         64,
         64,
         64,
-        64 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
+        64 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
     // DES3
@@ -529,7 +553,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         64,
         128,
         192,
-        192 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
+        192 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
     // SM4
@@ -538,7 +562,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         128,
         128,
         128,
-        128 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
+        128 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
     // HMAC-MD5
@@ -547,7 +571,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         8,
         64,
         512,
-        512 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
+        512 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
     prop(
@@ -596,11 +620,32 @@ pub fn tee_obj_set_type(
 
         /* Check that max_key_size follows restrictions */
         check_key_size(type_props, max_key_size)?;
-        
-        obj.attr.push(TeeCryptObj::new(obj_type, max_key_size)?);
-		// o->attr = calloc(1, type_props->alloc_size);
-		// if (!o->attr)
-		// 	return TEE_ERROR_OUT_OF_MEMORY;
+
+        // 检查是否有属性使用 SECRET 操作索引
+        let mut alloc_size = max_key_size;
+        if type_props
+            .type_attrs
+            .iter()
+            .any(|attr| attr.ops_index == ATTR_OPS_INDEX_SECRET as u16)
+        {
+            alloc_size = type_props.alloc_size as usize;
+        }
+        obj.attr.push(TeeCryptObj::new(obj_type, alloc_size)?);
+        // o->attr = calloc(1, type_props->alloc_size);
+        // if (!o->attr)
+        // 	return TEE_ERROR_OUT_OF_MEMORY;
+    }
+
+    obj.info.objectType = obj_type;
+    obj.info.maxObjectSize = max_key_size as u32;
+    if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        // 在 tee_obj_set_type 时，对象应该是新创建的，Arc 应该只有一个引用
+        // 如果 get_mut() 失败，说明有多个引用，这是不应该发生的
+        let pobj = Arc::get_mut(&mut obj.pobj)
+            .ok_or(TEE_ERROR_BAD_STATE)?;
+        pobj.obj_info_usage = TEE_USAGE_DEFAULT;
+    } else {
+        obj.info.objectUsage = TEE_USAGE_DEFAULT;
     }
 
     Ok(0)
