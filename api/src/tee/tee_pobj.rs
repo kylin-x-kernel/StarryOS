@@ -3,12 +3,14 @@ use core::default;
 #[repr(C)]
 pub  struct tee_pobj {
 	obj_id_len: u32,
+	pub obj_info_usage: u32,
 }
 
 impl default::Default for tee_pobj {
 	fn default() -> Self {
 		tee_pobj {
 			obj_id_len: 0,
+			obj_info_usage: 0,
 		}
 	}
 }
