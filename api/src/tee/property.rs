@@ -4,6 +4,8 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+use alloc::vec;
+
 use core::{
     ffi::{CStr, c_uint, c_ulong, c_void},
     ptr::addr_of,
@@ -98,10 +100,8 @@ impl TEEProps for ClientIdentity {
         *blen = prop_size;
         let clnt_id = with_tee_session_ctx(|ctx| Ok(ctx.clnt_id))?;
         copy_to_user(
-            unsafe { slice::from_raw_parts_mut(buf as *mut u8, *blen as usize) },
-            unsafe {
-                slice::from_raw_parts(addr_of!(clnt_id) as *const u8, size_of::<TEE_Identity>())
-            },
+            unsafe { slice::from_raw_parts_mut(buf as _, *blen as usize) },
+            unsafe { slice::from_raw_parts(addr_of!(clnt_id) as _, size_of::<TEE_Identity>()) },
             *blen as usize,
         )
     }
@@ -139,9 +139,9 @@ pub(crate) fn sys_tee_scn_get_property(
     if !prop_type.is_null() {
         let raw_type = prop.prop_type().as_raw();
         copy_to_user(
-            unsafe { slice::from_raw_parts_mut(prop_type as *mut u8, size_of::<c_uint>()) },
+            unsafe { slice::from_raw_parts_mut(prop_type as _, size_of::<u32>()) },
             &raw_type.to_ne_bytes(),
-            size_of::<c_uint>(),
+            size_of::<u32>(),
         )?;
     }
 
@@ -150,16 +150,16 @@ pub(crate) fn sys_tee_scn_get_property(
         let mut klen_buf = [0u8; 4];
         copy_from_user(
             &mut klen_buf,
-            unsafe { slice::from_raw_parts(blen as *const u8, size_of::<c_uint>()) },
+            unsafe { slice::from_raw_parts(blen as _, size_of::<u32>()) },
             size_of::<u32>(),
         )?;
         let mut klen = u32::from_ne_bytes(klen_buf);
 
         prop.get(buf, &mut klen)?;
         copy_to_user(
-            unsafe { slice::from_raw_parts_mut(blen as *mut u8, size_of::<c_uint>()) },
+            unsafe { slice::from_raw_parts_mut(blen as _, size_of::<u32>()) },
             &klen.to_ne_bytes(),
-            size_of::<c_uint>(),
+            size_of::<u32>(),
         )?;
     }
 
@@ -172,7 +172,7 @@ pub(crate) fn sys_tee_scn_get_property(
         let mut klen_buf = [0u8; 4];
         copy_from_user(
             &mut klen_buf,
-            unsafe { slice::from_raw_parts(name_len as *const u8, size_of::<c_uint>()) },
+            unsafe { slice::from_raw_parts(name_len as _, size_of::<u32>()) },
             size_of::<u32>(),
         )?;
         let mut klen = u32::from_ne_bytes(klen_buf);
@@ -180,24 +180,24 @@ pub(crate) fn sys_tee_scn_get_property(
         if klen < prop_name_len {
             klen = prop_name_len;
             copy_to_user(
-                unsafe { slice::from_raw_parts_mut(name_len as *mut u8, size_of::<c_uint>()) },
+                unsafe { slice::from_raw_parts_mut(name_len as _, size_of::<u32>()) },
                 &klen.to_ne_bytes(),
-                size_of::<c_uint>(),
+                size_of::<u32>(),
             )?;
             return Err(TEE_ERROR_SHORT_BUFFER);
         }
 
         copy_to_user(
-            unsafe { slice::from_raw_parts_mut(name as *mut u8, klen as usize) },
+            unsafe { slice::from_raw_parts_mut(name as _, klen as usize) },
             prop_name_bytes,
             prop_name_len as usize,
         )?;
 
         klen = prop_name_len;
         copy_to_user(
-            unsafe { slice::from_raw_parts_mut(name_len as *mut u8, size_of::<c_uint>()) },
+            unsafe { slice::from_raw_parts_mut(name_len as _, size_of::<u32>()) },
             &klen.to_ne_bytes(),
-            size_of::<c_uint>(),
+            size_of::<u32>(),
         )?;
     }
 
@@ -214,7 +214,7 @@ pub(crate) fn sys_tee_scn_get_property_name_to_index(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
-    let mut kname_buf = Vec::with_capacity(name_len as usize);
+    let mut kname_buf = vec![0u8; name_len as usize];
     copy_from_user(
         &mut kname_buf,
         unsafe { slice::from_raw_parts(name as *const u8, name_len as usize) },
@@ -225,11 +225,11 @@ pub(crate) fn sys_tee_scn_get_property_name_to_index(
         Err(_) => return Err(TEE_ERROR_BAD_PARAMETERS),
     };
 
-    let index = get_prop_index(kname)?;
+    let prop_index = get_prop_index(kname)?;
     copy_to_user(
-        unsafe { slice::from_raw_parts_mut(index as _, size_of::<c_uint>()) },
-        &index.to_be_bytes(),
-        size_of::<c_uint>(),
+        unsafe { slice::from_raw_parts_mut(index as _, size_of::<u32>()) },
+        &prop_index.to_ne_bytes(),
+        size_of::<u32>(),
     )?;
 
     Ok(())

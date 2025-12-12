@@ -58,7 +58,7 @@ pub(crate) fn copy_to_user(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeRe
             uaddr[..len].copy_from_slice(&kaddr[..len]);
             Ok(())
         } else {
-            vm_write_slice(uaddr.as_mut_ptr(), kaddr.as_ptr())
+            vm_write_slice(uaddr.as_mut_ptr(), kaddr)
             .map_err(|error| match error {
                 VmError::BadAddress => TEE_ERROR_BAD_PARAMETERS,
                 _ => TEE_ERROR_GENERIC,
