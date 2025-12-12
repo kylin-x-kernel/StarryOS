@@ -19,7 +19,7 @@ use super::{
     tee_fs::tee_file_handle,
     tee_pobj::tee_pobj,
     tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
-    tee_svc_cryp::{TeeCryptObjAttr, TeeCryptObj},
+    tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},
 };
 
 pub type tee_obj_id_type = usize;
@@ -33,19 +33,28 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 
 #[repr(C)]
 pub struct tee_obj {
-    // TEE_ObjectInfo info;
+    pub info: TEE_ObjectInfo,
     busy: bool,      /* true if used by an operation */
     have_attrs: u32, /* bitfield identifying set properties */
     //void *attr;
-    pub(crate) attr: Vec<TeeCryptObj>,
+    pub attr: Vec<TeeCryptObj>,
     ds_pos: size_t,
-    pobj: Arc<tee_pobj>,
+    pub pobj: Arc<tee_pobj>,
     fh: Arc<tee_file_handle>,
 }
 
 impl default::Default for tee_obj {
     fn default() -> Self {
         tee_obj {
+            info : TEE_ObjectInfo {
+                objectType: 0,
+                objectSize: 0,
+                maxObjectSize: 0,
+                objectUsage: 0,
+                dataSize: 0,
+                dataPosition: 0,
+                handleFlags: 0,
+            },
             busy: false,
             have_attrs: 0,
             attr: Vec::new(),
