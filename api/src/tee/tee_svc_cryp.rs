@@ -4,31 +4,394 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use crate::mm::vm_load_string;
 use crate::tee;
+use crate::{mm::vm_load_string, tee::libmbedtls::bignum::BigNum};
 use alloc::{alloc::alloc, alloc::dealloc, boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use axerrno::{AxError, AxResult};
 use core::{
-    alloc::Layout, any::Any, ffi::c_char, ffi::c_uint, ffi::c_ulong, mem::size_of, ptr::NonNull,
-    slice, time::Duration,
+    alloc::Layout,
+    any::Any,
+    ffi::c_char,
+    ffi::c_uint,
+    ffi::c_ulong,
+    mem::size_of,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+    slice,
+    time::Duration,
 };
+use lazy_static::lazy_static;
 use tee_raw_sys::libc_compat::size_t;
 use tee_raw_sys::*;
 
 use super::{
     TeeResult,
+    config::CFG_COMPAT_GP10_DES,
+    libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin},
     libutee::utee_defines::tee_u32_to_big_endian,
     tee_obj::{tee_obj, tee_obj_add},
     user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64},
+    utils::bit,
+    crypto::crypto::{
+        ecc_keypair,
+        ecc_public_key,
+    }
 };
+
+pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
+pub const TEE_TYPE_ATTR_REQUIRED: u32 = bit(1);
+pub const TEE_TYPE_ATTR_OPTIONAL_GROUP: u32 = bit(2);
+pub const TEE_TYPE_ATTR_SIZE_INDICATOR: u32 = bit(3);
+pub const TEE_TYPE_ATTR_GEN_KEY_OPT: u32 = bit(4);
+pub const TEE_TYPE_ATTR_GEN_KEY_REQ: u32 = bit(5);
+
+/* Handle storing of generic secret keys of varying lengths */
+pub const ATTR_OPS_INDEX_SECRET: u32 = 0;
+/* Convert to/from big-endian byte array and provider-specific bignum */
+pub const ATTR_OPS_INDEX_BIGNUM: u32 = 1;
+/* Convert to/from value attribute depending on direction */
+/* Convert to/from big-endian byte array and provider-specific bignum */
+pub const ATTR_OPS_INDEX_VALUE: u32 = 2;
+/* Convert to/from curve25519 attribute depending on direction */
+/* Convert to/from big-endian byte array and provider-specific bignum */
+pub const ATTR_OPS_INDEX_25519: u32 = 3;
+/* Convert to/from big-endian byte array and provider-specific bignum */
+pub const ATTR_OPS_INDEX_448: u32 = 4;
+
 #[repr(C)]
 struct tee_cryp_obj_type_attrs {
     attr_id: u32,
     flags: u16,
     ops_index: u16,
-    raw_offs: u16,
-    raw_size: u16,
+    // raw_offs: u16,
+    // raw_size: u16,
 }
+
+pub trait TeeCryptObjAttrOps {
+    fn from_user(&mut self, buffer: &[u8]) -> TeeResult;
+
+    fn to_user(&self, buffer: &mut [u8], size: &mut u64) -> TeeResult;
+
+    // fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TEE_Result;
+
+    // fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> bool;
+
+    // fn from_obj(&mut self, src_attr: &[u8]) -> TEE_Result;
+
+    // fn free(&mut self);
+
+    // fn clear(&mut self);
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct AttrValue(u32);
+
+impl AttrValue {
+    /// 创建一个新的 AttrValue
+    pub fn new(value: u32) -> Self {
+        AttrValue(value)
+    }
+
+    /// 获取内部值
+    pub fn get(self) -> u32 {
+        self.0
+    }
+
+    /// 获取内部值的引用
+    pub fn as_u32(&self) -> &u32 {
+        &self.0
+    }
+
+    /// 获取内部值的可变引用
+    pub fn as_mut_u32(&mut self) -> &mut u32 {
+        &mut self.0
+    }
+}
+
+impl Deref for AttrValue {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for AttrValue {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<u32> for AttrValue {
+    fn from(value: u32) -> Self {
+        AttrValue(value)
+    }
+}
+
+impl From<AttrValue> for u32 {
+    fn from(attr: AttrValue) -> Self {
+        attr.0
+    }
+}
+
+impl AsRef<u32> for AttrValue {
+    fn as_ref(&self) -> &u32 {
+        &self.0
+    }
+}
+
+impl AsMut<u32> for AttrValue {
+    fn as_mut(&mut self) -> &mut u32 {
+        &mut self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TeeCryptObjAttr {
+    secret_value(tee_cryp_obj_secret_wrapper),
+    bignum(BigNum),
+    value(AttrValue),
+}
+
+pub trait tee_crypto_ops {
+    // const TEE_TYPE : u32;
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> where Self: Sized;
+}
+
+pub enum TeeCryptObj {
+    ecc_keypair(ecc_keypair),
+    ecc_public_key(ecc_public_key),
+    None,
+}
+
+impl Default for TeeCryptObj {
+    fn default() -> Self {
+        TeeCryptObj::None
+    }
+}
+
+// impl TeeCryptObj {
+//     pub fn new(obj_type: TEE_ObjectType) -> Self {
+//         match obj_type {
+//             TEE_TYPE_ECC_PUBLIC_KEY => TeeCryptObj::ecc_public_key(ecc_public_key::default()),
+//             TEE_TYPE_ECC_KEYPAIR => TeeCryptObj::ecc_keypair(ecc_keypair::default()),
+//             _ => TeeCryptObj::None,
+//         }
+//     }
+// }
+impl tee_crypto_ops for TeeCryptObj {
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> where Self: Sized {
+        match key_type {
+            TEE_TYPE_ECC_PUBLIC_KEY => {
+                ecc_public_key::new(key_type, key_size_bits)
+                    .map(TeeCryptObj::ecc_public_key)
+            }
+            TEE_TYPE_ECC_KEYPAIR => {
+                ecc_keypair::new(key_type, key_size_bits)
+                    .map(TeeCryptObj::ecc_keypair)
+            }
+            TEE_TYPE_DATA => {
+                Ok(TeeCryptObj::None)
+            }
+            _ => Err(TEE_ERROR_NOT_SUPPORTED),
+        }
+    }
+}
+
+impl TeeCryptObjAttrOps for TeeCryptObjAttr {
+    fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.from_user(user_buffer),
+            TeeCryptObjAttr::bignum(attr) => attr.from_user(user_buffer),
+            TeeCryptObjAttr::value(attr) => attr.from_user(user_buffer),
+        }
+    }
+
+    fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.to_user(buffer, size_ref),
+            TeeCryptObjAttr::bignum(attr) => attr.to_user(buffer, size_ref),
+            TeeCryptObjAttr::value(attr) => attr.to_user(buffer, size_ref),
+        }
+    }
+}
+
+impl TeeCryptObjAttrOps for AttrValue {
+    fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
+        if user_buffer.len() != size_of::<u32>() * 2 {
+            return Err(TEE_ERROR_GENERIC);
+        }
+
+        /* Note that only the first value is copied */
+        // 从用户缓冲区读取字节到 AttrValue 的内部 u32
+        // 使用 unsafe 直接写入，与 to_user 的实现保持一致
+        let value_ptr = self.as_mut_u32() as *mut u32 as *mut u8;
+        let value_slice = unsafe { slice::from_raw_parts_mut(value_ptr, size_of::<u32>()) };
+        copy_from_user(
+            value_slice,
+            &user_buffer[..size_of::<u32>()],
+            size_of::<u32>(),
+        )?;
+
+        Ok(())
+    }
+
+    fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        let mut s: u64 = 0;
+        copy_from_user_u64(&mut s, size_ref)?;
+
+        let value: [u32; 2] = [unsafe { *(self.as_u32() as *const u32) }, 0];
+        let req_size: u64 = size_of::<[u32; 2]>() as u64;
+
+        if s < req_size || buffer.is_empty() {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        if buffer.len() < req_size as usize {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        let value_bytes: &[u8] = unsafe {
+            core::slice::from_raw_parts(&value as *const u32 as *const u8, req_size as usize)
+        };
+        // buffer[..req_size as _].copy_from_slice(value_bytes);
+        // copy_to_user_u64(size_ref, &req_size)?;
+        copy_to_user(buffer, value_bytes, req_size as usize)?;
+
+        Ok(())
+    }
+}
+
+impl TeeCryptObjAttrOps for BigNum {
+    fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
+        let mut kbuf: Box<[u8]> = vec![0u8; user_buffer.len()].into_boxed_slice();
+
+        copy_from_user(kbuf.as_mut(), user_buffer, user_buffer.len())?;
+
+        // TODO: add call to crypto_bignum_bin2bn(bbuf, size, *bn);
+        crypto_bignum_bin2bn(kbuf.as_ref(), self)?;
+        Ok(())
+    }
+
+    fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        let mut s: u64 = 0;
+
+        // copy size from user
+        copy_from_user_u64(&mut s, size_ref)?;
+        let req_size: u64 = 0; // TODO: call crypto_bignum_num_bytes
+        copy_to_user_u64(size_ref, &req_size)?;
+
+        if req_size == 0 {
+            return Ok(());
+        }
+
+        if s < req_size || buffer.is_empty() {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        let mut kbuf: Box<[u8]> = vec![0u8; req_size as _].into_boxed_slice();
+
+        // TODO: call crypto_bignum_bn2bin with _attr to fill kbuf
+        crypto_bignum_bn2bin(self, kbuf.as_mut())?;
+
+        copy_to_user(buffer, kbuf.as_ref(), req_size as usize)?;
+
+        Ok(())
+    }
+}
+
+impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
+    fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
+        let size = user_buffer.len();
+
+        // 1. 长度检查 —— 与 C 完全一致
+        if size > self.secret().alloc_size as usize {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        // 2. 获取尾随数组可写 slice
+        let data_slice = self.data_mut();
+
+        // 3. 拷贝 user_buffer 到尾随数组
+        //data_slice[..size].copy_from_slice(user_buffer);
+        copy_from_user(&mut data_slice[..size], user_buffer, size as size_t)?;
+
+        // 4. 更新 key_size
+        self.secret_mut().key_size = size as u32;
+
+        Ok(())
+    }
+
+    fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        // --- 1. copy_from_user(&s, size, sizeof(s)) ---
+        let mut s: u64 = 0;
+        copy_from_user_u64(&mut s, size_ref)?;
+
+        let key_size = self.secret().key_size as u64;
+
+        // --- 2. 将 key_size 回写到用户的 size 指针 ---
+        copy_to_user_u64(size_ref, &key_size)?;
+
+        // --- 3. 检查 buffer 是否足够大 ---
+        let data = self.data(); // 尾随数组 &[u8]
+
+        if s < key_size || buffer.len() == 0 {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        if buffer.len() < key_size as usize {
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+
+        // --- 4. 将尾随数据 copy_to_user(buffer, key + 1, key_size) ---
+        copy_to_user(buffer, data, key_size as usize)?;
+
+        Ok(())
+    }
+}
+
+pub const tee_cryp_obj_ecc_pub_key_attrs: &[tee_cryp_obj_type_attrs] = &[
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_PUBLIC_VALUE_X,
+        flags: TEE_TYPE_ATTR_REQUIRED as _,
+        ops_index: ATTR_OPS_INDEX_BIGNUM as _,
+    },
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_PUBLIC_VALUE_Y,
+        flags: TEE_TYPE_ATTR_REQUIRED as _,
+        ops_index: ATTR_OPS_INDEX_BIGNUM as _,
+    },
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_CURVE,
+        flags: (TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_SIZE_INDICATOR) as _,
+        ops_index: ATTR_OPS_INDEX_VALUE as _,
+    },
+];
+
+pub const tee_cryp_obj_ecc_keypair_attrs: &[tee_cryp_obj_type_attrs] = &[
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_PRIVATE_VALUE,
+        flags: TEE_TYPE_ATTR_REQUIRED as _,
+        ops_index: ATTR_OPS_INDEX_BIGNUM as _,
+    },
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_PUBLIC_VALUE_X,
+        flags: TEE_TYPE_ATTR_REQUIRED as _,
+        ops_index: ATTR_OPS_INDEX_BIGNUM as _,
+    },
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_PUBLIC_VALUE_Y,
+        flags: TEE_TYPE_ATTR_REQUIRED as _,
+        ops_index: ATTR_OPS_INDEX_BIGNUM as _,
+    },
+    tee_cryp_obj_type_attrs {
+        attr_id: TEE_ATTR_ECC_CURVE,
+        flags: (TEE_TYPE_ATTR_REQUIRED | TEE_TYPE_ATTR_SIZE_INDICATOR | TEE_TYPE_ATTR_GEN_KEY_REQ)
+            as _,
+        ops_index: ATTR_OPS_INDEX_VALUE as _,
+    },
+];
 
 #[repr(C)]
 pub struct tee_cryp_obj_type_props {
@@ -51,7 +414,7 @@ struct tee_cryp_obj_secret {
      * key_size must never exceed alloc_size
      */
 }
-
+#[derive(Debug, Clone)]
 pub struct tee_cryp_obj_secret_wrapper {
     ptr: NonNull<tee_cryp_obj_secret>,
     layout: Layout,
@@ -115,26 +478,11 @@ impl Drop for tee_cryp_obj_secret_wrapper {
     }
 }
 
-/* Handle storing of generic secret keys of varying lengths */
-pub const ATTR_OPS_INDEX_SECRET: u32 = 0;
-/* Convert to/from big-endian byte array and provider-specific bignum */
-pub const ATTR_OPS_INDEX_BIGNUM: u32 = 1;
-/* Convert to/from value attribute depending on direction */
-/* Convert to/from big-endian byte array and provider-specific bignum */
-pub const ATTR_OPS_INDEX_VALUE: u32 = 2;
-/* Convert to/from curve25519 attribute depending on direction */
-/* Convert to/from big-endian byte array and provider-specific bignum */
-pub const ATTR_OPS_INDEX_25519: u32 = 3;
-/* Convert to/from big-endian byte array and provider-specific bignum */
-pub const ATTR_OPS_INDEX_448: u32 = 4;
-
 pub static TEE_CRYP_OBJ_SECRET_VALUE_ATTRS: [tee_cryp_obj_type_attrs; 1] =
     [tee_cryp_obj_type_attrs {
         attr_id: 1,
         flags: 0,
         ops_index: 1,
-        raw_offs: 0,
-        raw_size: 0,
     }];
 
 pub const fn prop(
@@ -156,7 +504,7 @@ pub const fn prop(
     }
 }
 
-pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 5] = [
+pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
     // AES
     prop(
         TEE_TYPE_AES,
@@ -202,25 +550,17 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 5] = [
         512 / 8 + size_of::<tee_cryp_obj_secret>() as u16,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
+    prop(
+        TEE_TYPE_ECDSA_KEYPAIR,
+        1,
+        192,
+        521,
+        0,
+        tee_cryp_obj_ecc_keypair_attrs,
+    ),
 ];
 
-trait attr_ops {
-    fn from_user(attr: &mut [u8], buffer: &[u8]) -> TEE_Result;
-
-    fn to_user(attr: &[u8],  buffer: &mut [u8], size: &mut u64) -> TEE_Result;
-
-    fn to_binary(attr: &[u8], data: &mut [u8], offs: &mut usize) -> TEE_Result;
-
-    fn from_binary(attr: &mut [u8], data: &[u8], offs: &mut usize) -> bool;
-
-    fn from_obj(attr: &mut [u8], src_attr: &[u8]) -> TEE_Result;
-
-    fn free(attr: &mut [u8]);
-
-    fn clear(attr: &mut [u8]);
-}
-
-fn get_user_u64_as_size_t(dst: &mut usize, src: & u64) -> TeeResult {
+fn get_user_u64_as_size_t(dst: &mut usize, src: &u64) -> TeeResult {
     let mut d: u64 = 0;
 
     // copy_from_user: 读取用户态数据
@@ -236,13 +576,40 @@ fn get_user_u64_as_size_t(dst: &mut usize, src: & u64) -> TeeResult {
     Ok(())
 }
 
+pub fn tee_obj_set_type(
+    obj: &mut tee_obj,
+    obj_type: u32,
+    max_key_size: size_t,
+) -> TeeResult<isize> {
+    /* Can only set type for newly allocated objs */
+    if !obj.attr.is_empty() {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
 
+    if obj_type == TEE_TYPE_DATA {
+        if max_key_size != 0 {
+            return Err(TEE_ERROR_NOT_SUPPORTED);
+        }
+    } else {
+        /* Find description of object */
+        let type_props = tee_svc_find_type_props(obj_type).ok_or(TEE_ERROR_NOT_SUPPORTED)?;
 
-pub fn tee_obj_set_type(O: &mut tee_obj, obj_type: u32, max_key_size: size_t) -> AxResult<isize> {
+        /* Check that max_key_size follows restrictions */
+        check_key_size(type_props, max_key_size)?;
+        
+        obj.attr.push(TeeCryptObj::new(obj_type, max_key_size)?);
+		// o->attr = calloc(1, type_props->alloc_size);
+		// if (!o->attr)
+		// 	return TEE_ERROR_OUT_OF_MEMORY;
+    }
+
     Ok(0)
 }
 
-pub(crate) fn syscall_cryp_obj_alloc(obj_type: c_ulong, max_key_size: c_ulong) -> AxResult<c_uint> {
+pub(crate) fn syscall_cryp_obj_alloc(
+    obj_type: c_ulong,
+    max_key_size: c_ulong,
+) -> TeeResult<c_uint> {
     let mut obj = tee_obj::default();
 
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
@@ -925,4 +1292,37 @@ pub mod tests_tee_svc_cryp {
         test_op_attr_value_to_user,
         test_op_attr_value_from_binary,
     }
+}
+
+pub fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
+    return CFG_COMPAT_GP10_DES
+        && ((obj_type == TEE_TYPE_DES && sz == 56)
+            || (obj_type == TEE_TYPE_DES3 && (sz == 112 || sz == 168)));
+}
+
+fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResult {
+    let mut sz = key_size;
+
+    /*
+     * In GP Internal API Specification 1.0 the partity bits aren't
+     * counted when telling the size of the key in bits so add them
+     * here if missing.
+     */
+    if is_gp_legacy_des_key_size(props.obj_type, sz) {
+        sz += sz / 7;
+    }
+
+    if sz % props.quanta as usize != 0 {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    if sz < props.min_size as usize {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    if sz > props.max_size as usize {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    Ok(())
 }
