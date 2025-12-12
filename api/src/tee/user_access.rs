@@ -45,16 +45,12 @@ pub fn copy_to_user_u64(user_s: &mut u64, s: &u64) -> TeeResult {
         core::slice::from_raw_parts(s as *const u64 as *const u8, core::mem::size_of::<u64>())
     };
     let size_bytes: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            user_s as *mut u64 as *mut u8,
-            core::mem::size_of::<u64>(),
-        )
+        core::slice::from_raw_parts_mut(user_s as *mut u64 as *mut u8, core::mem::size_of::<u64>())
     };
     copy_to_user(size_bytes, s_bytes, core::mem::size_of::<u64>())?;
 
     Ok(())
 }
-
 
 pub(crate) fn copy_to_user(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeResult {
     cfg_if::cfg_if! {
@@ -62,9 +58,7 @@ pub(crate) fn copy_to_user(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeRe
             uaddr[..len].copy_from_slice(&kaddr[..len]);
             Ok(())
         } else {
-            vm_read_slice(uaddr.as_ptr(), unsafe {
-                transmute::<&mut [u8], &mut [MaybeUninit<u8>]>(&mut kaddr[..len])
-            })
+            vm_write_slice(uaddr.as_mut_ptr(), kaddr.as_ptr())
             .map_err(|error| match error {
                 VmError::BadAddress => TEE_ERROR_BAD_PARAMETERS,
                 _ => TEE_ERROR_GENERIC,
