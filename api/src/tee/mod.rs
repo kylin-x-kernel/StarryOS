@@ -16,14 +16,11 @@ mod tee_svc_cryp;
 mod user_access;
 mod libmbedtls;
 mod libutee;
-mod utils;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
 mod time;
-mod config;
-mod crypto;
 
 use core::arch::asm;
 

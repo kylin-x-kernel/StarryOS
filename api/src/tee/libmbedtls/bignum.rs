@@ -3,81 +3,17 @@
 // See LICENSES for license details.
 //
 // This file has been created by KylinSoft on 2025.
-use core::{cmp::Ordering, mem, default, ops::{Deref, DerefMut}};
+use core::{cmp::Ordering, mem};
 use mbedtls::bignum::Mpi;
 use mbedtls_sys_auto::*;
 use tee_raw_sys::*;
 use alloc::vec;
 
 use crate::tee::TeeResult;
-use crate::tee::config::CFG_CORE_BIGNUM_MAX_BITS;
 
-/// BigNum 是新类型结构体，包装了 Mpi
-#[derive(Debug, Clone)]
-pub struct BigNum(Mpi);
+pub type BigNum = Mpi;
 
-impl BigNum {
-    /// 创建一个新的 BigNum，值为 0
-    pub fn new(value: u32) -> TeeResult<Self> {
-        Mpi::new(value as _)
-            .map(BigNum)
-            .map_err(|_| TEE_ERROR_GENERIC)
-    }
-
-    /// 从 Mpi 创建 BigNum
-    pub fn from_mpi(mpi: Mpi) -> Self {
-        BigNum(mpi)
-    }
-
-    /// 获取内部的 Mpi
-    pub fn into_mpi(self) -> Mpi {
-        self.0
-    }
-
-    /// 获取内部 Mpi 的引用
-    pub fn as_mpi(&self) -> &Mpi {
-        &self.0
-    }
-
-    /// 获取内部 Mpi 的可变引用
-    pub fn as_mpi_mut(&mut self) -> &mut Mpi {
-        &mut self.0
-    }
-}
-
-impl Deref for BigNum {
-    type Target = Mpi;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for BigNum {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl default::Default for BigNum {
-    fn default() -> Self {
-        // 注意：这不是 const 函数，因为 Mpi::new 不是 const
-        BigNum::new(0).unwrap()
-    }
-}
-
-impl From<Mpi> for BigNum {
-    fn from(mpi: Mpi) -> Self {
-        BigNum(mpi)
-    }
-}
-
-impl From<BigNum> for Mpi {
-    fn from(bn: BigNum) -> Self {
-        bn.0
-    }
-}
-
+const CFG_CORE_BIGNUM_MAX_BITS: usize = 4096;
 const cil: usize = mem::size_of::<mpi_uint>();
 const bil: usize = cil << 3;
 
@@ -127,7 +63,7 @@ pub fn crypto_bignum_bn2bin(from: &BigNum, to: &mut [u8]) -> TeeResult<()> {
 /// to: mutable BigNum
 /// Returns: TeeResult
 pub fn crypto_bignum_bin2bn(from: &[u8], to: &mut BigNum) -> TeeResult<()> {
-    *to = BigNum::from_mpi(Mpi::from_binary(from).map_err(|_| TEE_ERROR_BAD_PARAMETERS)?);
+    *to = Mpi::from_binary(from).map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
     Ok(())
 }
 
