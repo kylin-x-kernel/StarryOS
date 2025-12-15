@@ -1,6 +1,6 @@
 use axerrno::{AxError, AxResult};
 use cfg_if::cfg_if;
-use core::mem::{MaybeUninit, transmute};
+use core::mem::{size_of, MaybeUninit, transmute};
 use starry_vm::{VmError, VmPtr, vm_read_slice, vm_write_slice};
 use tee_raw_sys::libc_compat::size_t;
 use tee_raw_sys::*;
@@ -66,6 +66,62 @@ pub(crate) fn copy_to_user(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeRe
             Ok(())
         }
     }
+}
+
+/// 将内核空间的结构体复制到用户空间
+///
+/// # 参数
+/// - `user_dst`: 用户空间的目标结构体（可变引用）
+/// - `kernel_src`: 内核空间的源结构体（不可变引用）
+///
+/// # 类型参数
+/// - `T`: 要复制的结构体类型，必须是 `Sized` 类型
+///
+/// # 安全性
+/// - 调用者必须确保 `user_dst` 指向有效的用户空间内存
+/// - `T` 必须是 `repr(C)` 或 `repr(transparent)` 结构体，以确保内存布局可预测
+pub fn copy_to_user_struct<T: Sized>(user_dst: &mut T, kernel_src: &T) -> TeeResult {
+    let src_bytes: &[u8] = unsafe {
+        core::slice::from_raw_parts(
+            kernel_src as *const T as *const u8,
+            size_of::<T>(),
+        )
+    };
+    let dst_bytes: &mut [u8] = unsafe {
+        core::slice::from_raw_parts_mut(
+            user_dst as *mut T as *mut u8,
+            size_of::<T>(),
+        )
+    };
+    copy_to_user(dst_bytes, src_bytes, size_of::<T>())
+}
+
+/// 从用户空间的结构体复制到内核空间
+///
+/// # 参数
+/// - `kernel_dst`: 内核空间的目标结构体（可变引用）
+/// - `user_src`: 用户空间的源结构体（不可变引用）
+///
+/// # 类型参数
+/// - `T`: 要复制的结构体类型，必须是 `Sized` 类型
+///
+/// # 安全性
+/// - 调用者必须确保 `user_src` 指向有效的用户空间内存
+/// - `T` 必须是 `repr(C)` 或 `repr(transparent)` 结构体，以确保内存布局可预测
+pub fn copy_from_user_struct<T: Sized>(kernel_dst: &mut T, user_src: &T) -> TeeResult {
+    let dst_bytes: &mut [u8] = unsafe {
+        core::slice::from_raw_parts_mut(
+            kernel_dst as *mut T as *mut u8,
+            size_of::<T>(),
+        )
+    };
+    let src_bytes: &[u8] = unsafe {
+        core::slice::from_raw_parts(
+            user_src as *const T as *const u8,
+            size_of::<T>(),
+        )
+    };
+    copy_from_user(dst_bytes, src_bytes, size_of::<T>())
 }
 
 #[cfg(feature = "tee_test")]

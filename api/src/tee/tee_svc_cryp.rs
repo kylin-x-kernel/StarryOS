@@ -30,8 +30,8 @@ use super::{
     crypto::crypto::{ecc_keypair, ecc_public_key},
     libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin},
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
-    tee_obj::{tee_obj, tee_obj_add},
-    user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64},
+    tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
+    user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64, copy_to_user_struct},
     utils::bit,
 };
 use tee_raw_sys::*;
@@ -159,6 +159,10 @@ pub trait tee_crypto_ops {
         Self: Sized;
 }
 
+/// 加密对象类型
+///
+/// 对应类型 TEE_TYPE_*
+#[allow(dead_code)]
 pub enum TeeCryptObj {
     ecc_keypair(ecc_keypair),
     ecc_public_key(ecc_public_key),
@@ -187,10 +191,18 @@ impl tee_crypto_ops for TeeCryptObj {
         Self: Sized,
     {
         match key_type {
-            TEE_TYPE_ECC_PUBLIC_KEY => {
+            TEE_TYPE_ECDSA_PUBLIC_KEY 
+            | TEE_TYPE_ECDH_PUBLIC_KEY 
+            | TEE_TYPE_SM2_DSA_PUBLIC_KEY 
+            | TEE_TYPE_SM2_PKE_PUBLIC_KEY 
+            | TEE_TYPE_SM2_KEP_PUBLIC_KEY => {
                 ecc_public_key::new(key_type, key_size_bits).map(TeeCryptObj::ecc_public_key)
             }
-            TEE_TYPE_ECC_KEYPAIR => {
+            TEE_TYPE_ECDSA_KEYPAIR 
+            | TEE_TYPE_ECDH_KEYPAIR
+            | TEE_TYPE_SM2_DSA_KEYPAIR
+            | TEE_TYPE_SM2_PKE_KEYPAIR
+            | TEE_TYPE_SM2_KEP_KEYPAIR => {
                 ecc_keypair::new(key_type, key_size_bits).map(TeeCryptObj::ecc_keypair)
             }
             TEE_TYPE_DATA => Ok(TeeCryptObj::None),
@@ -528,7 +540,7 @@ pub const fn prop(
     }
 }
 
-pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
+pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 7] = [
     // AES
     prop(
         TEE_TYPE_AES,
@@ -582,6 +594,14 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 6] = [
         0,
         tee_cryp_obj_ecc_keypair_attrs,
     ),
+    prop(
+        TEE_TYPE_ECDSA_PUBLIC_KEY,
+        1,
+        192,
+        521,
+        0,
+        tee_cryp_obj_ecc_pub_key_attrs,
+    ),
 ];
 
 fn get_user_u64_as_size_t(dst: &mut usize, src: &u64) -> TeeResult {
@@ -614,6 +634,8 @@ pub fn tee_obj_set_type(
         if max_key_size != 0 {
             return Err(TEE_ERROR_NOT_SUPPORTED);
         }
+
+        obj.attr.push(TeeCryptObj::None);
     } else {
         /* Find description of object */
         let type_props = tee_svc_find_type_props(obj_type).ok_or(TEE_ERROR_NOT_SUPPORTED)?;
@@ -639,10 +661,7 @@ pub fn tee_obj_set_type(
     obj.info.objectType = obj_type;
     obj.info.maxObjectSize = max_key_size as u32;
     if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        // 在 tee_obj_set_type 时，对象应该是新创建的，Arc 应该只有一个引用
-        // 如果 get_mut() 失败，说明有多个引用，这是不应该发生的
-        let pobj = Arc::get_mut(&mut obj.pobj)
-            .ok_or(TEE_ERROR_BAD_STATE)?;
+        let pobj = Arc::get_mut(&mut obj.pobj).ok_or(TEE_ERROR_BAD_STATE)?;
         pobj.obj_info_usage = TEE_USAGE_DEFAULT;
     } else {
         obj.info.objectUsage = TEE_USAGE_DEFAULT;
@@ -1052,6 +1071,61 @@ fn op_attr_25519_free(_attr: &mut [u8]) {
     unimplemented!();
 }
 
+pub fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
+    return CFG_COMPAT_GP10_DES
+        && ((obj_type == TEE_TYPE_DES && sz == 56)
+            || (obj_type == TEE_TYPE_DES3 && (sz == 112 || sz == 168)));
+}
+
+fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResult {
+    let mut sz = key_size;
+
+    /*
+     * In GP Internal API Specification 1.0 the partity bits aren't
+     * counted when telling the size of the key in bits so add them
+     * here if missing.
+     */
+    if is_gp_legacy_des_key_size(props.obj_type, sz) {
+        sz += sz / 7;
+    }
+
+    if sz % props.quanta as usize != 0 {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    if sz < props.min_size as usize {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    if sz > props.max_size as usize {
+        return Err(TEE_ERROR_NOT_SUPPORTED);
+    }
+
+    Ok(())
+}
+
+pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -> TeeResult {
+    let mut o_info: utee_object_info = utee_object_info::default();
+    let o = tee_obj_get(obj_id as tee_obj_id_type)?;
+
+    o_info.obj_type = o.info.objectType;
+    o_info.obj_size = o.info.objectSize;
+    o_info.max_obj_size = o.info.maxObjectSize;
+    if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        // tee_pobj_lock_usage(o.pobj);
+        o_info.obj_usage = o.pobj.obj_info_usage;
+        // tee_pobj_unlock_usage(o.pobj);
+    } else {
+        o_info.obj_usage = o.info.objectUsage;
+    }
+    o_info.data_size = o.info.dataSize as _;
+    o_info.data_pos = o.info.dataPosition as _;
+    o_info.handle_flags = o.info.handleFlags as _;
+    
+    copy_to_user_struct(info, &o_info)?;
+    Ok(())
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;
@@ -1325,6 +1399,38 @@ pub mod tests_tee_svc_cryp {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_tee_obj_set_type() {
+            // test with TEE_TYPE_AES
+            let mut obj = tee_obj::default();
+            let result = tee_obj_set_type(&mut obj, TEE_TYPE_AES, 256);
+            assert!(result.is_ok());
+            assert_eq!(obj.info.objectType, TEE_TYPE_AES);
+            assert_eq!(obj.info.maxObjectSize, 256);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.info.handleFlags, 0);
+            assert_eq!(obj.info.dataSize, 0);
+            assert_eq!(obj.info.dataPosition, 0);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let mut obj = tee_obj::default();
+            let result = tee_obj_set_type(&mut obj, TEE_TYPE_ECDSA_PUBLIC_KEY, 256);
+            info!("result: {:x?}", result);
+            assert!(result.is_ok());
+            assert_eq!(obj.info.objectType, TEE_TYPE_ECDSA_PUBLIC_KEY);
+            assert_eq!(obj.info.maxObjectSize, 256);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.info.handleFlags, 0);
+            assert_eq!(obj.info.dataSize, 0);
+            assert_eq!(obj.info.dataPosition, 0);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::ecc_public_key(_)));
+        }
+    }
+
     tests_name! {
         TEST_TEE_SVC_CRYP;
         //------------------------
@@ -1336,38 +1442,6 @@ pub mod tests_tee_svc_cryp {
         test_op_u32_from_binary_helper,
         test_op_attr_value_to_user,
         test_op_attr_value_from_binary,
+        test_tee_obj_set_type,
     }
-}
-
-pub fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
-    return CFG_COMPAT_GP10_DES
-        && ((obj_type == TEE_TYPE_DES && sz == 56)
-            || (obj_type == TEE_TYPE_DES3 && (sz == 112 || sz == 168)));
-}
-
-fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResult {
-    let mut sz = key_size;
-
-    /*
-     * In GP Internal API Specification 1.0 the partity bits aren't
-     * counted when telling the size of the key in bits so add them
-     * here if missing.
-     */
-    if is_gp_legacy_des_key_size(props.obj_type, sz) {
-        sz += sz / 7;
-    }
-
-    if sz % props.quanta as usize != 0 {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    if sz < props.min_size as usize {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    if sz > props.max_size as usize {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    Ok(())
 }
