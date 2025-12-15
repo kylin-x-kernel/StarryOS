@@ -17,6 +17,7 @@ use core::default::Default;
 use tee_raw_sys::*;
 
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ecc_public_key {
     pub x: BigNum,
     pub y: BigNum,
@@ -54,6 +55,7 @@ impl tee_crypto_ops for ecc_public_key {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ecc_keypair {
     pub d: BigNum,
     pub x: BigNum,
