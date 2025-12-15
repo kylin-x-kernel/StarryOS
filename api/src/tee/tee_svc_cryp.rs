@@ -31,6 +31,7 @@ use super::{
     libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin},
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
+    tee_pobj::with_pobj_usage_lock,
     user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64, copy_to_user_struct},
     utils::bit,
 };
@@ -1113,7 +1114,9 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     o_info.max_obj_size = o.info.maxObjectSize;
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
         // tee_pobj_lock_usage(o.pobj);
-        o_info.obj_usage = o.pobj.obj_info_usage;
+        with_pobj_usage_lock(&o.pobj, || {
+            o_info.obj_usage = o.pobj.obj_info_usage;
+        });
         // tee_pobj_unlock_usage(o.pobj);
     } else {
         o_info.obj_usage = o.info.objectUsage;
