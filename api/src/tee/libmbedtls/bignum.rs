@@ -78,6 +78,15 @@ impl From<BigNum> for Mpi {
     }
 }
 
+impl PartialEq for BigNum {
+    fn eq(&self, other: &Self) -> bool {
+        // 使用 Mpi 的 cmp 方法进行比较
+        self.cmp(other) == core::cmp::Ordering::Equal
+    }
+}
+
+impl Eq for BigNum {}
+
 const cil: usize = mem::size_of::<mpi_uint>();
 const bil: usize = cil << 3;
 
