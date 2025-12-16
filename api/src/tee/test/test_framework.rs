@@ -218,7 +218,7 @@ impl TestRunner {
         self.print_message(self.output.as_str());
 
         if self.stats.failed > 0 {
-            self.print_message("  >>> Some tests FAILED!");
+            self.print_error("  >>> Some tests FAILED!");
         } else {
             self.print_message("  >>> All tests PASSED!");
         }
@@ -226,6 +226,10 @@ impl TestRunner {
 
     fn print_message(&self, msg: &str) {
         info!("{}", msg);
+    }
+
+    fn print_error(&self, msg: &str) {
+        error!("{}", msg);
     }
 
     pub fn get_stats(&self) -> TestStats {
