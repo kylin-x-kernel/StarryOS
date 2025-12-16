@@ -162,7 +162,7 @@ optional = true
 [dependencies.axplat-aarch64-crosvm-virt]
 workspace = true
 optional = true
-features = ["irq", "fp-simd", "smp"]
+features = ["irq", "fp-simd", "smp", "rtc"]
 
 [patch.crates-io]
 axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
