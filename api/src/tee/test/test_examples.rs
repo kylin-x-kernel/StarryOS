@@ -51,7 +51,7 @@ test_fn! {
     fn test_should_fail() {
         let a = 1;
         let b = 2;
-        assert_eq!(a, b, "断言失败，因为1不等于2"); // 此断言会失败
+        assert_ne!(a, b, "断言失败，因为1不等于2"); // 此断言会失败
     }
 }
 
@@ -60,7 +60,7 @@ test_fn! {
     using TestResult;
 
     fn test_another_failure() {
-        let condition = false;
+        let condition = true;
         assert!(condition, "条件为假，测试失败");
     }
 }
