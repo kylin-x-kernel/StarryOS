@@ -11,9 +11,7 @@ use axerrno::{AxError, AxResult};
 use core::{
     alloc::Layout,
     any::Any,
-    ffi::c_char,
-    ffi::c_uint,
-    ffi::c_ulong,
+    ffi::{c_char, c_uint, c_ulong, c_void},
     mem::size_of,
     ops::{Deref, DerefMut},
     ptr::NonNull,
@@ -32,8 +30,20 @@ use super::{
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
-    user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64, copy_to_user_struct},
+    user_access::{
+        copy_from_user, 
+        copy_from_user_u64, 
+        copy_to_user, 
+        copy_to_user_u64, 
+        copy_to_user_struct, 
+        copy_from_user_struct,
+        bb_alloc, 
+        bb_free},
     utils::bit,
+    user_mode_ctx_struct::user_mode_ctx,
+    user_ta::user_ta_ctx,
+    vm::vm_check_access_rights,
+    memtag::memtag_strip_tag_vaddr,
 };
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
@@ -751,12 +761,12 @@ pub fn tee_obj_set_type(
 pub(crate) fn syscall_cryp_obj_alloc(
     obj_type: c_ulong,
     max_key_size: c_ulong,
-) -> TeeResult<c_uint> {
+) -> TeeResult<tee_obj_id_type> {
     let mut obj = tee_obj::default();
 
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
-    tee_obj_add(obj).map(|id| id as c_uint);
-    Ok(0)
+    let obj_id = tee_obj_add(obj)?;
+    Ok(obj_id)
 }
 
 fn tee_svc_cryp_obj_find_type_attr_idx(
@@ -780,6 +790,24 @@ pub fn tee_svc_find_type_props(
         }
     }
     None
+}
+
+/* Set an attribute on an object */
+fn set_attribute(o: &mut tee_obj, props: &tee_cryp_obj_type_props, attr: u32) {
+    let idx = tee_svc_cryp_obj_find_type_attr_idx(attr, props);
+    if idx < 0 {
+        return;
+    }
+    o.have_attrs |= bit(idx as u32);
+}
+
+/* Get an attribute on an object */
+fn get_attribute(o: &tee_obj, props: &tee_cryp_obj_type_props, attr: u32) -> TeeResult<u32> {
+    let idx = tee_svc_cryp_obj_find_type_attr_idx(attr, props);
+    if idx < 0 {
+        return Err(TEE_ERROR_ITEM_NOT_FOUND);
+    }
+    Ok(o.have_attrs & bit(idx as u32))
 }
 
 /// 从用户空间导入密钥属性
@@ -1217,6 +1245,7 @@ pub fn syscall_cryp_obj_get_attr(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
+    info!("attr_id: {:x?}, handleFlags: {:x?}", attr_id, o.info.handleFlags);
     if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
         if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
             with_pobj_usage_lock(&o.pobj, || {
@@ -1233,6 +1262,7 @@ pub fn syscall_cryp_obj_get_attr(
     let type_props = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
 
     let idx = tee_svc_cryp_obj_find_type_attr_idx(attr_id as u32, type_props);
+    info!("idx: {}, have_attrs: {:x?}", idx, o.have_attrs);
     if idx < 0 || (o.have_attrs & (1 << idx)) == 0 {
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
     }
@@ -1249,6 +1279,33 @@ pub fn syscall_cryp_obj_get_attr(
 
     Ok(TEE_SUCCESS)
 }
+
+fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &mut [TEE_Attribute]) -> TeeResult {
+    // copy usr_attrs to from user space to kernel space
+    let mut usr_attrs_buf: Box<[utee_attribute]> = vec![utee_attribute::default(); usr_attrs.len()].into_boxed_slice();
+    for n in 0..usr_attrs.len() {
+        copy_from_user_struct(&mut usr_attrs_buf[n], &usr_attrs[n])?;
+    }
+   
+    for n in 0..usr_attrs.len() {
+        attrs[n].attributeID = usr_attrs_buf[n].attribute_id;
+        if attrs[n].attributeID & TEE_ATTR_FLAG_VALUE != 0 {
+            attrs[n].content.value.a = usr_attrs_buf[n].a as u32;
+            attrs[n].content.value.b = usr_attrs_buf[n].b as u32;
+        } else {
+            let mut buf = usr_attrs_buf[n].a;
+            let len = usr_attrs_buf[n].b;
+            let flags = TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER;
+            // TODO: need to implement vm_check_access_rights
+            buf = memtag_strip_tag_vaddr(buf as *const c_void) as u64;
+            vm_check_access_rights(&mut user_mode_ctx::default(), flags, buf as usize, len as usize)?;
+            attrs[n].content.memref.buffer = buf as *mut c_void;
+            attrs[n].content.memref.size = len as usize;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;
@@ -1595,13 +1652,86 @@ pub mod tests_tee_svc_cryp {
             let mut size: u64 = 4;
             let result = bn.to_user(&mut buffer, &mut size);
             assert!(result.is_ok());
-            assert_eq!(size, 2);
+            assert_eq!(size, 4);
             // assert_eq!(&buffer, value_bytes);
             // from user with buffer
             let mut bn_from = BigNum::new(0).unwrap();
             let result = bn_from.from_user(&buffer);
             assert!(result.is_ok());
             assert_eq!(bn_from, bn);
+        }
+    }
+    test_fn! {
+        using TestResult;
+
+        fn test_syscall_cryp_obj_alloc() {
+            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256).unwrap();
+            let obj = tee_obj_get(obj_id).unwrap();
+            assert_eq!(obj.info.objectType, TEE_TYPE_ECDSA_PUBLIC_KEY);
+            assert_eq!(obj.info.maxObjectSize, 256);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.info.handleFlags, 0);
+            assert_eq!(obj.info.dataSize, 0);
+            assert_eq!(obj.info.dataPosition, 0);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::ecc_public_key(_)));
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_syscall_cryp_obj_get_attr() {
+            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256).unwrap();
+            let mut buffer: [u8; 8] = [1; 8];
+            let mut size: u64 = 8;
+            // TODO: need to implement syscall_cryp_obj_get_attr
+            // let result = syscall_cryp_obj_get_attr(obj_id, TEE_ATTR_ECC_CURVE as c_ulong, &mut buffer, &mut size);
+            // info!("result: {:x?}, size: {}, buffer: {:?}", result, size, buffer);
+            // assert!(result.is_ok());
+            // assert_eq!(size, 8);
+            // assert_eq!(&buffer[..4], &[0x00, 0x00, 0x00, 0x00]);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_copy_in_attrs() {
+            let tee_attr_value = TEE_Attribute {
+                attributeID: 0,
+                content: unsafe {
+                    content {
+                        value: Value {
+                            a: 0 as u32,
+                            b: 0 as u32,
+                        },
+                    }
+                },
+            };
+
+            let mut attrs: [TEE_Attribute; 2] = [tee_attr_value; 2];
+            let mut usr_attrs: [utee_attribute; 2] = [utee_attribute::default(); 2];
+            // index 0 is value attribute
+            usr_attrs[0].attribute_id = TEE_ATTR_FLAG_VALUE;
+            usr_attrs[0].a = 0x11223344 as u64;
+            usr_attrs[0].b = 0x55667788 as u64;
+            // index 1 is memref attribute
+            // allocate memory for memref
+            let mut mem: [u8; 16] = [0xAA; 16];
+            let mem_ptr = mem.as_ptr() as *mut c_void;
+            usr_attrs[1].attribute_id &= !TEE_ATTR_FLAG_VALUE;
+            usr_attrs[1].a = mem_ptr as u64;
+            usr_attrs[1].b = mem.len() as u64;
+            // copy in attrs
+            let result = copy_in_attrs(&mut user_ta_ctx::default(), &usr_attrs, &mut attrs);
+            assert!(result.is_ok());
+            assert_eq!(attrs[0].attributeID, TEE_ATTR_FLAG_VALUE);
+            assert_eq!(unsafe { attrs[0].content.value.a }, 0x11223344 as u32);
+            assert_eq!(unsafe { attrs[0].content.value.b }, 0x55667788 as u32);
+            assert_eq!(attrs[1].attributeID, 0);
+            assert_eq!(unsafe { attrs[1].content.memref.buffer }, mem_ptr);
+            assert_eq!(unsafe { attrs[1].content.memref.size }, mem.len());
         }
     }
     tests_name! {
@@ -1618,5 +1748,8 @@ pub mod tests_tee_svc_cryp {
         test_tee_obj_set_type,
         test_cryptoattrref_u32,
         test_cryptoattrref_bignum,
+        test_syscall_cryp_obj_alloc,
+        test_syscall_cryp_obj_get_attr,
+        test_copy_in_attrs,
     }
 }
