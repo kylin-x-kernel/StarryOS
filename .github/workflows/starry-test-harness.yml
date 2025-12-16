@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ARCH: aarch64
-      STARRYOS_ROOT: ${{ github.workspace }}/starry-test-harness/.cache/StarryOS
+      STARRYOS_ROOT: ${{ github.workspace }}/.cache/StarryOS
     steps:
       - name: Checkout Starry Test Harness
         uses: actions/checkout@v4
@@ -20,12 +20,12 @@ jobs:
           path: starry-test-harness
       
       - name: Create cache directory
-        run: mkdir -p starry-test-harness/.cache
+        run: mkdir -p .cache
       
       - name: Checkout StarryOS 
         uses: actions/checkout@v4
         with:
-          path: starry-test-harness/.cache/StarryOS
+          path: .cache/StarryOS
           submodules: recursive
 
       - name: Install Rust cache for harness
@@ -50,7 +50,7 @@ jobs:
       - name: 执行 ci-test
         working-directory: starry-test-harness
         run: |
-          export STARRYOS_COMMIT=$(git -C .cache/StarryOS rev-parse HEAD)
+          export STARRYOS_COMMIT=$(git -C ../.cache/StarryOS rev-parse HEAD)
           make ci-test run
 
       - name: Dump suite logs
