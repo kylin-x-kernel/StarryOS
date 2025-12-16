@@ -109,8 +109,7 @@ pub fn copy_from_user_struct<T: Sized>(kernel_dst: &mut T, user_src: &T) -> TeeR
     copy_from_user(dst_bytes, src_bytes, size_of::<T>())
 }
 
-#[inline(always)]
-/// copy from user private
+#[inline(always)]/// copy from user private
 ///
 /// TODO: need check access permission
 pub fn copy_from_user_private(kaddr: &mut [u8], uaddr: &[u8], len: size_t) -> TeeResult {
