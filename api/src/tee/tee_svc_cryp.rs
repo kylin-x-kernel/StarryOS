@@ -26,7 +26,12 @@ use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{ecc_keypair, ecc_public_key},
-    libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_num_bytes},
+    libmbedtls::bignum::{
+        crypto_bignum_bin2bn,
+        crypto_bignum_bn2bin,
+        crypto_bignum_num_bytes,
+        crypto_bignum_num_bits,
+    },
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
@@ -39,7 +44,7 @@ use super::{
         copy_from_user_struct,
         bb_alloc, 
         bb_free},
-    utils::bit,
+    utils::{bit, bit32},
     user_mode_ctx_struct::user_mode_ctx,
     user_ta::user_ta_ctx,
     vm::vm_check_access_rights,
@@ -52,6 +57,7 @@ pub const TEE_TYPE_ATTR_OPTIONAL_GROUP: u32 = bit(2);
 pub const TEE_TYPE_ATTR_SIZE_INDICATOR: u32 = bit(3);
 pub const TEE_TYPE_ATTR_GEN_KEY_OPT: u32 = bit(4);
 pub const TEE_TYPE_ATTR_GEN_KEY_REQ: u32 = bit(5);
+pub const TEE_TYPE_ATTR_BIGNUM_MAXBITS: u32 = bit(6);
 
 /* Handle storing of generic secret keys of varying lengths */
 pub const ATTR_OPS_INDEX_SECRET: u32 = 0;
@@ -1400,6 +1406,134 @@ fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_pro
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
     }
     
+    Ok(())
+}
+
+fn get_ec_key_size(curve: u32) -> TeeResult<usize> {
+    let mut key_size: usize = 0;
+    match curve {
+        TEE_ECC_CURVE_NIST_P192 => {
+            key_size = 192;
+        }
+        TEE_ECC_CURVE_NIST_P224 => {
+            key_size = 224;
+        }
+        TEE_ECC_CURVE_NIST_P256 => {
+            key_size = 256;
+        }
+        TEE_ECC_CURVE_NIST_P384 => {
+            key_size = 384;
+        }
+        TEE_ECC_CURVE_NIST_P521 => {
+            key_size = 521;
+        }
+        TEE_ECC_CURVE_SM2 | TEE_ECC_CURVE_25519 => {
+            key_size = 256;
+        }
+        _ => {
+            return Err(TEE_ERROR_NOT_SUPPORTED);
+        }
+    }
+    Ok(key_size)
+}
+
+fn tee_svc_cryp_obj_populate_type(
+    obj: &mut tee_obj,
+    type_props: &tee_cryp_obj_type_props,
+    attrs: &[TEE_Attribute],
+) -> TeeResult {
+    let mut have_attrs: u32 = 0;
+    let mut obj_size: usize = 0;
+    let mut idx: isize = 0;
+
+    if obj.attr.is_empty() {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    for attr in attrs {
+        // find attribute index in type properties
+        idx = tee_svc_cryp_obj_find_type_attr_idx(attr.attributeID, type_props);
+        /* attribute not defined in current object type */
+        if idx < 0 {
+            return Err(TEE_ERROR_ITEM_NOT_FOUND);
+        }
+        have_attrs |= bit32(idx as u32);
+
+            let mut attr_ref = obj.attr[0].get_attr_by_id(attr.attributeID as c_ulong)?;
+            if attr.attributeID & TEE_ATTR_FLAG_VALUE != 0 {
+                // change attrs.content.value to &[]
+                let value: &[u8] = unsafe {
+                    core::slice::from_raw_parts(
+                        (&attr.content.value as *const tee_raw_sys::Value) as *const u8,
+                        core::mem::size_of::<tee_raw_sys::Value>(),
+                    )
+                };
+                attr_ref.from_user(value)?;
+            } else {
+                // change attrs.content.ref to &[]
+                let buffer: &[u8] = unsafe {
+                    core::slice::from_raw_parts(
+                        (attr.content.memref.buffer as *const u8) as *const u8,
+                        attr.content.memref.size,
+                    )
+                };
+                attr_ref.from_user(buffer)?;
+            }
+
+        /*
+		 * The attribute that gives the size of the object is
+		 * flagged with TEE_TYPE_ATTR_SIZE_INDICATOR.
+		 */
+        if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_SIZE_INDICATOR as u16 != 0 {
+            /* There should be only one */
+            if obj_size != 0 {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+
+            /*
+             * For ECDSA/ECDH we need to translate curve into
+             * object size
+             */
+            if attr.attributeID == TEE_ATTR_ECC_CURVE {
+                // get ECC curve size
+                obj_size = get_ec_key_size(unsafe { attr.content.value.a })?;
+            } else {
+                let obj_type: TEE_ObjectType = obj.info.objectType;
+                let sz: usize = obj.info.maxObjectSize as usize;
+
+                obj_size = unsafe { attr.content.memref.size } * 8;
+                if is_gp_legacy_des_key_size(obj_type, sz) {
+                    obj_size -= obj_size / 8;
+                }
+            }
+            if obj_size > obj.info.maxObjectSize as usize {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+            check_key_size(type_props, obj_size)?;
+        }
+        /*
+		 * Bignum attributes limited by the number of bits in
+		 * o->info.objectSize are flagged with
+		 * TEE_TYPE_ATTR_BIGNUM_MAXBITS.
+		 */
+        if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_BIGNUM_MAXBITS as u16 != 0 {
+            if crypto_bignum_num_bits(attr_ref.as_bignum().ok_or(TEE_ERROR_BAD_STATE)?)? > obj.info.maxObjectSize as usize {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+        }
+
+        obj.have_attrs |= have_attrs;
+        obj.info.objectSize = obj_size as u32;
+        /*
+         * In GP Internal API Specification 1.0 the partity bits aren't
+         * counted when telling the size of the key in bits so remove the
+         * parity bits here.
+         */
+        if is_gp_legacy_des_key_size(obj.info.objectType, obj.info.maxObjectSize as usize) {
+            obj.info.objectSize -= obj.info.objectSize / 8;
+        }
+    }
+
     Ok(())
 }
 
