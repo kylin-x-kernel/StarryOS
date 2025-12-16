@@ -34,6 +34,14 @@ cd StarryOS
 git submodule update --init --recursive
 ```
 
+If the branch being tracked by the submodule has newer commits, you can use the following command to track it:
+
+```bash
+$ git submodule update --remote --recursive
+```
+
+After updating, please commit the latest submodule branch changes.
+
 ### 2. Install Prerequisites
 
 #### A. Using Docker
