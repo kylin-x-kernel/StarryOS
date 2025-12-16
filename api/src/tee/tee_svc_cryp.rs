@@ -28,14 +28,13 @@ use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{ecc_keypair, ecc_public_key},
-    libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin},
+    libmbedtls::bignum::{crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_num_bytes},
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
     user_access::{copy_from_user, copy_from_user_u64, copy_to_user, copy_to_user_u64, copy_to_user_struct},
     utils::bit,
 };
-use tee_raw_sys::*;
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
 pub const TEE_TYPE_ATTR_REQUIRED: u32 = bit(1);
@@ -153,9 +152,78 @@ pub enum TeeCryptObjAttr {
     value(AttrValue),
 }
 
+/// 用于包装不同类型的属性值引用
+pub enum CryptoAttrRef<'a> {
+    BigNum(&'a mut BigNum),
+    U32(&'a mut u32),
+}
+
+impl TeeCryptObjAttrOps for CryptoAttrRef<'_> {
+    fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
+        match self {
+            CryptoAttrRef::BigNum(bn) => {
+                bn.from_user(user_buffer)
+            }
+            CryptoAttrRef::U32(val) => {
+                let mut attr = AttrValue::from(**val);
+                attr.from_user(user_buffer)?;
+                **val = *attr.as_u32();
+                Ok(())
+            }
+        }
+    }
+    fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.to_user(buffer, size_ref),
+            CryptoAttrRef::U32(val) => {
+                let attr = AttrValue::from(**val);
+                attr.to_user(buffer, size_ref)
+            }
+        }
+    }
+}
+
+impl<'a> CryptoAttrRef<'a> {
+    /// 尝试转换为 &mut BigNum，如果不是 BigNum 类型则返回 None
+    pub fn as_bignum_mut(&mut self) -> Option<&mut BigNum> {
+        match self {
+            CryptoAttrRef::BigNum(bn) => Some(bn),
+            _ => None,
+        }
+    }
+
+    /// 尝试转换为 &BigNum，如果不是 BigNum 类型则返回 None
+    pub fn as_bignum(&self) -> Option<&BigNum> {
+        match self {
+            CryptoAttrRef::BigNum(bn) => Some(bn),
+            _ => None,
+        }
+    }
+
+    /// 尝试转换为 &mut u32，如果不是 u32 类型则返回 None
+    pub fn as_u32_mut(&mut self) -> Option<&mut u32> {
+        match self {
+            CryptoAttrRef::U32(val) => Some(val),
+            _ => None,
+        }
+    }
+
+    /// 尝试转换为 &u32，如果不是 u32 类型则返回 None
+    pub fn as_u32(&self) -> Option<&u32> {
+        match self {
+            CryptoAttrRef::U32(val) => Some(val),
+            _ => None,
+        }
+    }
+}
+
 pub trait tee_crypto_ops {
     // const TEE_TYPE : u32;
     fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self>
+    where
+        Self: Sized;
+
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef>
     where
         Self: Sized;
 }
@@ -232,6 +300,14 @@ impl tee_crypto_ops for TeeCryptObj {
                 Ok(TeeCryptObj::obj_secret(tee_cryp_obj_secret_wrapper::new(alloc_size)))
             }
             _ => Err(TEE_ERROR_NOT_SUPPORTED),
+        }
+    }
+
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef> {
+        match self {
+            TeeCryptObj::ecc_public_key(key) => key.get_attr_by_id(attr_id),
+            TeeCryptObj::ecc_keypair(keypair) => keypair.get_attr_by_id(attr_id),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
         }
     }
 }
@@ -317,6 +393,7 @@ impl TeeCryptObjAttrOps for BigNum {
         // copy size from user
         copy_from_user_u64(&mut s, size_ref)?;
         let req_size: u64 = 0; // TODO: call crypto_bignum_num_bytes
+        let req_size = crypto_bignum_num_bytes(self)? as u64;
         copy_to_user_u64(size_ref, &req_size)?;
 
         if req_size == 0 {
@@ -1113,11 +1190,9 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     o_info.obj_size = o.info.objectSize;
     o_info.max_obj_size = o.info.maxObjectSize;
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        // tee_pobj_lock_usage(o.pobj);
         with_pobj_usage_lock(&o.pobj, || {
             o_info.obj_usage = o.pobj.obj_info_usage;
         });
-        // tee_pobj_unlock_usage(o.pobj);
     } else {
         o_info.obj_usage = o.info.objectUsage;
     }
@@ -1129,6 +1204,51 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     Ok(())
 }
 
+pub fn syscall_cryp_obj_get_attr(
+    obj_id: c_ulong,
+    attr_id: c_ulong,
+    buffer: &mut [u8],
+    size: &mut u64,
+) -> TeeResult<u32> {
+    let mut obj_usage = 0;
+    let mut o = tee_obj_get(obj_id as tee_obj_id_type)?;
+
+    if o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
+        if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+            with_pobj_usage_lock(&o.pobj, || {
+                obj_usage = o.pobj.obj_info_usage;
+            });
+        } else {
+            obj_usage = o.info.objectUsage;
+        }
+        if obj_usage & TEE_USAGE_EXTRACTABLE == 0 {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+    }
+
+    let type_props = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+
+    let idx = tee_svc_cryp_obj_find_type_attr_idx(attr_id as u32, type_props);
+    if idx < 0 || (o.have_attrs & (1 << idx)) == 0 {
+        return Err(TEE_ERROR_ITEM_NOT_FOUND);
+    }
+
+    // let ops = type_props.type_attrs[idx].ops_index;
+    // let attr = (o.attr[idx] as *const u8) as *const u8;
+    // return ops.to_user(attr, sess, buffer, size);
+    if let Some(o_mut) = Arc::get_mut(&mut o) {
+        if ! o_mut.attr.is_empty() {
+            let attr_ref = o_mut.attr[0].get_attr_by_id(attr_id)?;
+            attr_ref.to_user(buffer, size)?;
+        }
+    }
+
+    Ok(TEE_SUCCESS)
+}
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;
@@ -1156,7 +1276,7 @@ pub mod tests_tee_svc_cryp {
                 )
             };
             let value: [u32; 2] = [unsafe { *(attr_bytes.as_ptr() as *const u32) }, 0];
-            assert_eq!(value[0], 0xAABBCCDD);
+            assert_eq!(value[0], 0xAABBCCDD as u32);
             assert_eq!(size_of_val(&value), 8);
 
             // test tee_u32_to_big_endian
@@ -1341,7 +1461,7 @@ pub mod tests_tee_svc_cryp {
             let mut offs_read: size_t = 0;
             let result = op_u32_from_binary_helper(&mut read_value, &buffer, &mut offs_read);
             assert!(result.is_ok());
-            assert_eq!(read_value, 0x99AABBCC);
+            assert_eq!(read_value, 0x99AABBCC as u32);
             assert_eq!(offs_read, 4);
         }
     }
@@ -1421,7 +1541,6 @@ pub mod tests_tee_svc_cryp {
 
             let mut obj = tee_obj::default();
             let result = tee_obj_set_type(&mut obj, TEE_TYPE_ECDSA_PUBLIC_KEY, 256);
-            info!("result: {:x?}", result);
             assert!(result.is_ok());
             assert_eq!(obj.info.objectType, TEE_TYPE_ECDSA_PUBLIC_KEY);
             assert_eq!(obj.info.maxObjectSize, 256);
@@ -1434,6 +1553,57 @@ pub mod tests_tee_svc_cryp {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_cryptoattrref_u32() {
+            // test CryptoAttrRef::U32
+            let mut value: u32 = 0;
+            let value_c: [u32; 2] = [0x11223344, 0];
+            let value_bytes: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    &value_c as *const [u32; 2] as *const u8,
+                    core::mem::size_of::<[u32; 2]>(),
+                )
+            };
+            {
+                let mut attr_ref = CryptoAttrRef::U32(&mut value);
+                let result = attr_ref.from_user(value_bytes);
+                assert!(result.is_ok());
+            }
+            assert_eq!(value, 0x11223344);
+            
+            let mut buffer: [u8; 8] = [0; 8];
+            let mut size: u64 = 8;
+            {
+                let attr_ref = CryptoAttrRef::U32(&mut value);
+                let result = attr_ref.to_user(&mut buffer, &mut size);
+                assert!(result.is_ok());
+            }
+            assert_eq!(size, 8);
+            assert_eq!(&buffer, value_bytes);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_cryptoattrref_bignum() {
+            // test CryptoAttrRef::BigNum
+            let mut bn = BigNum::new(0x11223344).unwrap();
+            let mut buffer: [u8; 4] = [0; 4];
+            let mut size: u64 = 4;
+            let result = bn.to_user(&mut buffer, &mut size);
+            assert!(result.is_ok());
+            assert_eq!(size, 2);
+            // assert_eq!(&buffer, value_bytes);
+            // from user with buffer
+            let mut bn_from = BigNum::new(0).unwrap();
+            let result = bn_from.from_user(&buffer);
+            assert!(result.is_ok());
+            assert_eq!(bn_from, bn);
+        }
+    }
     tests_name! {
         TEST_TEE_SVC_CRYP;
         //------------------------
@@ -1446,5 +1616,7 @@ pub mod tests_tee_svc_cryp {
         test_op_attr_value_to_user,
         test_op_attr_value_from_binary,
         test_tee_obj_set_type,
+        test_cryptoattrref_u32,
+        test_cryptoattrref_bignum,
     }
 }
