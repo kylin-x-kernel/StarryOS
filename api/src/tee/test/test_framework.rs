@@ -5,11 +5,9 @@
 //! 框架支持手动注册测试用例，并提供基础的断言功能。
 extern crate alloc;
 
+use super::test_framework_basic::TestResult;
 use alloc::format;
 use core::fmt::Write;
-use super::{
-	test_framework_basic::TestResult,
-};
 // 测试结果枚举
 
 impl TestResult {
@@ -216,7 +214,7 @@ impl TestRunner {
             "  >>> Test results: {} passed, {} failed, {} ignored, {} total",
             self.stats.passed, self.stats.failed, self.stats.ignored, self.stats.total
         )
-            .ok();
+        .ok();
         self.print_message(self.output.as_str());
 
         if self.stats.failed > 0 {
@@ -227,7 +225,7 @@ impl TestRunner {
     }
 
     fn print_message(&self, msg: &str) {
-		info!("{}", msg);
+        info!("{}", msg);
     }
 
     pub fn get_stats(&self) -> TestStats {
@@ -240,11 +238,26 @@ impl TestRunner {
 macro_rules! assert_eq {
     ($left:expr, $right:expr) => {
         if $left != $right {
+            // 输出调用时的表达式文本和实际值
+            error!(
+                "assert_eq! failed: {} ({:x?}) == {} ({:x?})",
+                stringify!($left),
+                $left,
+                stringify!($right),
+                $right
+            );
             return TestResult::Failed;
         }
     };
     ($left:expr, $right:expr, $($arg:tt)*) => {
         if $left != $right {
+            error!(
+                "assert_eq! failed: {} ({:x?}) == {} ({:x?})",
+                stringify!($left),
+                $left,
+                stringify!($right),
+                $right
+            );
             return TestResult::Failed;
         }
     };
@@ -253,11 +266,25 @@ macro_rules! assert_eq {
 macro_rules! assert_ne {
     ($left:expr, $right:expr) => {
         if $left == $right {
+            error!(
+                "assert_ne! failed: {} ({:x?}) == {} ({:x?})",
+                stringify!($left),
+                $left,
+                stringify!($right),
+                $right
+            );
             return TestResult::Failed;
         }
     };
     ($left:expr, $right:expr, $($arg:tt)*) => {
         if $left == $right {
+            error!(
+                "assert_ne! failed: {} ({:x?}) == {} ({:x?})",
+                stringify!($left),
+                $left,
+                stringify!($right),
+                $right
+            );
             return TestResult::Failed;
         }
     };
@@ -266,11 +293,13 @@ macro_rules! assert_ne {
 macro_rules! assert {
     ($cond:expr) => {
         if !$cond {
+            error!("assert! failed: {}", stringify!($cond));
             return TestResult::Failed;
         }
     };
     ($cond:expr, $($arg:tt)*) => {
         if !$cond {
+            error!("assert! failed: {}", stringify!($cond));
             return TestResult::Failed;
         }
     };
