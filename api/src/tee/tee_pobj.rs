@@ -65,19 +65,19 @@ pub mod tests_tee_pobj {
             let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
                 Ok(())
             });
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok::<(), ()>(()));
             // set flag
             pobj.flags = TEE_DATA_FLAG_SHARE_WRITE;
             let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
                 Ok(())
             });
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok::<(), ()>(()));
             // set flag
             pobj.flags = TEE_DATA_FLAG_SHARE_READ;
             let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
                 Ok(())
             });
-            assert_eq!(result, Ok(()));
+            assert_eq!(result, Ok::<(), ()>(()));
         }
     }
 

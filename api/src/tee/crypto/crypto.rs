@@ -11,7 +11,8 @@
 use crate::tee::{
     TeeResult,
     libmbedtls::bignum::{BigNum, crypto_bignum_allocate},
-    tee_svc_cryp::tee_crypto_ops,
+    tee_svc_cryp::{tee_crypto_ops, CryptoAttrRef},
+    tee_obj::tee_obj_id_type,
 };
 use core::default::Default;
 use tee_raw_sys::*;
@@ -53,6 +54,15 @@ impl tee_crypto_ops for ecc_public_key {
             curve: 0,
         })
     }
+
+    fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef> {
+        match attr_id as u32{
+            TEE_ATTR_ECC_PUBLIC_VALUE_X => Ok(CryptoAttrRef::BigNum(&mut self.x)),
+            TEE_ATTR_ECC_PUBLIC_VALUE_Y => Ok(CryptoAttrRef::BigNum(&mut self.y)),
+            TEE_ATTR_ECC_CURVE => Ok(CryptoAttrRef::U32(&mut self.curve)),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,5 +103,15 @@ impl tee_crypto_ops for ecc_keypair {
             y: crypto_bignum_allocate(key_size_bits)?,
             curve: 0,
         })
+    }
+
+    fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef> {
+        match attr_id as u32{
+            TEE_ATTR_ECC_PRIVATE_VALUE => Ok(CryptoAttrRef::BigNum(&mut self.d)),
+            TEE_ATTR_ECC_PUBLIC_VALUE_X => Ok(CryptoAttrRef::BigNum(&mut self.x)),
+            TEE_ATTR_ECC_PUBLIC_VALUE_Y => Ok(CryptoAttrRef::BigNum(&mut self.y)),
+            TEE_ATTR_ECC_CURVE => Ok(CryptoAttrRef::U32(&mut self.curve)),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+        }
     }
 }
