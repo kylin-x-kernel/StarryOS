@@ -67,7 +67,7 @@ pub const ATTR_OPS_INDEX_25519: u32 = 3;
 pub const ATTR_OPS_INDEX_448: u32 = 4;
 
 #[repr(C)]
-struct tee_cryp_obj_type_attrs {
+pub(crate) struct tee_cryp_obj_type_attrs {
     attr_id: u32,
     flags: u16,
     ops_index: u16,
@@ -528,7 +528,7 @@ pub struct tee_cryp_obj_type_props {
     pub type_attrs: &'static [tee_cryp_obj_type_attrs],
 }
 #[repr(C)]
-struct tee_cryp_obj_secret {
+pub(crate) struct tee_cryp_obj_secret {
     key_size: u32,
     alloc_size: u32,
     /*
@@ -1280,6 +1280,12 @@ pub fn syscall_cryp_obj_get_attr(
     Ok(TEE_SUCCESS)
 }
 
+/// copy in attributes from user space to kernel space
+/// 
+/// _uctx: user_ta_ctx, not used now
+/// usr_attrs: user space attributes
+/// attrs: kernel space attributes
+/// return: TeeResult
 fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &mut [TEE_Attribute]) -> TeeResult {
     // copy usr_attrs to from user space to kernel space
     let mut usr_attrs_buf: Box<[utee_attribute]> = vec![utee_attribute::default(); usr_attrs.len()].into_boxed_slice();
@@ -1303,6 +1309,97 @@ fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &
             attrs[n].content.memref.size = len as usize;
         }
     }
+    Ok(())
+}
+
+enum attr_usage {
+	ATTR_USAGE_POPULATE = 0,
+	ATTR_USAGE_GENERATE_KEY = 1,
+}
+
+fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_props, attrs: &[TEE_Attribute]) -> TeeResult {
+    let mut required_flag = 0;
+    let mut opt_flag = 0;
+    let mut all_opt_needed = false;
+    let mut req_attrs: u32 = 0;
+    let mut opt_grp_attrs: u32 = 0;
+    let mut attrs_found: u32 = 0;
+    let mut n: usize = 0;
+    let mut bit: u32 = 0;
+    let mut flags: u32 = 0;
+    let mut idx: isize = 0;
+
+    match usage {
+        attr_usage::ATTR_USAGE_POPULATE => {
+            required_flag = TEE_TYPE_ATTR_REQUIRED;
+            opt_flag = TEE_TYPE_ATTR_OPTIONAL_GROUP;
+            all_opt_needed = true;
+        }
+        attr_usage::ATTR_USAGE_GENERATE_KEY => {
+            required_flag = TEE_TYPE_ATTR_GEN_KEY_REQ;
+            opt_flag = TEE_TYPE_ATTR_GEN_KEY_OPT;
+            all_opt_needed = false;
+        }
+    }
+
+    /*
+	 * First find out which attributes are required and which belong to
+	 * the optional group
+	 */
+    for n in 0..type_props.num_type_attrs as usize {
+        bit = 1 << n;   
+        flags = type_props.type_attrs[n].flags as u32;
+
+        if flags & required_flag != 0 {
+            req_attrs |= bit;
+        } else if flags & opt_flag != 0 {
+            opt_grp_attrs |= bit;
+        }
+    }
+
+    /*
+	 * Verify that all required attributes are in place and
+	 * that the same attribute isn't repeated.
+	 */
+    for n in 0..attrs.len() {
+        idx = tee_svc_cryp_obj_find_type_attr_idx(attrs[n].attributeID as u32, type_props);
+
+        /* attribute not defined in current object type */
+        if idx < 0 {
+            return Err(TEE_ERROR_ITEM_NOT_FOUND);
+        }
+
+        bit = 1 << idx;
+        
+        /* attribute not repeated */
+        if (attrs_found & bit) != 0 {
+            return Err(TEE_ERROR_ITEM_NOT_FOUND);
+        }
+
+		/*
+		 * Attribute not defined in current object type for this
+		 * usage.
+		 */
+        if (bit & (req_attrs | opt_grp_attrs)) == 0 {
+            return Err(TEE_ERROR_ITEM_NOT_FOUND);
+        }
+        
+        attrs_found |= bit;
+    }
+
+    /* Required attribute missing */
+    if (attrs_found & req_attrs) != req_attrs {
+        return Err(TEE_ERROR_ITEM_NOT_FOUND);
+    }
+
+    /*
+	 * If the flag says that "if one of the optional attributes are included
+	 * all of them has to be included" this must be checked.
+	 */
+    if all_opt_needed && (attrs_found & opt_grp_attrs) != 0 && (attrs_found & opt_grp_attrs) != opt_grp_attrs {
+        return Err(TEE_ERROR_ITEM_NOT_FOUND);
+    }
+    
     Ok(())
 }
 
@@ -1734,6 +1831,7 @@ pub mod tests_tee_svc_cryp {
             assert_eq!(unsafe { attrs[1].content.memref.size }, mem.len());
         }
     }
+
     tests_name! {
         TEST_TEE_SVC_CRYP;
         //------------------------
