@@ -6,24 +6,28 @@
 
 #![allow(non_camel_case_types, non_snake_case)]
 #![allow(unused_imports)]
+mod config;
+mod crypto;
+mod inter_ta;
+mod libmbedtls;
+mod libutee;
 mod log;
 mod property;
+mod protocol;
 mod tee_fs;
 mod tee_obj;
 mod tee_pobj;
 mod tee_session;
 mod tee_svc_cryp;
-mod user_access;
-mod libmbedtls;
-mod libutee;
-mod utils;
+mod tee_ta_manager;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
 mod time;
-mod config;
-mod crypto;
+mod user_access;
+mod utils;
+mod uuid;
 
 use core::arch::asm;
 
@@ -39,6 +43,7 @@ use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
 
+use crate::tee::inter_ta::sys_tee_scn_open_ta_session;
 use crate::tee::property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index};
 
 pub type TeeResult<T = ()> = Result<T, u32>;
@@ -70,6 +75,13 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg1() as _,
             _uctx.arg2() as _,
             _uctx.arg3() as _,
+        ),
+        Sysno::tee_scn_open_ta_session => sys_tee_scn_open_ta_session(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+            _uctx.arg4() as _,
         ),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
