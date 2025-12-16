@@ -52,9 +52,13 @@ impl<T> Deref for AssumeSync<T> {
         &self.0
     }
 }
+
+/// Tee session context trait
 #[cfg(feature = "tee")]
 pub trait TeeSessionCtxTrait {
+    /// Get the any reference of the tee session context
     fn as_any(&self) -> &dyn Any;
+    /// Get the any mutable reference of the tee session context
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 

@@ -6,8 +6,9 @@
 
 #![allow(non_camel_case_types, non_snake_case)]
 #![allow(unused_imports)]
-mod config;
-mod crypto;
+#![allow(unused)]
+#![allow(missing_docs)]
+#![allow(non_upper_case_globals)]
 mod inter_ta;
 mod libmbedtls;
 mod libutee;
@@ -33,6 +34,8 @@ mod user_ta;
 mod types_ext;
 mod memtag;
 mod uuid;
+mod user_access;
+mod utils;
 use core::arch::asm;
 
 use log::*;
