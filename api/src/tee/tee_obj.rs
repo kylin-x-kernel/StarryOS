@@ -5,7 +5,7 @@ use alloc::{
 };
 use axerrno::{AxError, AxResult};
 use axtask::current;
-use core::default;
+use core::{default, ffi::c_ulong};
 use flatten_objects::FlattenObjects;
 use slab::Slab;
 use spin::RwLock;
@@ -22,7 +22,7 @@ use super::{
     tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},
 };
 
-pub type tee_obj_id_type = usize;
+pub type tee_obj_id_type = c_ulong; //usize;
 /// The maximum number of open files
 pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 
@@ -35,7 +35,7 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 pub struct tee_obj {
     pub info: TEE_ObjectInfo,
     busy: bool,      /* true if used by an operation */
-    have_attrs: u32, /* bitfield identifying set properties */
+    pub have_attrs: u32, /* bitfield identifying set properties */
     //void *attr;
     pub attr: Vec<TeeCryptObj>,
     ds_pos: size_t,
@@ -73,7 +73,7 @@ pub fn tee_obj_add(obj: tee_obj) -> TeeResult<tee_obj_id_type> {
 }
 
 pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<tee_obj>> {
-    with_tee_session_ctx(|ctx| match ctx.objects.get(obj_id) {
+    with_tee_session_ctx(|ctx| match ctx.objects.get(obj_id as _) {
         Some(obj) => Ok(Arc::clone(obj)),
         None => Err(TEE_ERROR_ITEM_NOT_FOUND),
     })
