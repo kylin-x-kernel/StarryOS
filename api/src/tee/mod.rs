@@ -25,10 +25,14 @@ mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
 mod time;
-mod user_access;
-mod utils;
+mod config;
+mod crypto;
+mod user_mode_ctx_struct;
+mod vm;
+mod user_ta;
+mod types_ext;
+mod memtag;
 mod uuid;
-
 use core::arch::asm;
 
 use log::*;

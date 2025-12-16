@@ -1,6 +1,7 @@
+use alloc::{boxed::Box, vec, vec::Vec};
 use axerrno::{AxError, AxResult};
 use cfg_if::cfg_if;
-use core::mem::{size_of, MaybeUninit, transmute};
+use core::mem::{MaybeUninit, size_of, transmute};
 use starry_vm::{VmError, VmPtr, vm_read_slice, vm_write_slice};
 use tee_raw_sys::libc_compat::size_t;
 use tee_raw_sys::*;
@@ -81,18 +82,10 @@ pub(crate) fn copy_to_user(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeRe
 /// - 调用者必须确保 `user_dst` 指向有效的用户空间内存
 /// - `T` 必须是 `repr(C)` 或 `repr(transparent)` 结构体，以确保内存布局可预测
 pub fn copy_to_user_struct<T: Sized>(user_dst: &mut T, kernel_src: &T) -> TeeResult {
-    let src_bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            kernel_src as *const T as *const u8,
-            size_of::<T>(),
-        )
-    };
-    let dst_bytes: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            user_dst as *mut T as *mut u8,
-            size_of::<T>(),
-        )
-    };
+    let src_bytes: &[u8] =
+        unsafe { core::slice::from_raw_parts(kernel_src as *const T as *const u8, size_of::<T>()) };
+    let dst_bytes: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut(user_dst as *mut T as *mut u8, size_of::<T>()) };
     copy_to_user(dst_bytes, src_bytes, size_of::<T>())
 }
 
@@ -109,19 +102,43 @@ pub fn copy_to_user_struct<T: Sized>(user_dst: &mut T, kernel_src: &T) -> TeeRes
 /// - 调用者必须确保 `user_src` 指向有效的用户空间内存
 /// - `T` 必须是 `repr(C)` 或 `repr(transparent)` 结构体，以确保内存布局可预测
 pub fn copy_from_user_struct<T: Sized>(kernel_dst: &mut T, user_src: &T) -> TeeResult {
-    let dst_bytes: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            kernel_dst as *mut T as *mut u8,
-            size_of::<T>(),
-        )
-    };
-    let src_bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            user_src as *const T as *const u8,
-            size_of::<T>(),
-        )
-    };
+    let dst_bytes: &mut [u8] =
+        unsafe { core::slice::from_raw_parts_mut(kernel_dst as *mut T as *mut u8, size_of::<T>()) };
+    let src_bytes: &[u8] =
+        unsafe { core::slice::from_raw_parts(user_src as *const T as *const u8, size_of::<T>()) };
     copy_from_user(dst_bytes, src_bytes, size_of::<T>())
+}
+
+#[inline(always)]
+/// copy from user private
+///
+/// TODO: need check access permission
+pub fn copy_from_user_private(kaddr: &mut [u8], uaddr: &[u8], len: size_t) -> TeeResult {
+    copy_from_user(kaddr, uaddr, len)
+}
+
+#[inline(always)]
+/// copy to user private
+///
+/// TODO: need check access permission
+pub fn copy_to_user_private(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeResult {
+    copy_to_user(uaddr, kaddr, len)
+}
+
+/// allocate memory from kernel
+/// 
+/// use for temporary memory allocation, can be optimized
+pub fn bb_alloc(len: usize) -> TeeResult<Box<[u8]>> {
+    let mut kbuf: Box<[u8]> = vec![0u8; len as _].into_boxed_slice();
+
+    Ok(kbuf)
+}
+
+/// free memory to kernel
+/// 
+/// use for temporary memory allocation, can be optimized
+pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
+    drop(kbuf);
 }
 
 #[cfg(feature = "tee_test")]
@@ -176,11 +193,22 @@ pub mod tests_user_access {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_bb_alloc_free() {
+            let kbuf = bb_alloc(10).unwrap();
+            assert_eq!(kbuf.len(), 10);
+            bb_free(kbuf, 10);
+        }
+    }
+
     tests_name! {
         TEST_USER_ACCESS;
         //------------------------
         test_copy_from_user,
         test_copy_to_user,
         test_copy_from_user_u64,
+        test_bb_alloc_free,
     }
 }
