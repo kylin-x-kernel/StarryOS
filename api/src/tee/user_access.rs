@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2025 KylinSoft Co., Ltd. <https://www.kylinos.cn/>
+// See LICENSES for license details.
+//
+// This file has been created by KylinSoft on 2025.
+
 use alloc::{boxed::Box, vec, vec::Vec};
 use axerrno::{AxError, AxResult};
 use cfg_if::cfg_if;
@@ -109,7 +115,8 @@ pub fn copy_from_user_struct<T: Sized>(kernel_dst: &mut T, user_src: &T) -> TeeR
     copy_from_user(dst_bytes, src_bytes, size_of::<T>())
 }
 
-#[inline(always)]/// copy from user private
+#[inline(always)]
+/// copy from user private
 ///
 /// TODO: need check access permission
 pub fn copy_from_user_private(kaddr: &mut [u8], uaddr: &[u8], len: size_t) -> TeeResult {
@@ -125,7 +132,7 @@ pub fn copy_to_user_private(uaddr: &mut [u8], kaddr: &[u8], len: size_t) -> TeeR
 }
 
 /// allocate memory from kernel
-/// 
+///
 /// use for temporary memory allocation, can be optimized
 pub fn bb_alloc(len: usize) -> TeeResult<Box<[u8]>> {
     let mut kbuf: Box<[u8]> = vec![0u8; len as _].into_boxed_slice();
@@ -134,7 +141,7 @@ pub fn bb_alloc(len: usize) -> TeeResult<Box<[u8]>> {
 }
 
 /// free memory to kernel
-/// 
+///
 /// use for temporary memory allocation, can be optimized
 pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
     drop(kbuf);

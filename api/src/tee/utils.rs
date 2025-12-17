@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2025 KylinSoft Co., Ltd. <https://www.kylinos.cn/>
+// See LICENSES for license details.
+//
+// This file has been created by KylinSoft on 2025.
 
 #[inline]
 pub const fn bit32(nr: u32) -> u32 {

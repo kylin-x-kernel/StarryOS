@@ -1,11 +1,9 @@
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TestResult {
     Ok,
     Failed,
     Ignored,
 }
-
 
 #[macro_export]
 macro_rules! test_fn {
