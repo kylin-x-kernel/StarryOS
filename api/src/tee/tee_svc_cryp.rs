@@ -1549,6 +1549,45 @@ fn tee_svc_cryp_obj_populate_type(
     Ok(())
 }
 
+pub fn syscall_cryp_obj_populate(
+    obj_id: c_ulong,
+    usr_attrs: &[utee_attribute],
+) -> TeeResult {
+    let mut o = tee_obj_get(obj_id as tee_obj_id_type)?;
+
+    /* Must be a transient object */
+    if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    /* Must not be initialized already */
+    if o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    let type_props = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_NOT_IMPLEMENTED)?;
+
+    let attr_null : TEE_Attribute = TEE_Attribute {
+        attributeID: 0,
+        content: content {
+            value: Value {
+                a: 0,
+                b: 0,
+            },
+        },
+    };
+    let mut attrs: Box<[TEE_Attribute]> = vec![attr_null; usr_attrs.len() as usize].into_boxed_slice();
+    copy_in_attrs(&mut user_ta_ctx::default(), usr_attrs, &mut attrs)?;
+
+    tee_svc_cryp_check_attr(attr_usage::ATTR_USAGE_POPULATE, type_props, &attrs)?;
+
+    let o_mut = Arc::get_mut(&mut o).ok_or(TEE_ERROR_BAD_STATE)?;
+    tee_svc_cryp_obj_populate_type(o_mut, type_props, &attrs)?;
+
+    o_mut.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
+
+    Ok(())
+}
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;
