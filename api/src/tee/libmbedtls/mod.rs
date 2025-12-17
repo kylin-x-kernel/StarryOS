@@ -7,3 +7,4 @@
 // for lib/libmbedtls/core
 
 pub mod bignum;
+pub mod ecc;

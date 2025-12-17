@@ -10,21 +10,24 @@
 
 use crate::tee::{
     TeeResult,
-    libmbedtls::bignum::{BigNum, crypto_bignum_allocate},
-    tee_svc_cryp::{tee_crypto_ops, CryptoAttrRef},
+    crypto::crypto_impl::crypto_ecc_keypair_ops,
+    libmbedtls::{
+        bignum::{BigNum, crypto_bignum_allocate},
+        ecc::{EcdOps, Sm2DsaOps, Sm2KepOps, Sm2PkeOps},
+    },
     tee_obj::tee_obj_id_type,
+    tee_svc_cryp::{CryptoAttrRef, tee_crypto_ops},
 };
+use alloc::boxed::Box;
 use core::default::Default;
 use tee_raw_sys::*;
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ecc_public_key {
     pub x: BigNum,
     pub y: BigNum,
     curve: u32,
-    // TODO: add ops
-    //const struct crypto_ecc_public_ops *ops; /* Key Operations */
+    // ops: Box<dyn crypto_ecc_public_ops>,
 }
 
 impl Default for ecc_public_key {
@@ -56,7 +59,7 @@ impl tee_crypto_ops for ecc_public_key {
     }
 
     fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef> {
-        match attr_id as u32{
+        match attr_id as u32 {
             TEE_ATTR_ECC_PUBLIC_VALUE_X => Ok(CryptoAttrRef::BigNum(&mut self.x)),
             TEE_ATTR_ECC_PUBLIC_VALUE_Y => Ok(CryptoAttrRef::BigNum(&mut self.y)),
             TEE_ATTR_ECC_CURVE => Ok(CryptoAttrRef::U32(&mut self.curve)),
@@ -65,14 +68,13 @@ impl tee_crypto_ops for ecc_public_key {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ecc_keypair {
     pub d: BigNum,
     pub x: BigNum,
     pub y: BigNum,
     pub curve: u32,
     // TODO: add ops
-    //const struct crypto_ecc_keypair_ops *ops; /* Key Operations */
+    pub ops: Box<dyn crypto_ecc_keypair_ops>,
 }
 
 impl Default for ecc_keypair {
@@ -82,31 +84,43 @@ impl Default for ecc_keypair {
             x: BigNum::default(),
             y: BigNum::default(),
             curve: 0,
+            ops: Box::new(EcdOps),
         }
     }
 }
 
 impl tee_crypto_ops for ecc_keypair {
     fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> {
-        match key_type {
-            TEE_TYPE_SM2_DSA_PUBLIC_KEY
-            | TEE_TYPE_SM2_PKE_PUBLIC_KEY
-            | TEE_TYPE_SM2_KEP_PUBLIC_KEY => {
-                return Err(TEE_ERROR_NOT_IMPLEMENTED);
+        let mut curve = 0;
+
+        let ops: Box<dyn crypto_ecc_keypair_ops> = match key_type {
+            TEE_TYPE_ECDSA_KEYPAIR | TEE_TYPE_ECDH_KEYPAIR => Box::new(EcdOps),
+            TEE_TYPE_SM2_DSA_KEYPAIR => {
+                curve = TEE_ECC_CURVE_SM2;
+                Box::new(Sm2DsaOps)
             }
-            _ => {}
+            TEE_TYPE_SM2_PKE_KEYPAIR => {
+                curve = TEE_ECC_CURVE_SM2;
+                Box::new(Sm2PkeOps)
+            }
+            TEE_TYPE_SM2_KEP_KEYPAIR => {
+                curve = TEE_ECC_CURVE_SM2;
+                Box::new(Sm2KepOps)
+            }
+            _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
         };
 
         Ok(ecc_keypair {
             d: crypto_bignum_allocate(key_size_bits)?,
             x: crypto_bignum_allocate(key_size_bits)?,
             y: crypto_bignum_allocate(key_size_bits)?,
-            curve: 0,
+            curve,
+            ops,
         })
     }
 
     fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef> {
-        match attr_id as u32{
+        match attr_id as u32 {
             TEE_ATTR_ECC_PRIVATE_VALUE => Ok(CryptoAttrRef::BigNum(&mut self.d)),
             TEE_ATTR_ECC_PUBLIC_VALUE_X => Ok(CryptoAttrRef::BigNum(&mut self.x)),
             TEE_ATTR_ECC_PUBLIC_VALUE_Y => Ok(CryptoAttrRef::BigNum(&mut self.y)),
@@ -115,3 +129,11 @@ impl tee_crypto_ops for ecc_keypair {
         }
     }
 }
+
+impl PartialEq for ecc_keypair {
+    fn eq(&self, other: &Self) -> bool {
+        self.d == other.d && self.x == other.x && self.y == other.y && self.curve == other.curve
+    }
+}
+
+impl Eq for ecc_keypair {}

@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2025 KylinSoft Co., Ltd. <https://www.kylinos.cn/>
+// See LICENSES for license details.
+//
+// This file has been created by KylinSoft on 2025.
+
 use alloc::{
     boxed::Box,
     sync::Arc,
@@ -34,7 +40,7 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 #[repr(C)]
 pub struct tee_obj {
     pub info: TEE_ObjectInfo,
-    busy: bool,      /* true if used by an operation */
+    busy: bool,          /* true if used by an operation */
     pub have_attrs: u32, /* bitfield identifying set properties */
     //void *attr;
     pub attr: Vec<TeeCryptObj>,
@@ -46,7 +52,7 @@ pub struct tee_obj {
 impl default::Default for tee_obj {
     fn default() -> Self {
         tee_obj {
-            info : TEE_ObjectInfo {
+            info: TEE_ObjectInfo {
                 objectType: 0,
                 objectSize: 0,
                 maxObjectSize: 0,

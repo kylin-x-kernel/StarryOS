@@ -3,11 +3,15 @@
 // See LICENSES for license details.
 //
 // This file has been created by KylinSoft on 2025.
-use core::{cmp::Ordering, mem, default, ops::{Deref, DerefMut}};
+use alloc::vec;
+use core::{
+    cmp::Ordering,
+    default, mem,
+    ops::{Deref, DerefMut},
+};
 use mbedtls::bignum::Mpi;
 use mbedtls_sys_auto::*;
 use tee_raw_sys::*;
-use alloc::vec;
 
 use crate::tee::TeeResult;
 use crate::tee::config::CFG_CORE_BIGNUM_MAX_BITS;
@@ -98,12 +102,12 @@ fn bits_to_limbs(i: usize) -> usize {
 ///     
 /// a: BigNum
 /// Returns: number of bytes
-pub fn crypto_bignum_num_bytes(a: &BigNum) -> TeeResult<usize>  {
+pub fn crypto_bignum_num_bytes(a: &BigNum) -> TeeResult<usize> {
     a.byte_length().map_err(|_| TEE_ERROR_GENERIC)
 }
 
 /// Get number of bits required to store the big number
-/// 
+///
 /// a: BigNum
 /// Returns: number of bits
 pub fn crypto_bignum_num_bits(a: &BigNum) -> TeeResult<usize> {
@@ -111,7 +115,7 @@ pub fn crypto_bignum_num_bits(a: &BigNum) -> TeeResult<usize> {
 }
 
 /// Compare two big numbers
-/// 
+///
 /// a: BigNum
 /// b: BigNum
 /// Returns: Ordering
@@ -120,7 +124,7 @@ pub fn crypto_bignum_compare(a: &BigNum, b: &BigNum) -> Ordering {
 }
 
 /// Convert big number to binary representation
-/// 
+///
 /// from: BigNum
 /// to: mutable byte slice
 /// Returns: TeeResult
@@ -131,7 +135,7 @@ pub fn crypto_bignum_bn2bin(from: &BigNum, to: &mut [u8]) -> TeeResult<()> {
 }
 
 /// Convert binary representation to big number
-/// 
+///
 /// from: byte slice
 /// to: mutable BigNum
 /// Returns: TeeResult
@@ -148,11 +152,11 @@ pub fn crypto_bignum_copy(to: &mut BigNum, from: &BigNum) {
 }
 
 /// Allocate a big number with specified size in bits
-/// 
+///
 /// size_bits: usize
 /// Returns: TeeResult<BigNum>
 pub fn crypto_bignum_allocate(size_bits: usize) -> TeeResult<BigNum> {
-	let mut size_bits = size_bits;
+    let mut size_bits = size_bits;
     if size_bits > CFG_CORE_BIGNUM_MAX_BITS {
         size_bits = CFG_CORE_BIGNUM_MAX_BITS;
     }
@@ -167,30 +171,28 @@ pub fn crypto_bignum_allocate(size_bits: usize) -> TeeResult<BigNum> {
 }
 
 /// Free a big number
-/// 
+///
 /// bn: BigNum
 pub fn crypto_bignum_free(bn: BigNum) {
     drop(bn);
 }
 
 /// Clear a big number (set to zero)
-/// 
+///
 /// bn: mutable BigNum
 pub fn crypto_bignum_clear(bn: &mut BigNum) {
     bn.clear();
 }
-
-
 
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_bignum {
     use zerocopy::IntoBytes;
 
     //-------- test framework import --------
-	use crate::tee::TestDescriptor;
+    use crate::tee::TestDescriptor;
+    use crate::tee::TestResult;
     use crate::test_fn;
     use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-	use crate::tee::TestResult;
 
     //-------- local tests import --------
     use super::*;
@@ -198,7 +200,7 @@ pub mod tests_tee_bignum {
     test_fn! {
         using TestResult;
 
-		fn test_tee_bignum() {
+        fn test_tee_bignum() {
             // Test bits_to_limbs
             assert_eq!(bits_to_limbs(0), 0);
             assert_eq!(bits_to_limbs(1), 1);
@@ -251,13 +253,12 @@ pub mod tests_tee_bignum {
             crypto_bignum_free(bn_copy);
             crypto_bignum_free(bn_zero);
             crypto_bignum_free(bn_from_bin);
-		}
+        }
     }
 
     tests_name! {
         TEST_TEE_BIGNUM;
         //------------------------
-		test_tee_bignum,
-	}
+        test_tee_bignum,
+    }
 }
-

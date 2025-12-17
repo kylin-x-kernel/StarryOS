@@ -9,10 +9,13 @@
 #![allow(unused)]
 #![allow(missing_docs)]
 #![allow(non_upper_case_globals)]
+mod config;
+mod crypto;
 mod inter_ta;
 mod libmbedtls;
 mod libutee;
 mod log;
+mod memtag;
 mod property;
 mod protocol;
 mod tee_fs;
@@ -26,16 +29,13 @@ mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
 mod time;
-mod config;
-mod crypto;
-mod user_mode_ctx_struct;
-mod vm;
-mod user_ta;
 mod types_ext;
-mod memtag;
-mod uuid;
 mod user_access;
+mod user_mode_ctx_struct;
+mod user_ta;
 mod utils;
+mod uuid;
+mod vm;
 use core::arch::asm;
 
 use log::*;
