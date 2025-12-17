@@ -4,12 +4,12 @@
 // 假设框架代码在同一个 crate 中
 // 宏是全局可见的，所以可以直接使用
 use super::{test_framework::*, test_framework_basic::*};
+use crate::assert;
 use crate::assert_eq;
 use crate::assert_ne;
-use crate::assert;
+use crate::run_tests;
 use crate::test_fn;
 use crate::tests;
-use crate::run_tests;
 use core::prelude::v1::*;
 
 // 示例测试函数 1: 简单的加法测试，使用 assert_eq!
@@ -81,6 +81,8 @@ pub fn tee_test_example() {
     let stats = runner.get_stats();
 
     // 打印最终统计信息
-    info!("Final Test Stats: total={}, passed={}, failed={}, ignored={}",
-        stats.total, stats.passed, stats.failed, stats.ignored);
+    info!(
+        "Final Test Stats: total={}, passed={}, failed={}, ignored={}",
+        stats.total, stats.passed, stats.failed, stats.ignored
+    );
 }

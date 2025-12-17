@@ -93,8 +93,8 @@ where
 {
     let current_task = current();
     current_task
-    .as_thread()
-    .set_tee_session_ctx(Box::new(tee_session_ctx::default()));
+        .as_thread()
+        .set_tee_session_ctx(Box::new(tee_session_ctx::default()));
 
     let binding = &current_task.as_thread().tee_session_ctx;
     let lock = binding.lock();

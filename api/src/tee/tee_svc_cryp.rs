@@ -27,28 +27,20 @@ use super::{
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{ecc_keypair, ecc_public_key},
     libmbedtls::bignum::{
-        crypto_bignum_bin2bn,
-        crypto_bignum_bn2bin,
-        crypto_bignum_num_bytes,
-        crypto_bignum_num_bits,
+        crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_num_bits, crypto_bignum_num_bytes,
     },
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
+    memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
     user_access::{
-        copy_from_user, 
-        copy_from_user_u64, 
-        copy_to_user, 
-        copy_to_user_u64, 
-        copy_to_user_struct, 
-        copy_from_user_struct,
-        bb_alloc, 
-        bb_free},
-    utils::{bit, bit32},
+        bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
+        copy_to_user_struct, copy_to_user_u64,
+    },
     user_mode_ctx_struct::user_mode_ctx,
     user_ta::user_ta_ctx,
+    utils::{bit, bit32},
     vm::vm_check_access_rights,
-    memtag::memtag_strip_tag_vaddr,
 };
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
@@ -177,9 +169,7 @@ pub enum CryptoAttrRef<'a> {
 impl TeeCryptObjAttrOps for CryptoAttrRef<'_> {
     fn from_user(&mut self, user_buffer: &[u8]) -> TeeResult {
         match self {
-            CryptoAttrRef::BigNum(bn) => {
-                bn.from_user(user_buffer)
-            }
+            CryptoAttrRef::BigNum(bn) => bn.from_user(user_buffer),
             CryptoAttrRef::U32(val) => {
                 let mut attr = AttrValue::from(**val);
                 attr.from_user(user_buffer)?;
@@ -276,14 +266,14 @@ impl tee_crypto_ops for TeeCryptObj {
         Self: Sized,
     {
         match key_type {
-            TEE_TYPE_ECDSA_PUBLIC_KEY 
-            | TEE_TYPE_ECDH_PUBLIC_KEY 
-            | TEE_TYPE_SM2_DSA_PUBLIC_KEY 
-            | TEE_TYPE_SM2_PKE_PUBLIC_KEY 
+            TEE_TYPE_ECDSA_PUBLIC_KEY
+            | TEE_TYPE_ECDH_PUBLIC_KEY
+            | TEE_TYPE_SM2_DSA_PUBLIC_KEY
+            | TEE_TYPE_SM2_PKE_PUBLIC_KEY
             | TEE_TYPE_SM2_KEP_PUBLIC_KEY => {
                 ecc_public_key::new(key_type, key_size_bits).map(TeeCryptObj::ecc_public_key)
             }
-            TEE_TYPE_ECDSA_KEYPAIR 
+            TEE_TYPE_ECDSA_KEYPAIR
             | TEE_TYPE_ECDH_KEYPAIR
             | TEE_TYPE_SM2_DSA_KEYPAIR
             | TEE_TYPE_SM2_PKE_KEYPAIR
@@ -1233,7 +1223,7 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     o_info.data_size = o.info.dataSize as _;
     o_info.data_pos = o.info.dataPosition as _;
     o_info.handle_flags = o.info.handleFlags as _;
-    
+
     copy_to_user_struct(info, &o_info)?;
     Ok(())
 }
@@ -1251,7 +1241,10 @@ pub fn syscall_cryp_obj_get_attr(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
-    info!("attr_id: {:x?}, handleFlags: {:x?}", attr_id, o.info.handleFlags);
+    info!(
+        "attr_id: {:x?}, handleFlags: {:x?}",
+        attr_id, o.info.handleFlags
+    );
     if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
         if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
             with_pobj_usage_lock(&o.pobj, || {
@@ -1277,7 +1270,7 @@ pub fn syscall_cryp_obj_get_attr(
     // let attr = (o.attr[idx] as *const u8) as *const u8;
     // return ops.to_user(attr, sess, buffer, size);
     if let Some(o_mut) = Arc::get_mut(&mut o) {
-        if ! o_mut.attr.is_empty() {
+        if !o_mut.attr.is_empty() {
             let attr_ref = o_mut.attr[0].get_attr_by_id(attr_id)?;
             attr_ref.to_user(buffer, size)?;
         }
@@ -1287,18 +1280,23 @@ pub fn syscall_cryp_obj_get_attr(
 }
 
 /// copy in attributes from user space to kernel space
-/// 
+///
 /// _uctx: user_ta_ctx, not used now
 /// usr_attrs: user space attributes
 /// attrs: kernel space attributes
 /// return: TeeResult
-fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &mut [TEE_Attribute]) -> TeeResult {
+fn copy_in_attrs(
+    _uctx: &mut user_ta_ctx,
+    usr_attrs: &[utee_attribute],
+    attrs: &mut [TEE_Attribute],
+) -> TeeResult {
     // copy usr_attrs to from user space to kernel space
-    let mut usr_attrs_buf: Box<[utee_attribute]> = vec![utee_attribute::default(); usr_attrs.len()].into_boxed_slice();
+    let mut usr_attrs_buf: Box<[utee_attribute]> =
+        vec![utee_attribute::default(); usr_attrs.len()].into_boxed_slice();
     for n in 0..usr_attrs.len() {
         copy_from_user_struct(&mut usr_attrs_buf[n], &usr_attrs[n])?;
     }
-   
+
     for n in 0..usr_attrs.len() {
         attrs[n].attributeID = usr_attrs_buf[n].attribute_id;
         if attrs[n].attributeID & TEE_ATTR_FLAG_VALUE != 0 {
@@ -1310,7 +1308,12 @@ fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &
             let flags = TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER;
             // TODO: need to implement vm_check_access_rights
             buf = memtag_strip_tag_vaddr(buf as *const c_void) as u64;
-            vm_check_access_rights(&mut user_mode_ctx::default(), flags, buf as usize, len as usize)?;
+            vm_check_access_rights(
+                &mut user_mode_ctx::default(),
+                flags,
+                buf as usize,
+                len as usize,
+            )?;
             attrs[n].content.memref.buffer = buf as *mut c_void;
             attrs[n].content.memref.size = len as usize;
         }
@@ -1319,11 +1322,15 @@ fn copy_in_attrs(_uctx: &mut user_ta_ctx, usr_attrs: &[utee_attribute], attrs: &
 }
 
 enum attr_usage {
-	ATTR_USAGE_POPULATE = 0,
-	ATTR_USAGE_GENERATE_KEY = 1,
+    ATTR_USAGE_POPULATE = 0,
+    ATTR_USAGE_GENERATE_KEY = 1,
 }
 
-fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_props, attrs: &[TEE_Attribute]) -> TeeResult {
+fn tee_svc_cryp_check_attr(
+    usage: attr_usage,
+    type_props: &tee_cryp_obj_type_props,
+    attrs: &[TEE_Attribute],
+) -> TeeResult {
     let mut required_flag = 0;
     let mut opt_flag = 0;
     let mut all_opt_needed = false;
@@ -1349,11 +1356,11 @@ fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_pro
     }
 
     /*
-	 * First find out which attributes are required and which belong to
-	 * the optional group
-	 */
+     * First find out which attributes are required and which belong to
+     * the optional group
+     */
     for n in 0..type_props.num_type_attrs as usize {
-        bit = 1 << n;   
+        bit = 1 << n;
         flags = type_props.type_attrs[n].flags as u32;
 
         if flags & required_flag != 0 {
@@ -1364,9 +1371,9 @@ fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_pro
     }
 
     /*
-	 * Verify that all required attributes are in place and
-	 * that the same attribute isn't repeated.
-	 */
+     * Verify that all required attributes are in place and
+     * that the same attribute isn't repeated.
+     */
     for n in 0..attrs.len() {
         idx = tee_svc_cryp_obj_find_type_attr_idx(attrs[n].attributeID as u32, type_props);
 
@@ -1376,20 +1383,20 @@ fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_pro
         }
 
         bit = 1 << idx;
-        
+
         /* attribute not repeated */
         if (attrs_found & bit) != 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
 
-		/*
-		 * Attribute not defined in current object type for this
-		 * usage.
-		 */
+        /*
+         * Attribute not defined in current object type for this
+         * usage.
+         */
         if (bit & (req_attrs | opt_grp_attrs)) == 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
-        
+
         attrs_found |= bit;
     }
 
@@ -1399,13 +1406,16 @@ fn tee_svc_cryp_check_attr(usage: attr_usage, type_props: &tee_cryp_obj_type_pro
     }
 
     /*
-	 * If the flag says that "if one of the optional attributes are included
-	 * all of them has to be included" this must be checked.
-	 */
-    if all_opt_needed && (attrs_found & opt_grp_attrs) != 0 && (attrs_found & opt_grp_attrs) != opt_grp_attrs {
+     * If the flag says that "if one of the optional attributes are included
+     * all of them has to be included" this must be checked.
+     */
+    if all_opt_needed
+        && (attrs_found & opt_grp_attrs) != 0
+        && (attrs_found & opt_grp_attrs) != opt_grp_attrs
+    {
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
     }
-    
+
     Ok(())
 }
 
@@ -1459,31 +1469,31 @@ fn tee_svc_cryp_obj_populate_type(
         }
         have_attrs |= bit32(idx as u32);
 
-            let mut attr_ref = obj.attr[0].get_attr_by_id(attr.attributeID as c_ulong)?;
-            if attr.attributeID & TEE_ATTR_FLAG_VALUE != 0 {
-                // change attrs.content.value to &[]
-                let value: &[u8] = unsafe {
-                    core::slice::from_raw_parts(
-                        (&attr.content.value as *const tee_raw_sys::Value) as *const u8,
-                        core::mem::size_of::<tee_raw_sys::Value>(),
-                    )
-                };
-                attr_ref.from_user(value)?;
-            } else {
-                // change attrs.content.ref to &[]
-                let buffer: &[u8] = unsafe {
-                    core::slice::from_raw_parts(
-                        (attr.content.memref.buffer as *const u8) as *const u8,
-                        attr.content.memref.size,
-                    )
-                };
-                attr_ref.from_user(buffer)?;
-            }
+        let mut attr_ref = obj.attr[0].get_attr_by_id(attr.attributeID as c_ulong)?;
+        if attr.attributeID & TEE_ATTR_FLAG_VALUE != 0 {
+            // change attrs.content.value to &[]
+            let value: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    (&attr.content.value as *const tee_raw_sys::Value) as *const u8,
+                    core::mem::size_of::<tee_raw_sys::Value>(),
+                )
+            };
+            attr_ref.from_user(value)?;
+        } else {
+            // change attrs.content.ref to &[]
+            let buffer: &[u8] = unsafe {
+                core::slice::from_raw_parts(
+                    (attr.content.memref.buffer as *const u8) as *const u8,
+                    attr.content.memref.size,
+                )
+            };
+            attr_ref.from_user(buffer)?;
+        }
 
         /*
-		 * The attribute that gives the size of the object is
-		 * flagged with TEE_TYPE_ATTR_SIZE_INDICATOR.
-		 */
+         * The attribute that gives the size of the object is
+         * flagged with TEE_TYPE_ATTR_SIZE_INDICATOR.
+         */
         if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_SIZE_INDICATOR as u16 != 0 {
             /* There should be only one */
             if obj_size != 0 {
@@ -1512,12 +1522,14 @@ fn tee_svc_cryp_obj_populate_type(
             check_key_size(type_props, obj_size)?;
         }
         /*
-		 * Bignum attributes limited by the number of bits in
-		 * o->info.objectSize are flagged with
-		 * TEE_TYPE_ATTR_BIGNUM_MAXBITS.
-		 */
+         * Bignum attributes limited by the number of bits in
+         * o->info.objectSize are flagged with
+         * TEE_TYPE_ATTR_BIGNUM_MAXBITS.
+         */
         if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_BIGNUM_MAXBITS as u16 != 0 {
-            if crypto_bignum_num_bits(attr_ref.as_bignum().ok_or(TEE_ERROR_BAD_STATE)?)? > obj.info.maxObjectSize as usize {
+            if crypto_bignum_num_bits(attr_ref.as_bignum().ok_or(TEE_ERROR_BAD_STATE)?)?
+                > obj.info.maxObjectSize as usize
+            {
                 return Err(TEE_ERROR_BAD_STATE);
             }
         }
@@ -1860,7 +1872,7 @@ pub mod tests_tee_svc_cryp {
                 assert!(result.is_ok());
             }
             assert_eq!(value, 0x11223344);
-            
+
             let mut buffer: [u8; 8] = [0; 8];
             let mut size: u64 = 8;
             {
