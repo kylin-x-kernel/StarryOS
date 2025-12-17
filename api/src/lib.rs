@@ -16,11 +16,11 @@ pub mod signal;
 pub mod socket;
 pub mod syscall;
 pub mod task;
+#[cfg(feature = "tee")]
+pub mod tee;
 pub mod terminal;
 pub mod time;
 pub mod vfs;
-#[cfg(feature = "tee")]
-pub mod tee;
 
 /// Initialize.
 pub fn init() {
