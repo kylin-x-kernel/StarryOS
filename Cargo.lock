@@ -241,7 +241,30 @@ dependencies = [
 [[package]]
 name = "axcpu"
 version = "0.3.0"
-source = "git+https://github.com/arceos-org/axcpu.git?tag=dev-v03#72ef3859952b7340bae261c9a50c32705e602017"
+source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=dev#72ef3859952b7340bae261c9a50c32705e602017"
+dependencies = [
+ "aarch64-cpu",
+ "axbacktrace",
+ "cfg-if",
+ "lazyinit",
+ "linkme",
+ "log",
+ "loongArch64",
+ "memory_addr",
+ "page_table_entry",
+ "page_table_multiarch 0.5.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "percpu",
+ "riscv",
+ "static_assertions",
+ "tock-registers 0.9.0",
+ "x86",
+ "x86_64",
+]
+
+[[package]]
+name = "axcpu"
+version = "0.3.0"
+source = "git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask#7d26f38f75514f0e180de6c0d0823260891626e1"
 dependencies = [
  "aarch64-cpu",
  "axbacktrace",
@@ -456,7 +479,7 @@ version = "0.2.0"
 dependencies = [
  "axalloc",
  "axconfig",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=dev)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "axplat-aarch64-qemu-virt",
  "axplat-loongarch64-qemu-virt",
@@ -486,7 +509,7 @@ dependencies = [
 [[package]]
 name = "axio"
 version = "0.2.0"
-source = "git+https://github.com/arceos-org/axio.git?tag=dev-v02#6436b97626df5d7e743070c46683bad9c648843c"
+source = "git+https://github.com/arceos-org/axio.git?rev=6436b97#6436b97626df5d7e743070c46683bad9c648843c"
 dependencies = [
  "axerrno 0.2.2",
 ]
@@ -588,7 +611,7 @@ dependencies = [
  "aarch64-cpu",
  "arm-gic",
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "axplat-aarch64-peripherals",
  "dw_apb_uart",
@@ -609,7 +632,7 @@ dependencies = [
  "arm-gic-driver",
  "arm_pl011",
  "arm_pl031",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "int_ratio",
  "kspin",
@@ -626,7 +649,7 @@ version = "0.3.0"
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
 dependencies = [
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "axplat-aarch64-peripherals",
  "log",
@@ -639,7 +662,7 @@ version = "0.3.0"
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
 dependencies = [
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "chrono",
  "kspin",
@@ -676,7 +699,7 @@ version = "0.3.0"
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
 dependencies = [
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "kspin",
  "lazyinit",
@@ -694,7 +717,7 @@ version = "0.3.0"
 source = "git+https://github.com/Starry-OS/axplat-riscv64-visionfive2.git?tag=dev-v03#55c5ea6c652742d92e9150c857864d5909197633"
 dependencies = [
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/arceos-org/axplat_crates.git?tag=dev-v03)",
  "kspin",
  "lazyinit",
@@ -712,7 +735,7 @@ version = "0.3.0"
 source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
 dependencies = [
  "axconfig-macros",
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "axplat 0.3.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "bitflags 2.10.0",
  "heapless 0.9.2",
@@ -767,9 +790,9 @@ dependencies = [
 
 [[package]]
 name = "axsched"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44de469da35f912194e4104cc2f51bff63d6c184b65b6ebf8e90e2cd162b7f3c"
+checksum = "cad6b7b0b8d9ad1d52a834d8b7721114413da8cf3430af928b1c8651f911287a"
 dependencies = [
  "linked_list_r4l",
 ]
@@ -1504,8 +1527,7 @@ dependencies = [
 [[package]]
 name = "kernel_guard"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d10c55bedf6789bc3748e0d8756ee639df1ae25144fd3525ed311044bd9a739f"
+source = "git+https://github.com/kylin-x-kernel/kernel_guard.git?branch=gic-priority-mask#abe07e53402657f4e354be674de87c8ebbad9f78"
 dependencies = [
  "cfg-if",
  "crate_interface",
@@ -1554,9 +1576,9 @@ dependencies = [
 
 [[package]]
 name = "linked_list_r4l"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54c6e48d7df84e6414be8e53976ead35ba4d47a4ba561eaad5d1e2b1447b4c0a"
+checksum = "1730c4ce817dc3edb092739ca5c109fe551018e5ea5a8361a8ddaa13d79ac8ed"
 
 [[package]]
 name = "linkme"
@@ -2357,7 +2379,7 @@ name = "starry-signal"
 version = "0.2.3"
 source = "git+https://github.com/Starry-OS/starry-signal.git?tag=dev-v02#0597c1695b7c724f6d40e0d5873eaa148679e8bd"
 dependencies = [
- "axcpu",
+ "axcpu 0.3.0 (git+https://github.com/kylin-x-kernel/axcpu.git?branch=gic-priority-mask)",
  "bitflags 2.10.0",
  "cfg-if",
  "derive_more",
