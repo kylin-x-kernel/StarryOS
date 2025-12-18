@@ -50,7 +50,7 @@ use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
 
-use crate::tee::inter_ta::sys_tee_scn_open_ta_session;
+use crate::tee::inter_ta::{sys_tee_scn_close_ta_session, sys_tee_scn_open_ta_session};
 use crate::tee::property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index};
 
 pub type TeeResult<T = ()> = Result<T, u32>;

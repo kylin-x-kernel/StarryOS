@@ -46,7 +46,7 @@ pub(crate) fn sys_tee_scn_open_ta_session(
 }
 
 pub(crate) fn sys_tee_scn_close_ta_session(ta_sees: c_ulong) -> TeeResult {
-    let sess_id = tee_ta_get_session(te_sess as u32)?;
+    let sess_id = tee_ta_get_session(ta_sees as u32)?;
     tee_ta_close_session(sess_id)?;
     Ok(())
 }
