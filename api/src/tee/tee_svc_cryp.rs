@@ -27,7 +27,8 @@ use super::{
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{ecc_keypair, ecc_public_key},
     libmbedtls::bignum::{
-        crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_num_bits, crypto_bignum_num_bytes, crypto_bignum_copy,
+        crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_copy, crypto_bignum_num_bits,
+        crypto_bignum_num_bytes,
     },
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     memtag::memtag_strip_tag_vaddr,
@@ -78,15 +79,19 @@ pub trait TeeCryptObjAttrOps {
 
     fn to_user(&self, buffer: &mut [u8], size: &mut u64) -> TeeResult;
 
-    // fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TEE_Result;
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult;
 
-    // fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> bool;
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult;
 
     fn from_obj(&mut self, src_obj: &TeeCryptObjAttr) -> TeeResult;
 
-    // fn free(&mut self);
+    fn free(&mut self) {
+        // default do nothing
+    }
 
-    // fn clear(&mut self);
+    fn clear(&mut self) {
+        // default do nothing
+    }
 }
 
 #[repr(C)]
@@ -192,9 +197,56 @@ impl TeeCryptObjAttrOps for CryptoAttrRef<'_> {
     }
 
     fn from_obj(&mut self, src_obj: &TeeCryptObjAttr) -> TeeResult {
-        // CryptoAttrRef 是引用类型，不能直接从 TeeCryptObj 复制
-        // 需要根据具体的变体类型来处理
-        todo!()
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.from_obj(src_obj),
+            CryptoAttrRef::U32(val) => {
+                let mut attr = AttrValue::from(**val);
+                attr.from_obj(src_obj)?;
+                **val = *attr.as_u32();
+                Ok(())
+            }
+            CryptoAttrRef::SecretValue(attr) => attr.from_obj(src_obj),
+        }
+    }
+
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.to_binary(data, offs),
+            CryptoAttrRef::U32(val) => {
+                let attr = AttrValue::from(**val);
+                attr.to_binary(data, offs)
+            }
+            CryptoAttrRef::SecretValue(attr) => attr.to_binary(data, offs),
+        }
+    }
+
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.from_binary(data, offs),
+            CryptoAttrRef::U32(val) => {
+                let mut attr = AttrValue::from(**val);
+                attr.from_binary(data, offs)?;
+                **val = *attr.as_u32();
+                Ok(())
+            }
+            CryptoAttrRef::SecretValue(attr) => attr.from_binary(data, offs),
+        }
+    }
+
+    fn free(&mut self) {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.free(),
+            CryptoAttrRef::U32(val) => **val = 0,
+            CryptoAttrRef::SecretValue(attr) => attr.free(),
+        }
+    }
+
+    fn clear(&mut self) {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.clear(),
+            CryptoAttrRef::U32(val) => **val = 0,
+            CryptoAttrRef::SecretValue(attr) => attr.clear(),
+        }
     }
 }
 
@@ -251,8 +303,8 @@ pub enum TeeCryptObj {
     ecc_keypair(ecc_keypair),
     ecc_public_key(ecc_public_key),
     obj_secret(tee_cryp_obj_secret_wrapper),
-    obj_value(AttrValue),
-    obj_bignum(BigNum),
+    // obj_value(AttrValue),
+    // obj_bignum(BigNum),
     None,
 }
 
@@ -323,7 +375,6 @@ impl tee_crypto_ops for TeeCryptObj {
             TeeCryptObj::ecc_public_key(key) => key.get_attr_by_id(attr_id),
             TeeCryptObj::ecc_keypair(keypair) => keypair.get_attr_by_id(attr_id),
             TeeCryptObj::obj_secret(secret) => secret.get_attr_by_id(attr_id),
-            //TeeCryptObj::obj_value(value) => value.get_attr_by_id(attr_id),
             _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
         }
     }
@@ -348,7 +399,44 @@ impl TeeCryptObjAttrOps for TeeCryptObjAttr {
 
     fn from_obj(&mut self, src_obj: &TeeCryptObjAttr) -> TeeResult {
         // TeeCryptObjAttr 需要根据 src_obj 的类型来提取对应的属性
-        todo!()
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.from_obj(src_obj),
+            TeeCryptObjAttr::bignum(attr) => attr.from_obj(src_obj),
+            TeeCryptObjAttr::value(attr) => attr.from_obj(src_obj),
+        }
+    }
+
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.to_binary(data, offs),
+            TeeCryptObjAttr::bignum(attr) => attr.to_binary(data, offs),
+            TeeCryptObjAttr::value(attr) => attr.to_binary(data, offs),
+        }
+    }
+
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.from_binary(data, offs),
+            TeeCryptObjAttr::bignum(attr) => attr.from_binary(data, offs),
+            TeeCryptObjAttr::value(attr) => attr.from_binary(data, offs),
+        }
+    }
+
+    fn free(&mut self) {
+        // 根据类型释放资源
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.free(),
+            TeeCryptObjAttr::bignum(attr) => attr.free(),
+            TeeCryptObjAttr::value(attr) => attr.free(),
+        }
+    }
+
+    fn clear(&mut self) {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.clear(),
+            TeeCryptObjAttr::bignum(attr) => attr.clear(),
+            TeeCryptObjAttr::value(attr) => attr.clear(),
+        }
     }
 }
 
@@ -406,6 +494,26 @@ impl TeeCryptObjAttrOps for AttrValue {
             _ => Err(TEE_ERROR_BAD_PARAMETERS),
         }
     }
+
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
+        let value: u32 = *self.as_u32();
+        op_u32_to_binary_helper(value, data, offs)
+    }
+
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult {
+        let value_ref = self.as_mut_u32();
+        op_u32_from_binary_helper(value_ref, data, offs)
+    }
+
+    fn free(&mut self) {
+        // set value to 0
+        self.clear();
+    }
+
+    fn clear(&mut self) {
+        // set value to 0
+        *self.as_mut_u32() = 0;
+    }
 }
 
 impl TeeCryptObjAttrOps for BigNum {
@@ -455,6 +563,46 @@ impl TeeCryptObjAttrOps for BigNum {
             _ => Err(TEE_ERROR_BAD_PARAMETERS),
         }
     }
+
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
+        let n: u32 = crypto_bignum_num_bytes(self)? as u32;
+        let mut next_offs: usize;
+
+        op_u32_to_binary_helper(n, data, offs)?;
+        next_offs = offs.checked_add(n as usize).ok_or(TEE_ERROR_OVERFLOW)?;
+
+        if data.len() >= next_offs {
+            crypto_bignum_bn2bin(self, &mut data[*offs..*offs + n as usize])?;
+        }
+
+        *offs = next_offs;
+        Ok(())
+    }
+
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult {
+        let mut n: u32 = 0;
+
+        op_u32_from_binary_helper(&mut n, data, offs)?;
+
+        if offs
+            .checked_add(n as usize)
+            .ok_or(TEE_ERROR_BAD_PARAMETERS)?
+            > data.len()
+        {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        crypto_bignum_bin2bn(&data[*offs..*offs + n as usize], self)?;
+
+        *offs += n as usize;
+
+        Ok(())
+    }
+
+    fn clear(&mut self) {
+        self.as_mpi_mut().clear();
+    }
+
 }
 
 impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
@@ -513,22 +661,81 @@ impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
                 let key = self.secret();
                 let src_key = secret.secret();
                 let src_key_size = src_key.key_size;
-                
+
                 if src_key_size > key.alloc_size {
                     return Err(TEE_ERROR_BAD_STATE);
                 }
-            
+
                 let key_data = self.data_mut();
                 let src_key_data = secret.data();
-            
+
                 key_data[..src_key_size as usize]
                     .copy_from_slice(&src_key_data[..src_key_size as usize]);
                 self.secret_mut().key_size = src_key_size;
-            
+
                 Ok(())
             }
             _ => Err(TEE_ERROR_BAD_PARAMETERS),
         }
+    }
+
+    fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
+        let key = self.secret();
+        let mut next_offs: usize;
+
+        op_u32_to_binary_helper(key.key_size, data, offs)?;
+
+        next_offs = offs
+            .checked_add(key.key_size as usize)
+            .ok_or(TEE_ERROR_OVERFLOW)?;
+
+        if data.len() >= next_offs {
+            data[*offs..*offs + key.key_size as usize]
+                .copy_from_slice(&self.data()[..key.key_size as usize]);
+        }
+        *offs = next_offs;
+
+        Ok(())
+    }
+
+    fn from_binary(&mut self, data: &[u8], offs: &mut usize) -> TeeResult {
+        let key = self.secret();
+        let mut s: u32 = 0;
+
+        op_u32_from_binary_helper(&mut s, data, offs)?;
+
+        if offs
+            .checked_add(s as usize)
+            .ok_or(TEE_ERROR_BAD_PARAMETERS)?
+            > data.len()
+        {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        // 数据大小必须适合分配的缓冲区
+        if s > key.alloc_size {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        self.secret_mut().key_size = s;
+
+        let data_slice = self.data_mut();
+        data_slice[..s as usize].copy_from_slice(&data[*offs..*offs + s as usize]);
+
+        *offs += s as usize;
+
+        Ok(())
+    }
+
+    fn free(&mut self) {
+        self.clear();
+    }
+
+    fn clear(&mut self) {
+        // set key_size to 0
+        self.secret_mut().key_size = 0;
+        // set data to 0
+        self.data_mut().fill(0);
     }
 }
 
@@ -595,7 +802,7 @@ pub(crate) struct tee_cryp_obj_secret {
      * key_size must never exceed alloc_size
      */
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct tee_cryp_obj_secret_wrapper {
     ptr: NonNull<tee_cryp_obj_secret>,
     layout: Layout,
@@ -649,6 +856,16 @@ impl tee_cryp_obj_secret_wrapper {
             unsafe { (self.ptr.as_ptr() as *const u8).add(size_of::<tee_cryp_obj_secret>()) };
         unsafe { slice::from_raw_parts(data_ptr, s.alloc_size as usize) }
     }
+
+    pub fn set_secret_data(&mut self, data: &[u8]) -> TeeResult {
+        if data.len() > self.secret().alloc_size as usize {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+        let data_slice = self.data_mut();
+        data_slice[..data.len()].copy_from_slice(data);
+        self.secret_mut().key_size = data.len() as u32;
+        Ok(())
+    }
 }
 
 impl Drop for tee_cryp_obj_secret_wrapper {
@@ -656,6 +873,30 @@ impl Drop for tee_cryp_obj_secret_wrapper {
         unsafe {
             dealloc(self.ptr.as_ptr() as *mut u8, self.layout);
         }
+    }
+}
+
+impl Clone for tee_cryp_obj_secret_wrapper {
+    fn clone(&self) -> Self {
+        // 获取源数据
+        let src_secret = self.secret();
+        let alloc_size = src_secret.alloc_size as usize;
+        let key_size = src_secret.key_size as usize;
+
+        // 创建新的实例
+        let mut new_wrapper = Self::new(alloc_size);
+
+        // set key size
+        new_wrapper.secret_mut().key_size = key_size as u32;
+
+        // 复制尾随数组数据
+        if key_size > 0 {
+            let src_data = self.data();
+            let dst_data = new_wrapper.data_mut();
+            dst_data[..key_size].copy_from_slice(&src_data[..key_size]);
+        }
+
+        new_wrapper
     }
 }
 
@@ -2009,6 +2250,66 @@ pub mod tests_tee_svc_cryp {
             assert_eq!(bn_from, bn);
         }
     }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_secret_value() {
+            // set secret value data to
+            let mut secret = tee_cryp_obj_secret_wrapper::new(16);
+            secret.secret_mut().key_size = 16;
+            secret.data_mut()[..16].copy_from_slice(&[0xaa; 16]);
+
+            // 1. test tee_cryp_obj_secret_wrapper to user
+            // - test to_user
+            let mut buffer: [u8; 16] = [0; 16];
+            let mut size: u64 = 16;
+            let result = secret.to_user(&mut buffer, &mut size);
+            assert!(result.is_ok());
+            assert_eq!(size, 16);
+            assert_eq!(&buffer[..16], &secret.data()[..16]);
+            // - test from_user
+            let mut secret_dest = tee_cryp_obj_secret_wrapper::new(16);
+            let result = secret_dest.from_user(&buffer);
+            assert!(result.is_ok());
+            assert_eq!(secret_dest.secret().key_size, secret.secret().key_size);
+            assert_eq!(&secret_dest.data()[..16], &secret.data()[..16]);
+            //  - test to_binary
+            let mut data: [u8; 16+size_of::<u32>()] = [0x55; 16+size_of::<u32>()];
+            let mut offs: usize = 0;
+            let result = secret_dest.to_binary(&mut data, &mut offs);
+            assert!(result.is_ok());
+            assert_eq!(offs, 16+size_of::<u32>());
+            assert_eq!(&data[..size_of::<u32>()], &secret_dest.secret().key_size.to_be_bytes());
+            assert_eq!(&data[size_of::<u32>()..16+size_of::<u32>()], &secret_dest.data()[..16]);
+            //  - test from_binary
+            let mut secret_from = tee_cryp_obj_secret_wrapper::new(16);
+            offs = 0;
+            let result = secret_from.from_binary(&data, &mut offs);
+            assert!(result.is_ok());
+            assert_eq!(offs, 16+size_of::<u32>());
+            assert_eq!(secret_from.secret().key_size, secret_dest.secret().key_size);
+            assert_eq!(&secret_from.data()[..16], &secret_dest.data()[..16]);
+
+            // - test from_obj
+            let mut secret_dest = tee_cryp_obj_secret_wrapper::new(16);
+            let result = secret_dest.from_obj(&TeeCryptObjAttr::secret_value(secret_from.clone()));
+            assert!(result.is_ok());
+            assert_eq!(secret_dest.secret().key_size, secret_from.secret().key_size);
+            assert_eq!(&secret_dest.data(), &secret_from.data());
+
+            // 2. test CryptoAttrRef::SecretValue
+            // clear buffer
+            buffer.fill(0);
+            size = 16;
+            let mut attr_ref = CryptoAttrRef::SecretValue(&mut secret);
+            let result = attr_ref.to_user(&mut buffer, &mut size);
+            assert!(result.is_ok());
+            assert_eq!(size, 16);
+            assert_eq!(&buffer[..16], &secret.data()[..16]);
+        }
+    }
+
     test_fn! {
         using TestResult;
 
@@ -2097,6 +2398,7 @@ pub mod tests_tee_svc_cryp {
         test_tee_obj_set_type,
         test_cryptoattrref_u32,
         test_cryptoattrref_bignum,
+        test_secret_value,
         test_syscall_cryp_obj_alloc,
         test_syscall_cryp_obj_get_attr,
         test_copy_in_attrs,
