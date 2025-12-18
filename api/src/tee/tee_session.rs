@@ -9,8 +9,14 @@ use alloc::{boxed::Box, sync::Arc};
 use axtask::current;
 use core::{any::Any, default::Default};
 use slab::Slab;
+use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
+
+scope_local::scope_local! {
+    /// The tee ta context.
+    pub static TEE_TA_CTX: Arc<RwLock<tee_ta_ctx>> = Arc::default();
+}
 
 pub struct tee_session_ctx {
     pub session_id: u32,
@@ -18,6 +24,13 @@ pub struct tee_session_ctx {
     pub user_id: u32,
     pub objects: Slab<Arc<tee_obj>>,
     pub clnt_id: TEE_Identity,
+}
+
+#[repr(C)]
+#[derive(Default, Debug)]
+pub struct tee_ta_ctx {
+    #[cfg(feature = "tee_test")]
+    pub for_test_only: u32,
 }
 
 impl TeeSessionCtxTrait for tee_session_ctx {
@@ -108,4 +121,108 @@ where
     };
 
     f(concrete)
+}
+
+/// 获取当前线程的 tee_ta_ctx 的可变引用，并在闭包中使用
+/// 闭包使用可确保锁的正确释放
+/// 
+/// # 参数
+/// - `f`: 一个接受 `&mut tee_ta_ctx` 的闭包
+///
+/// # 返回
+/// 闭包的返回值
+pub fn with_tee_ta_ctx_mut<F, R>(f: F) -> TeeResult<R>
+where
+    F: FnOnce(&mut tee_ta_ctx) -> TeeResult<R>,
+{
+    let mut ta_ctx = TEE_TA_CTX.write();
+    f(&mut *ta_ctx)
+}
+
+/// 获取当前线程的 tee_ta_ctx 的不可变引用，并在闭包中使用
+/// 闭包使用可确保锁的正确释放
+/// 
+/// # 参数
+/// - `f`: 一个接受 `&tee_ta_ctx` 的闭包
+///
+/// # 返回
+/// 闭包的返回值
+pub fn with_tee_ta_ctx<F, R>(f: F) -> TeeResult<R>
+where
+    F: FnOnce(&tee_ta_ctx) -> TeeResult<R>,
+{
+    let ta_ctx = TEE_TA_CTX.read();
+    f(&*ta_ctx)
+}
+
+#[cfg(feature = "tee_test")]
+pub mod tests_tee_session {
+    //-------- test framework import --------
+    use crate::tee::TestDescriptor;
+    use crate::tee::TestResult;
+    use crate::test_fn;
+    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
+
+    //-------- local tests import --------
+    use super::*;
+
+    test_fn! {
+        using TestResult;
+
+        fn test_tee_ta_ctx() {
+            // test read TEE_TA_CTX
+            let mut test_only: u32 = 0;
+            {
+                let ta_ctx = TEE_TA_CTX.read();
+                test_only = ta_ctx.for_test_only;
+            }
+
+            // test write TEE_TA_CTX
+            {
+                let mut ta_ctx = TEE_TA_CTX.write();
+                ta_ctx.for_test_only = test_only + 1;
+                assert_eq!(ta_ctx.for_test_only, test_only + 1);
+            }
+
+            // read again
+            {
+                let ta_ctx = TEE_TA_CTX.read();
+                assert_eq!(ta_ctx.for_test_only, test_only + 1);
+            }
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_with_tee_ta_ctx() {
+            let mut test_only: u32 = 0;
+            with_tee_ta_ctx(|ta_ctx| {
+                test_only = ta_ctx.for_test_only;
+                Ok(())
+            }).unwrap();
+            
+            let mut new_value = 0;
+            with_tee_ta_ctx_mut(|ta_ctx| {
+                ta_ctx.for_test_only = test_only + 1;
+                new_value = ta_ctx.for_test_only;
+                Ok(())
+            }).unwrap();
+            assert_eq!(new_value, test_only + 1);
+
+            new_value = 0;
+            with_tee_ta_ctx(|ta_ctx| {
+                new_value = ta_ctx.for_test_only;
+                Ok(())
+            }).unwrap();
+            assert_eq!(new_value, test_only + 1);
+        }
+    }
+
+    tests_name! {
+        TEST_TEE_SESSION;
+        //------------------------
+        test_tee_ta_ctx,
+        test_with_tee_ta_ctx,
+    }
 }
