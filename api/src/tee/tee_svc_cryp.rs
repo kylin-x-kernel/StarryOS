@@ -27,7 +27,8 @@ use super::{
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{ecc_keypair, ecc_public_key},
     libmbedtls::bignum::{
-        crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_num_bits, crypto_bignum_num_bytes, crypto_bignum_copy,
+        crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_copy, crypto_bignum_num_bits,
+        crypto_bignum_num_bytes,
     },
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     memtag::memtag_strip_tag_vaddr,
@@ -513,18 +514,18 @@ impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
                 let key = self.secret();
                 let src_key = secret.secret();
                 let src_key_size = src_key.key_size;
-                
+
                 if src_key_size > key.alloc_size {
                     return Err(TEE_ERROR_BAD_STATE);
                 }
-            
+
                 let key_data = self.data_mut();
                 let src_key_data = secret.data();
-            
+
                 key_data[..src_key_size as usize]
                     .copy_from_slice(&src_key_data[..src_key_size as usize]);
                 self.secret_mut().key_size = src_key_size;
-            
+
                 Ok(())
             }
             _ => Err(TEE_ERROR_BAD_PARAMETERS),
