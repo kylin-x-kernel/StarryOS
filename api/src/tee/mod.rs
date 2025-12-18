@@ -90,6 +90,7 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg3() as _,
             _uctx.arg4() as _,
         ),
+        Sysno::tee_scn_close_ta_session => sys_tee_scn_close_ta_session(_uctx.arg0() as _),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
 }

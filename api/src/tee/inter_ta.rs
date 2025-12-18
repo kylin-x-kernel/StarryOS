@@ -15,7 +15,7 @@ use tee_raw_sys::{TEE_Identity, TEE_LOGIN_TRUSTED_APP, TEE_UUID, utee_params};
 use crate::tee::{
     TeeResult,
     tee_session::{tee_session_ctx, with_tee_session_ctx},
-    tee_ta_manager::tee_ta_init_session,
+    tee_ta_manager::{tee_ta_close_session, tee_ta_get_session, tee_ta_init_session},
     user_access::copy_from_user,
     uuid::Uuid,
 };
@@ -42,5 +42,11 @@ pub(crate) fn sys_tee_scn_open_ta_session(
 
     tee_ta_init_session(Uuid::from(uuid).to_string().as_str())?;
 
+    Ok(())
+}
+
+pub(crate) fn sys_tee_scn_close_ta_session(ta_sees: c_ulong) -> TeeResult {
+    let sess_id = tee_ta_get_session(te_sess as u32)?;
+    tee_ta_close_session(sess_id)?;
     Ok(())
 }
