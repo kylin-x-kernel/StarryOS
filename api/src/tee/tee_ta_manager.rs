@@ -4,7 +4,11 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{format, string::ToString, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use axnet::{
     SendOptions, SocketAddrEx, SocketOps,
     unix::{StreamTransport, UnixSocket, UnixSocketAddr},
@@ -18,11 +22,16 @@ use crate::{
     socket::SocketAddrExt,
     tee::{
         TeeResult,
-        protocol::{Parameters, TARequest},
+        protocol::{CARequest, Parameters, TARequest},
     },
 };
 
 const SERVER_SOCKET_PATH: &str = "/tmp/server.sock";
+
+pub struct SessionIdentity {
+    uuid: String,
+    session_id: u32,
+}
 
 pub fn tee_ta_init_session(uuid: &str) -> TeeResult {
     // Connect to the vsock-manager via Unix socket
@@ -44,4 +53,30 @@ pub fn tee_ta_init_session(uuid: &str) -> TeeResult {
         .map_err(|_| TEE_ERROR_GENERIC)?;
 
     Ok(())
+}
+
+pub fn tee_ta_close_session(sess_id: SessionIdentity) -> TeeResult {
+    // Connect to dest TA via Unix socket
+    let socket = UnixSocket::new(StreamTransport::new(
+        current().as_thread().proc_data.proc.pid(),
+    ));
+    let path = format!("/tmp/{}.sock", sess_id.uuid);
+    let remote_addr = SocketAddrEx::Unix(UnixSocketAddr::Path(path.into()));
+    socket.connect(remote_addr).map_err(|_| TEE_ERROR_GENERIC)?;
+
+    // Send close session request to dest TA
+    let req = CARequest::CloseSession {
+        session_id: sess_id.session_id,
+    };
+    let encoded = bincode::encode_to_vec(req, config::standard()).map_err(|_| TEE_ERROR_GENERIC)?;
+    let mut src = encoded.as_slice();
+    socket
+        .send(&mut src, SendOptions::default())
+        .map_err(|_| TEE_ERROR_GENERIC)?;
+
+    Ok(())
+}
+
+pub fn tee_ta_get_session(handle: u32) -> TeeResult<SessionIdentity> {
+    todo!()
 }
