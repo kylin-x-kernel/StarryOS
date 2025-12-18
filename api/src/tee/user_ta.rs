@@ -6,6 +6,8 @@
 
 use core::default::Default;
 
+/// user ta context
+/// NOTE: NEVER USE THIS STRUCT IN YOUR CODE
 #[repr(C)]
 pub struct user_ta_ctx {}
 
