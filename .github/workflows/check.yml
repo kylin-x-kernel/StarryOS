@@ -18,9 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly
           components: rustfmt
 
       - name: Check formatting
@@ -54,15 +54,5 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
 
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Add target
-        run: rustup target add ${{ matrix.target }}
-
       - name: Clippy
-        env:
-          RUSTC_BOOTSTRAP: 1
         run: cargo clippy --target ${{ matrix.target }} -F qemu -- -D warnings
