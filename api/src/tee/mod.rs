@@ -9,6 +9,7 @@
 #![allow(unused)]
 #![allow(missing_docs)]
 #![allow(non_upper_case_globals)]
+mod cancel;
 mod config;
 mod crypto;
 mod inter_ta;
@@ -52,6 +53,7 @@ use test::test_framework_basic::TestResult;
 
 use crate::tee::inter_ta::{sys_tee_scn_close_ta_session, sys_tee_scn_open_ta_session};
 use crate::tee::property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index};
+use cancel::*;
 
 pub type TeeResult<T = ()> = Result<T, u32>;
 
@@ -91,6 +93,11 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg4() as _,
         ),
         Sysno::tee_scn_close_ta_session => sys_tee_scn_close_ta_session(_uctx.arg0() as _),
+        Sysno::tee_scn_get_cancellation_flag => {
+            sys_tee_scn_get_cancellation_flag(_uctx.arg0() as _)
+        }
+        Sysno::tee_scn_unmask_cancellation => sys_tee_scn_unmask_cancellation(_uctx.arg0() as _),
+        Sysno::tee_scn_mask_cancellation => sys_tee_scn_mask_cancellation(_uctx.arg0() as _),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
 }

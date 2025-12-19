@@ -24,6 +24,9 @@ pub struct tee_session_ctx {
     pub user_id: u32,
     pub objects: Slab<Arc<tee_obj>>,
     pub clnt_id: TEE_Identity,
+    pub cancel: bool,
+    pub cancel_mask: bool,
+    pub cancel_time: TeeTime,
 }
 
 #[repr(C)]
@@ -59,6 +62,9 @@ impl Default for tee_session_ctx {
                     clockSeqAndNode: [0; 8],
                 },
             },
+            cancel: false,
+            cancel_mask: false,
+            cancel_time: TeeTime { seconds: 0, millis: 0, },
         }
     }
 }
