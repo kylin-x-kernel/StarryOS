@@ -40,7 +40,7 @@ pub(crate) fn sys_tee_scn_open_ta_session(
         uuid_size,
     )?;
 
-    tee_ta_init_session(Uuid::from(uuid).to_string().as_str())?;
+    tee_ta_init_session(Uuid::from(uuid).to_string())?;
 
     Ok(())
 }

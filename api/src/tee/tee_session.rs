@@ -4,14 +4,17 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use super::{TeeResult, tee_obj::tee_obj};
 use alloc::{boxed::Box, sync::Arc};
-use axtask::current;
 use core::{any::Any, default::Default};
+
+use axtask::current;
 use slab::Slab;
 use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
+
+use super::{TeeResult, tee_obj::tee_obj};
+use crate::tee::tee_ta_manager::SessionIdentity;
 
 scope_local::scope_local! {
     /// The tee ta context.
@@ -34,6 +37,8 @@ pub struct tee_session_ctx {
 pub struct tee_ta_ctx {
     #[cfg(feature = "tee_test")]
     pub for_test_only: u32,
+    pub session_handle: u32,
+    pub open_sessions: HashMap<u32, SessionIdentity>,
 }
 
 impl TeeSessionCtxTrait for tee_session_ctx {
@@ -64,7 +69,10 @@ impl Default for tee_session_ctx {
             },
             cancel: false,
             cancel_mask: false,
-            cancel_time: TeeTime { seconds: 0, millis: 0, },
+            cancel_time: TeeTime {
+                seconds: 0,
+                millis: 0,
+            },
         }
     }
 }
@@ -131,7 +139,7 @@ where
 
 /// 获取当前线程的 tee_ta_ctx 的可变引用，并在闭包中使用
 /// 闭包使用可确保锁的正确释放
-/// 
+///
 /// # 参数
 /// - `f`: 一个接受 `&mut tee_ta_ctx` 的闭包
 ///
@@ -147,7 +155,7 @@ where
 
 /// 获取当前线程的 tee_ta_ctx 的不可变引用，并在闭包中使用
 /// 闭包使用可确保锁的正确释放
-/// 
+///
 /// # 参数
 /// - `f`: 一个接受 `&tee_ta_ctx` 的闭包
 ///
@@ -164,13 +172,13 @@ where
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_session {
     //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
 
     test_fn! {
         using TestResult;
@@ -207,7 +215,7 @@ pub mod tests_tee_session {
                 test_only = ta_ctx.for_test_only;
                 Ok(())
             }).unwrap();
-            
+
             let mut new_value = 0;
             with_tee_ta_ctx_mut(|ta_ctx| {
                 ta_ctx.for_test_only = test_only + 1;
