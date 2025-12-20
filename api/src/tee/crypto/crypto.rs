@@ -137,3 +137,16 @@ impl PartialEq for ecc_keypair {
 }
 
 impl Eq for ecc_keypair {}
+
+// The crypto context used by the crypto_hash_*() functions
+pub(crate) struct CryptoHashCtx {
+    pub ops: Option<&'static CryptoHashOps>,
+}
+
+pub(crate) struct CryptoHashOps {
+    pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TEE_Result>,
+    pub update: Option<fn(ctx: &mut CryptoHashCtx, data: &[u8]) -> TEE_Result>,
+    pub final_: Option<fn(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TEE_Result>,
+    pub free_ctx: Option<fn(ctx: &mut CryptoHashCtx)>,
+    pub copy_state: Option<fn(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx)>,
+}

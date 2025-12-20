@@ -12,6 +12,7 @@ use slab::Slab;
 use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
+use hashbrown::HashMap;
 
 use super::{TeeResult, tee_obj::tee_obj};
 use crate::tee::tee_ta_manager::SessionIdentity;
