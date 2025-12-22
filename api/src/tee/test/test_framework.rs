@@ -5,9 +5,10 @@
 //! 框架支持手动注册测试用例，并提供基础的断言功能。
 extern crate alloc;
 
-use super::test_framework_basic::TestResult;
 use alloc::format;
 use core::fmt::Write;
+
+use super::test_framework_basic::TestResult;
 // 测试结果枚举
 
 impl TestResult {

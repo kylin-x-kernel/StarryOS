@@ -9,8 +9,10 @@
 
 use crate::tee::{
     TeeResult,
-    crypto::crypto::{ecc_keypair, ecc_public_key},
-    crypto::crypto_impl::crypto_ecc_keypair_ops,
+    crypto::{
+        crypto::{ecc_keypair, ecc_public_key},
+        crypto_impl::crypto_ecc_keypair_ops,
+    },
 };
 
 /// Elliptic Curve Digital for ecdsa and ecdh
@@ -20,6 +22,7 @@ impl crypto_ecc_keypair_ops for EcdOps {
     fn generate(&mut self, key_size_bits: usize) -> TeeResult<()> {
         todo!()
     }
+
     fn sign(
         &mut self,
         algo: u32,
@@ -29,6 +32,7 @@ impl crypto_ecc_keypair_ops for EcdOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn shared_secret(
         &mut self,
         public_key: &mut ecc_public_key,
@@ -37,6 +41,7 @@ impl crypto_ecc_keypair_ops for EcdOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn decrypt(&mut self, src: &[u8], dst: &mut [u8], dst_len: &mut usize) -> TeeResult<()> {
         todo!()
     }
@@ -49,6 +54,7 @@ impl crypto_ecc_keypair_ops for Sm2DsaOps {
     fn generate(&mut self, key_size_bits: usize) -> TeeResult<()> {
         todo!()
     }
+
     fn sign(
         &mut self,
         algo: u32,
@@ -58,6 +64,7 @@ impl crypto_ecc_keypair_ops for Sm2DsaOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn shared_secret(
         &mut self,
         public_key: &mut ecc_public_key,
@@ -66,6 +73,7 @@ impl crypto_ecc_keypair_ops for Sm2DsaOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn decrypt(&mut self, src: &[u8], dst: &mut [u8], dst_len: &mut usize) -> TeeResult<()> {
         todo!()
     }
@@ -78,6 +86,7 @@ impl crypto_ecc_keypair_ops for Sm2KepOps {
     fn generate(&mut self, key_size_bits: usize) -> TeeResult<()> {
         todo!()
     }
+
     fn sign(
         &mut self,
         algo: u32,
@@ -87,6 +96,7 @@ impl crypto_ecc_keypair_ops for Sm2KepOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn shared_secret(
         &mut self,
         public_key: &mut ecc_public_key,
@@ -95,6 +105,7 @@ impl crypto_ecc_keypair_ops for Sm2KepOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn decrypt(&mut self, src: &[u8], dst: &mut [u8], dst_len: &mut usize) -> TeeResult<()> {
         todo!()
     }
@@ -107,6 +118,7 @@ impl crypto_ecc_keypair_ops for Sm2PkeOps {
     fn generate(&mut self, key_size_bits: usize) -> TeeResult<()> {
         todo!()
     }
+
     fn sign(
         &mut self,
         algo: u32,
@@ -116,6 +128,7 @@ impl crypto_ecc_keypair_ops for Sm2PkeOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn shared_secret(
         &mut self,
         public_key: &mut ecc_public_key,
@@ -124,6 +137,7 @@ impl crypto_ecc_keypair_ops for Sm2PkeOps {
     ) -> TeeResult<()> {
         todo!()
     }
+
     fn decrypt(&mut self, src: &[u8], dst: &mut [u8], dst_len: &mut usize) -> TeeResult<()> {
         todo!()
     }

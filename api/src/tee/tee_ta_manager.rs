@@ -17,7 +17,9 @@ use axnet::{
 use axtask::current;
 use bincode::config;
 use starry_core::task::{AsThread, Thread};
-use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_ITEM_NOT_FOUND, TEE_ErrorOrigin, TEE_SUCCESS, utee_params};
+use tee_raw_sys::{
+    TEE_ERROR_GENERIC, TEE_ERROR_ITEM_NOT_FOUND, TEE_ErrorOrigin, TEE_SUCCESS, utee_params,
+};
 
 use crate::{
     socket::SocketAddrExt,

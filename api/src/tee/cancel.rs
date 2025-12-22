@@ -1,15 +1,18 @@
 // Cancellation syscalls implementation for TEE using session-level state
 
-use crate::tee::TeeResult;
-use crate::tee::tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut};
-use crate::tee::user_access::copy_to_user;
+use core::{ffi::c_uint, slice};
+
+use axhal::time::wall_time;
 use axtask::current;
 use indoc::printdoc;
-use core::ffi::c_uint;
-use core::slice;
 use linux_raw_sys::ioctl::BTRFS_IOC_SCRUB_CANCEL;
 use tee_raw_sys::TeeTime;
-use axhal::time::wall_time;
+
+use crate::tee::{
+    TeeResult,
+    tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
+    user_access::copy_to_user,
+};
 
 /// TEE_GetCancellationFlag
 /// Returns 1 if the session cancel flag is set and not masked, otherwise 0.
@@ -21,7 +24,7 @@ pub(crate) fn sys_tee_scn_get_cancellation_flag(cancel: *mut c_uint) -> TeeResul
         &flag.to_ne_bytes(),
         size_of::<u32>(),
     )?;
-	Ok(())
+    Ok(())
 }
 
 /// TEE_UnmaskCancellation
@@ -40,7 +43,7 @@ pub(crate) fn sys_tee_scn_unmask_cancellation(old_mask: *mut c_uint) -> TeeResul
         &prev_mask.to_ne_bytes(),
         size_of::<u32>(),
     )?;
-	Ok(())
+    Ok(())
 }
 
 /// TEE_MaskCancellation
@@ -57,7 +60,7 @@ pub(crate) fn sys_tee_scn_mask_cancellation(old_mask: *mut c_uint) -> TeeResult 
         &prev_mask.to_ne_bytes(),
         size_of::<u32>(),
     )?;
-	Ok(())
+    Ok(())
 }
 
 fn tee_ta_session_is_cancelled(ctx: &tee_session_ctx, curr_time: Option<&TeeTime>) -> bool {
@@ -88,8 +91,7 @@ fn tee_ta_session_is_cancelled(ctx: &tee_session_ctx, curr_time: Option<&TeeTime
     false
 }
 
-
-fn tee_time_get_sys_time () -> TeeTime {
+fn tee_time_get_sys_time() -> TeeTime {
     let systiem = wall_time();
     TeeTime {
         seconds: systiem.as_secs() as u32,

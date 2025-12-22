@@ -4,8 +4,7 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use crate::tee::TeeResult;
-use crate::tee::user_mode_ctx_struct::user_mode_ctx;
+use crate::tee::{TeeResult, user_mode_ctx_struct::user_mode_ctx};
 
 pub fn vm_check_access_rights(
     _uctx: &mut user_mode_ctx,

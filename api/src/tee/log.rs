@@ -4,16 +4,18 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+use alloc::{boxed::Box, collections::VecDeque, string::String, sync::Arc, vec::Vec};
+use core::{any::Any, ffi::c_char};
+
+use axerrno::{AxError, AxResult};
+use spin::RwLock;
+use tee_raw_sys::TEE_ERROR_BAD_PARAMETERS;
+
 #[cfg(feature = "tee_test")]
 use super::{
     tee_obj::tee_obj, tee_unit_test::tee_test_unit, test::test_examples::tee_test_example,
 };
 use crate::{mm::vm_load_any_string, tee::TeeResult};
-use alloc::{boxed::Box, collections::VecDeque, string::String, sync::Arc, vec::Vec};
-use axerrno::{AxError, AxResult};
-use core::{any::Any, ffi::c_char};
-use spin::RwLock;
-use tee_raw_sys::TEE_ERROR_BAD_PARAMETERS;
 
 scope_local::scope_local! {
     /// The current file descriptor table.

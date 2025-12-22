@@ -5,6 +5,7 @@
 // This file has been created by KylinSoft on 2025.
 
 use alloc::{string::String, vec::Vec};
+
 use bincode::{Decode, Encode};
 
 #[derive(Encode, Decode)]
@@ -20,6 +21,9 @@ pub enum CARequest {
     },
     CloseSession {
         session_id: u32,
+    },
+    Return {
+        ret: u32,
     },
     Destroy,
     InvokeCommand {
@@ -38,6 +42,9 @@ pub enum CAResponse {
     CloseSession {
         status: u32,
         session_id: u32,
+    },
+    Return {
+        status: u32,
     },
     Destroy {
         status: u32,
@@ -96,13 +103,13 @@ pub struct Value {
 
 #[derive(Encode, Decode)]
 pub enum ParamType {
-    None = 0,
-    ValueInput = 1,
-    ValueOutput = 2,
-    ValueInout = 3,
-    MemrefInput = 5,
+    None         = 0,
+    ValueInput   = 1,
+    ValueOutput  = 2,
+    ValueInout   = 3,
+    MemrefInput  = 5,
     MemrefOutput = 6,
-    MemrefInout = 7,
+    MemrefInout  = 7,
 }
 
 impl From<u32> for ParamType {

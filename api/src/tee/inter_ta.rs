@@ -15,7 +15,9 @@ use tee_raw_sys::{TEE_Identity, TEE_LOGIN_TRUSTED_APP, TEE_UUID, utee_params};
 use crate::tee::{
     TeeResult,
     tee_session::{tee_session_ctx, with_tee_session_ctx},
-    tee_ta_manager::{tee_ta_close_session, tee_ta_get_session, tee_ta_init_session, tee_ta_invoke_command},
+    tee_ta_manager::{
+        tee_ta_close_session, tee_ta_get_session, tee_ta_init_session, tee_ta_invoke_command,
+    },
     user_access::copy_from_user,
     uuid::Uuid,
 };

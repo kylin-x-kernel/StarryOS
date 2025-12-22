@@ -4,15 +4,13 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::vec;
-
+use alloc::{boxed::Box, ffi::CString, vec, vec::Vec};
 use core::{
     ffi::{CStr, c_uint, c_ulong, c_void},
     ptr::addr_of,
     slice,
 };
 
-use alloc::{boxed::Box, ffi::CString, vec::Vec};
 use tee_raw_sys::{
     TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_ITEM_NOT_FOUND, TEE_ERROR_NOT_IMPLEMENTED,
     TEE_ERROR_NOT_SUPPORTED, TEE_ERROR_SHORT_BUFFER, TEE_Identity, TEE_PROPSET_CURRENT_CLIENT,
@@ -55,14 +53,14 @@ impl PropertySet {
 }
 
 enum PropType {
-    BOOL,        /* bool */
-    U32,         /* uint32_t */
-    UUID,        /* TEE_UUID */
-    IDENTITY,    /* TEE_Identity */
-    STRING,      /* zero terminated string of char */
-    BINARYBLOCK, /* zero terminated base64 coded string */
-    U64,         /* uint64_t */
-    INVALID,     /* invalid value */
+    BOOL,        // bool
+    U32,         // uint32_t
+    UUID,        // TEE_UUID
+    IDENTITY,    // TEE_Identity
+    STRING,      // zero terminated string of char
+    BINARYBLOCK, // zero terminated base64 coded string
+    U64,         // uint64_t
+    INVALID,     // invalid value
 }
 
 impl PropType {

@@ -9,12 +9,12 @@ use core::{
     default, mem,
     ops::{Deref, DerefMut},
 };
+
 use mbedtls::bignum::Mpi;
 use mbedtls_sys_auto::*;
 use tee_raw_sys::*;
 
-use crate::tee::TeeResult;
-use crate::tee::config::CFG_CORE_BIGNUM_MAX_BITS;
+use crate::tee::{TeeResult, config::CFG_CORE_BIGNUM_MAX_BITS};
 
 /// BigNum 是新类型结构体，包装了 Mpi
 #[derive(Debug, Clone)]
@@ -188,14 +188,11 @@ pub fn crypto_bignum_clear(bn: &mut BigNum) {
 pub mod tests_tee_bignum {
     use zerocopy::IntoBytes;
 
-    //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    //-------- test framework import --------
+    use crate::tee::TestDescriptor;
+    use crate::{assert, assert_eq, assert_ne, tee::TestResult, test_fn, tests, tests_name};
 
     test_fn! {
         using TestResult;

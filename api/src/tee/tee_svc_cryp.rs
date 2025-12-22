@@ -4,10 +4,14 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use crate::tee;
-use crate::{mm::vm_load_string, tee::libmbedtls::bignum::BigNum};
-use alloc::{alloc::alloc, alloc::dealloc, boxed::Box, string::String, sync::Arc, vec, vec::Vec};
-use axerrno::{AxError, AxResult};
+use alloc::{
+    alloc::{alloc, dealloc},
+    boxed::Box,
+    string::String,
+    sync::Arc,
+    vec,
+    vec::Vec,
+};
 use core::{
     alloc::Layout,
     any::Any,
@@ -18,9 +22,10 @@ use core::{
     slice,
     time::Duration,
 };
+
+use axerrno::{AxError, AxResult};
 use lazy_static::lazy_static;
-use tee_raw_sys::libc_compat::size_t;
-use tee_raw_sys::*;
+use tee_raw_sys::{libc_compat::size_t, *};
 
 use super::{
     TeeResult,
@@ -43,6 +48,7 @@ use super::{
     utils::{bit, bit32},
     vm::vm_check_access_rights,
 };
+use crate::{mm::vm_load_string, tee, tee::libmbedtls::bignum::BigNum};
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
 pub const TEE_TYPE_ATTR_REQUIRED: u32 = bit(1);
@@ -52,17 +58,17 @@ pub const TEE_TYPE_ATTR_GEN_KEY_OPT: u32 = bit(4);
 pub const TEE_TYPE_ATTR_GEN_KEY_REQ: u32 = bit(5);
 pub const TEE_TYPE_ATTR_BIGNUM_MAXBITS: u32 = bit(6);
 
-/* Handle storing of generic secret keys of varying lengths */
+// Handle storing of generic secret keys of varying lengths
 pub const ATTR_OPS_INDEX_SECRET: u32 = 0;
-/* Convert to/from big-endian byte array and provider-specific bignum */
+// Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_BIGNUM: u32 = 1;
-/* Convert to/from value attribute depending on direction */
-/* Convert to/from big-endian byte array and provider-specific bignum */
+// Convert to/from value attribute depending on direction
+// Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_VALUE: u32 = 2;
-/* Convert to/from curve25519 attribute depending on direction */
-/* Convert to/from big-endian byte array and provider-specific bignum */
+// Convert to/from curve25519 attribute depending on direction
+// Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_25519: u32 = 3;
-/* Convert to/from big-endian byte array and provider-specific bignum */
+// Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_448: u32 = 4;
 
 #[repr(C)]
@@ -187,6 +193,7 @@ impl TeeCryptObjAttrOps for CryptoAttrRef<'_> {
             CryptoAttrRef::SecretValue(attr) => attr.from_user(user_buffer),
         }
     }
+
     fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
         match self {
             CryptoAttrRef::BigNum(bn) => bn.to_user(buffer, size_ref),
@@ -469,7 +476,7 @@ impl TeeCryptObjAttrOps for AttrValue {
             return Err(TEE_ERROR_GENERIC);
         }
 
-        /* Note that only the first value is copied */
+        // Note that only the first value is copied
         // 从用户缓冲区读取字节到 AttrValue 的内部 u32
         // 使用 unsafe 直接写入，与 to_user 的实现保持一致
         let value_ptr = self.as_mut_u32() as *mut u32 as *mut u8;
@@ -660,7 +667,7 @@ impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
         let data_slice = self.data_mut();
 
         // 3. 拷贝 user_buffer 到尾随数组
-        //data_slice[..size].copy_from_slice(user_buffer);
+        // data_slice[..size].copy_from_slice(user_buffer);
         copy_from_user(&mut data_slice[..size], user_buffer, size as size_t)?;
 
         // 4. 更新 key_size
@@ -827,12 +834,10 @@ pub struct tee_cryp_obj_type_props {
 pub(crate) struct tee_cryp_obj_secret {
     key_size: u32,
     alloc_size: u32,
-    /*
-     * Pseudo code visualize layout of structure
-     * Next follows data, such as:
-     *	uint8_t data[alloc_size]
-     * key_size must never exceed alloc_size
-     */
+    // Pseudo code visualize layout of structure
+    // Next follows data, such as:
+    // 	uint8_t data[alloc_size]
+    // key_size must never exceed alloc_size
 }
 #[derive(Debug)]
 pub struct tee_cryp_obj_secret_wrapper {
@@ -1071,7 +1076,7 @@ pub fn tee_obj_set_type(
     obj_type: u32,
     max_key_size: size_t,
 ) -> TeeResult<isize> {
-    /* Can only set type for newly allocated objs */
+    // Can only set type for newly allocated objs
     if !obj.attr.is_empty() {
         return Err(TEE_ERROR_BAD_STATE);
     }
@@ -1083,10 +1088,10 @@ pub fn tee_obj_set_type(
 
         obj.attr.push(TeeCryptObj::None);
     } else {
-        /* Find description of object */
+        // Find description of object
         let type_props = tee_svc_find_type_props(obj_type).ok_or(TEE_ERROR_NOT_SUPPORTED)?;
 
-        /* Check that max_key_size follows restrictions */
+        // Check that max_key_size follows restrictions
         check_key_size(type_props, max_key_size)?;
 
         // 检查是否有属性使用 SECRET 操作索引
@@ -1150,7 +1155,7 @@ pub fn tee_svc_find_type_props(
     None
 }
 
-/* Set an attribute on an object */
+// Set an attribute on an object
 fn set_attribute(o: &mut tee_obj, props: &tee_cryp_obj_type_props, attr: u32) {
     let idx = tee_svc_cryp_obj_find_type_attr_idx(attr, props);
     if idx < 0 {
@@ -1159,7 +1164,7 @@ fn set_attribute(o: &mut tee_obj, props: &tee_cryp_obj_type_props, attr: u32) {
     o.have_attrs |= bit(idx as u32);
 }
 
-/* Get an attribute on an object */
+// Get an attribute on an object
 fn get_attribute(o: &tee_obj, props: &tee_cryp_obj_type_props, attr: u32) -> TeeResult<u32> {
     let idx = tee_svc_cryp_obj_find_type_attr_idx(attr, props);
     if idx < 0 {
@@ -1187,7 +1192,7 @@ fn op_attr_secret_value_from_user(
     let data_slice = attr.data_mut();
 
     // 3. 拷贝 user_buffer 到尾随数组
-    //data_slice[..size].copy_from_slice(user_buffer);
+    // data_slice[..size].copy_from_slice(user_buffer);
     copy_from_user(&mut data_slice[..size], user_buffer, size as size_t)?;
 
     // 4. 更新 key_size
@@ -1467,7 +1472,7 @@ fn op_attr_value_from_user(attr: &mut [u8], user_buffer: &[u8]) -> TeeResult {
         return Err(TEE_ERROR_GENERIC);
     }
 
-    /* Note that only the first value is copied */
+    // Note that only the first value is copied
     attr.copy_from_slice(&user_buffer[..size_of::<u32>()]);
 
     Ok(())
@@ -1622,11 +1627,9 @@ pub fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
 fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResult {
     let mut sz = key_size;
 
-    /*
-     * In GP Internal API Specification 1.0 the partity bits aren't
-     * counted when telling the size of the key in bits so add them
-     * here if missing.
-     */
+    // In GP Internal API Specification 1.0 the partity bits aren't
+    // counted when telling the size of the key in bits so add them
+    // here if missing.
     if is_gp_legacy_des_key_size(props.obj_type, sz) {
         sz += sz / 7;
     }
@@ -1795,10 +1798,8 @@ fn tee_svc_cryp_check_attr(
         }
     }
 
-    /*
-     * First find out which attributes are required and which belong to
-     * the optional group
-     */
+    // First find out which attributes are required and which belong to
+    // the optional group
     for n in 0..type_props.num_type_attrs as usize {
         bit = 1 << n;
         flags = type_props.type_attrs[n].flags as u32;
@@ -1810,29 +1811,25 @@ fn tee_svc_cryp_check_attr(
         }
     }
 
-    /*
-     * Verify that all required attributes are in place and
-     * that the same attribute isn't repeated.
-     */
+    // Verify that all required attributes are in place and
+    // that the same attribute isn't repeated.
     for n in 0..attrs.len() {
         idx = tee_svc_cryp_obj_find_type_attr_idx(attrs[n].attributeID as u32, type_props);
 
-        /* attribute not defined in current object type */
+        // attribute not defined in current object type
         if idx < 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
 
         bit = 1 << idx;
 
-        /* attribute not repeated */
+        // attribute not repeated
         if (attrs_found & bit) != 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
 
-        /*
-         * Attribute not defined in current object type for this
-         * usage.
-         */
+        // Attribute not defined in current object type for this
+        // usage.
         if (bit & (req_attrs | opt_grp_attrs)) == 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
@@ -1840,15 +1837,13 @@ fn tee_svc_cryp_check_attr(
         attrs_found |= bit;
     }
 
-    /* Required attribute missing */
+    // Required attribute missing
     if (attrs_found & req_attrs) != req_attrs {
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
     }
 
-    /*
-     * If the flag says that "if one of the optional attributes are included
-     * all of them has to be included" this must be checked.
-     */
+    // If the flag says that "if one of the optional attributes are included
+    // all of them has to be included" this must be checked.
     if all_opt_needed
         && (attrs_found & opt_grp_attrs) != 0
         && (attrs_found & opt_grp_attrs) != opt_grp_attrs
@@ -1903,7 +1898,7 @@ fn tee_svc_cryp_obj_populate_type(
     for attr in attrs {
         // find attribute index in type properties
         idx = tee_svc_cryp_obj_find_type_attr_idx(attr.attributeID, type_props);
-        /* attribute not defined in current object type */
+        // attribute not defined in current object type
         if idx < 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
         }
@@ -1930,20 +1925,16 @@ fn tee_svc_cryp_obj_populate_type(
             attr_ref.from_user(buffer)?;
         }
 
-        /*
-         * The attribute that gives the size of the object is
-         * flagged with TEE_TYPE_ATTR_SIZE_INDICATOR.
-         */
+        // The attribute that gives the size of the object is
+        // flagged with TEE_TYPE_ATTR_SIZE_INDICATOR.
         if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_SIZE_INDICATOR as u16 != 0 {
-            /* There should be only one */
+            // There should be only one
             if obj_size != 0 {
                 return Err(TEE_ERROR_BAD_STATE);
             }
 
-            /*
-             * For ECDSA/ECDH we need to translate curve into
-             * object size
-             */
+            // For ECDSA/ECDH we need to translate curve into
+            // object size
             if attr.attributeID == TEE_ATTR_ECC_CURVE {
                 // get ECC curve size
                 obj_size = get_ec_key_size(unsafe { attr.content.value.a })?;
@@ -1961,11 +1952,9 @@ fn tee_svc_cryp_obj_populate_type(
             }
             check_key_size(type_props, obj_size)?;
         }
-        /*
-         * Bignum attributes limited by the number of bits in
-         * o->info.objectSize are flagged with
-         * TEE_TYPE_ATTR_BIGNUM_MAXBITS.
-         */
+        // Bignum attributes limited by the number of bits in
+        // o->info.objectSize are flagged with
+        // TEE_TYPE_ATTR_BIGNUM_MAXBITS.
         if type_props.type_attrs[idx as usize].flags & TEE_TYPE_ATTR_BIGNUM_MAXBITS as u16 != 0 {
             if crypto_bignum_num_bits(attr_ref.as_bignum().ok_or(TEE_ERROR_BAD_STATE)?)?
                 > obj.info.maxObjectSize as usize
@@ -1976,11 +1965,9 @@ fn tee_svc_cryp_obj_populate_type(
 
         obj.have_attrs |= have_attrs;
         obj.info.objectSize = obj_size as u32;
-        /*
-         * In GP Internal API Specification 1.0 the partity bits aren't
-         * counted when telling the size of the key in bits so remove the
-         * parity bits here.
-         */
+        // In GP Internal API Specification 1.0 the partity bits aren't
+        // counted when telling the size of the key in bits so remove the
+        // parity bits here.
         if is_gp_legacy_des_key_size(obj.info.objectType, obj.info.maxObjectSize as usize) {
             obj.info.objectSize -= obj.info.objectSize / 8;
         }
@@ -1992,12 +1979,12 @@ fn tee_svc_cryp_obj_populate_type(
 pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) -> TeeResult {
     let mut o = tee_obj_get(obj_id as tee_obj_id_type)?;
 
-    /* Must be a transient object */
+    // Must be a transient object
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
-    /* Must not be initialized already */
+    // Must not be initialized already
     if o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED != 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
@@ -2057,14 +2044,11 @@ pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeR
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;
 
-    //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    //-------- test framework import --------
+    use crate::tee::TestDescriptor;
+    use crate::{assert, assert_eq, assert_ne, tee::TestResult, test_fn, tests, tests_name};
 
     test_fn! {
         using TestResult;

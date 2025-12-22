@@ -5,12 +5,12 @@
 // This file has been created by KylinSoft on 2025.
 
 use alloc::{boxed::Box, vec, vec::Vec};
+use core::mem::{MaybeUninit, size_of, transmute};
+
 use axerrno::{AxError, AxResult};
 use cfg_if::cfg_if;
-use core::mem::{MaybeUninit, size_of, transmute};
 use starry_vm::{VmError, VmPtr, vm_read_slice, vm_write_slice};
-use tee_raw_sys::libc_compat::size_t;
-use tee_raw_sys::*;
+use tee_raw_sys::{libc_compat::size_t, *};
 
 use super::TeeResult;
 
@@ -150,13 +150,13 @@ pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
 #[cfg(feature = "tee_test")]
 pub mod tests_user_access {
     //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
 
     test_fn! {
         using TestResult;

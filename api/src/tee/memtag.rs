@@ -4,8 +4,9 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use super::types_ext::*;
 use core::ffi::c_void;
+
+use super::types_ext::*;
 
 #[inline]
 pub fn memtag_strip_tag_vaddr(addr: *const c_void) -> vaddr_t {

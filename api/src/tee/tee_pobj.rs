@@ -5,6 +5,7 @@
 // This file has been created by KylinSoft on 2025.
 
 use core::default;
+
 use spin::Mutex;
 use tee_raw_sys::*;
 
@@ -46,13 +47,13 @@ where
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_pobj {
     //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
 
     test_fn! {
         using TestResult;

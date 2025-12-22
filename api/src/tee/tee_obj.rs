@@ -9,15 +9,15 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
+use core::{default, ffi::c_ulong};
+
 use axerrno::{AxError, AxResult};
 use axtask::current;
-use core::{default, ffi::c_ulong};
 use flatten_objects::FlattenObjects;
 use slab::Slab;
 use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
-use tee_raw_sys::libc_compat::size_t;
-use tee_raw_sys::*;
+use tee_raw_sys::{libc_compat::size_t, *};
 
 use super::{
     TeeResult,
@@ -40,9 +40,9 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 #[repr(C)]
 pub struct tee_obj {
     pub info: TEE_ObjectInfo,
-    busy: bool,          /* true if used by an operation */
-    pub have_attrs: u32, /* bitfield identifying set properties */
-    //void *attr;
+    busy: bool,          // true if used by an operation
+    pub have_attrs: u32, // bitfield identifying set properties
+    // void *attr;
     pub attr: Vec<TeeCryptObj>,
     ds_pos: size_t,
     pub pobj: Arc<tee_pobj>,
@@ -88,13 +88,13 @@ pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<tee_obj>> {
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_obj {
     //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::tee::TestResult;
-    use crate::test_fn;
-    use crate::{assert, assert_eq, assert_ne, tests, tests_name};
-
     //-------- local tests import --------
     use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
 
     test_fn! {
         using TestResult;

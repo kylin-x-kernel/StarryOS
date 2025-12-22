@@ -23,6 +23,7 @@ mod protocol;
 mod tee_fs;
 mod tee_obj;
 mod tee_pobj;
+mod tee_return;
 mod tee_session;
 mod tee_svc_cryp;
 mod tee_ta_manager;
@@ -46,6 +47,7 @@ use cancel::*;
 use log::*;
 use syscalls::Sysno;
 use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
+use tee_return::sys_tee_scn_return;
 #[cfg(feature = "tee_test")]
 use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
@@ -65,6 +67,7 @@ pub type TeeResult<T = ()> = Result<T, u32>;
 pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeResult {
     // Handle TEE-specific syscalls here
     match _sysno {
+        Sysno::tee_scn_return => sys_tee_scn_return(_uctx.arg0() as _),
         Sysno::tee_scn_log => sys_tee_scn_log(_uctx.arg0() as _, _uctx.arg1() as _),
         Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _),
         Sysno::tee_scn_get_property => {

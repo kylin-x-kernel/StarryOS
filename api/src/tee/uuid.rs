@@ -5,6 +5,7 @@
 // This file has been created by KylinSoft on 2025.
 
 use core::fmt;
+
 use hex;
 use tee_raw_sys::{self as raw, TEE_ERROR_BAD_FORMAT};
 use uuid as uuid_crate;
