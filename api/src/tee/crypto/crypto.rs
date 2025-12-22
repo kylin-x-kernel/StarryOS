@@ -143,7 +143,7 @@ pub(crate) struct CryptoHashCtx {
     pub ops: Option<&'static CryptoHashOps>,
 }
 
-type TEE_Result<T = u32> = core::result::Result<(), T>;
+type TEE_Result<T = Option<Box<CryptoHashCtx>>, E = u32> = core::result::Result<T, E>;
 
 pub(crate) struct CryptoHashOps {
     pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TEE_Result>,
