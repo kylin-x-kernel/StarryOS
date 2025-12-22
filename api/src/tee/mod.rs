@@ -17,6 +17,7 @@ mod libmbedtls;
 mod libutee;
 mod log;
 mod memtag;
+mod panic;
 mod property;
 mod protocol;
 mod tee_fs;
@@ -39,21 +40,25 @@ mod uuid;
 mod vm;
 use core::arch::asm;
 
-use log::*;
-use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
-use time::*;
-
 use axerrno::{AxError, AxResult};
 use axhal::uspace::UserContext;
+use cancel::*;
+use log::*;
 use syscalls::Sysno;
+use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
 #[cfg(feature = "tee_test")]
 use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
+use time::*;
 
-use crate::tee::inter_ta::{sys_tee_scn_close_ta_session, sys_tee_scn_open_ta_session};
-use crate::tee::property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index};
-use cancel::*;
+use crate::tee::{
+    inter_ta::{
+        sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
+    },
+    panic::sys_tee_scn_panic,
+    property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
+};
 
 pub type TeeResult<T = ()> = Result<T, u32>;
 
@@ -61,8 +66,8 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
     // Handle TEE-specific syscalls here
     match _sysno {
         Sysno::tee_scn_log => sys_tee_scn_log(_uctx.arg0() as _, _uctx.arg1() as _),
-        // TODO: add panic
         // Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _, _uctx.arg1() as _),
+        Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _),
         Sysno::tee_scn_get_property => {
             let prop_type: usize;
             unsafe {
@@ -95,6 +100,13 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg4() as _,
         ),
         Sysno::tee_scn_close_ta_session => sys_tee_scn_close_ta_session(_uctx.arg0() as _),
+        Sysno::tee_scn_invoke_ta_command => sys_tee_scn_invoke_ta_command(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+            _uctx.arg4() as _,
+        ),
         Sysno::tee_scn_get_cancellation_flag => {
             sys_tee_scn_get_cancellation_flag(_uctx.arg0() as _)
         }

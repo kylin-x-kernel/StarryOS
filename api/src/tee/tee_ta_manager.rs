@@ -17,7 +17,7 @@ use axnet::{
 use axtask::current;
 use bincode::config;
 use starry_core::task::{AsThread, Thread};
-use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_ITEM_NOT_FOUND, TEE_ErrorOrigin, TEE_SUCCESS};
+use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_ITEM_NOT_FOUND, TEE_ErrorOrigin, TEE_SUCCESS, utee_params};
 
 use crate::{
     socket::SocketAddrExt,
@@ -102,6 +102,56 @@ pub fn tee_ta_close_session(sess_id: SessionIdentity) -> TeeResult {
         .map_err(|_| TEE_ERROR_GENERIC)?;
 
     Ok(())
+}
+
+pub fn tee_ta_invoke_command(
+    sess_id: SessionIdentity,
+    cmd_id: u32,
+    usr_param: *mut utee_params,
+) -> TeeResult {
+    // Connect to dest TA via Unix socket
+    let socket = UnixSocket::new(StreamTransport::new(
+        current().as_thread().proc_data.proc.pid(),
+    ));
+    let path = format!("/tmp/{}.sock", sess_id.uuid);
+    let remote_addr = SocketAddrEx::Unix(UnixSocketAddr::Path(path.into()));
+    socket.connect(remote_addr).map_err(|_| TEE_ERROR_GENERIC)?;
+
+    // Send invoke command request to dest TA
+    let req = CARequest::InvokeCommand {
+        session_id: sess_id.session_id,
+        cmd_id,
+        params: Parameters::default(),
+    };
+    let encoded = bincode::encode_to_vec(req, config::standard()).map_err(|_| TEE_ERROR_GENERIC)?;
+    let mut message = Vec::with_capacity(4 + encoded.len());
+    message.extend_from_slice(&(encoded.len() as u32).to_ne_bytes());
+    message.extend_from_slice(&encoded);
+    let mut src = message.as_slice();
+    socket
+        .send(&mut src, SendOptions::default())
+        .map_err(|_| TEE_ERROR_GENERIC)?;
+
+    // Receive response from dest TA
+    let mut buf = [0u8; 1024];
+    let mut dst = buf.as_mut_slice();
+    socket
+        .recv(&mut dst, RecvOptions::default())
+        .map_err(|_| TEE_ERROR_GENERIC)?;
+    let (resp, _): (CAResponse, _) =
+        bincode::decode_from_slice(&dst, config::standard()).map_err(|_| TEE_ERROR_GENERIC)?;
+    match resp {
+        CAResponse::InvokeCommand {
+            status,
+            session_id,
+            cmd_id,
+            params,
+        } => match status {
+            TEE_SUCCESS => Ok(()),
+            _ => Err(status),
+        },
+        _ => Err(TEE_ERROR_GENERIC),
+    }
 }
 
 pub fn tee_ta_get_session(handle: u32) -> TeeResult<SessionIdentity> {

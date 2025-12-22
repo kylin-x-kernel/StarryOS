@@ -85,6 +85,8 @@ pub trait TeeCryptObjAttrOps {
 
     fn from_obj(&mut self, src_obj: &TeeCryptObjAttr) -> TeeResult;
 
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult;
+
     fn free(&mut self) {
         // default do nothing
     }
@@ -206,6 +208,19 @@ impl TeeCryptObjAttrOps for CryptoAttrRef<'_> {
                 Ok(())
             }
             CryptoAttrRef::SecretValue(attr) => attr.from_obj(src_obj),
+        }
+    }
+
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult {
+        match self {
+            CryptoAttrRef::BigNum(bn) => bn.from_crypto_attr_ref(src_obj),
+            CryptoAttrRef::U32(val) => {
+                let mut attr = AttrValue::from(**val);
+                attr.from_crypto_attr_ref(src_obj)?;
+                **val = *attr.as_u32();
+                Ok(())
+            }
+            CryptoAttrRef::SecretValue(attr) => attr.from_crypto_attr_ref(src_obj),
         }
     }
 
@@ -406,6 +421,14 @@ impl TeeCryptObjAttrOps for TeeCryptObjAttr {
         }
     }
 
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult {
+        match self {
+            TeeCryptObjAttr::secret_value(attr) => attr.from_crypto_attr_ref(src_obj),
+            TeeCryptObjAttr::bignum(attr) => attr.from_crypto_attr_ref(src_obj),
+            TeeCryptObjAttr::value(attr) => attr.from_crypto_attr_ref(src_obj),
+        }
+    }
+
     fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
         match self {
             TeeCryptObjAttr::secret_value(attr) => attr.to_binary(data, offs),
@@ -495,6 +518,16 @@ impl TeeCryptObjAttrOps for AttrValue {
         }
     }
 
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult {
+        match src_obj {
+            CryptoAttrRef::U32(val) => {
+                *self = AttrValue::from(**val);
+                Ok(())
+            }
+            _ => Err(TEE_ERROR_BAD_PARAMETERS),
+        }
+    }
+
     fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
         let value: u32 = *self.as_u32();
         op_u32_to_binary_helper(value, data, offs)
@@ -564,6 +597,16 @@ impl TeeCryptObjAttrOps for BigNum {
         }
     }
 
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult {
+        match src_obj {
+            CryptoAttrRef::BigNum(bn) => {
+                crypto_bignum_copy(self, bn);
+                Ok(())
+            }
+            _ => Err(TEE_ERROR_BAD_PARAMETERS),
+        }
+    }
+
     fn to_binary(&self, data: &mut [u8], offs: &mut usize) -> TeeResult {
         let n: u32 = crypto_bignum_num_bytes(self)? as u32;
         let mut next_offs: usize;
@@ -602,7 +645,6 @@ impl TeeCryptObjAttrOps for BigNum {
     fn clear(&mut self) {
         self.as_mpi_mut().clear();
     }
-
 }
 
 impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
@@ -657,24 +699,14 @@ impl TeeCryptObjAttrOps for tee_cryp_obj_secret_wrapper {
     fn from_obj(&mut self, src_obj: &TeeCryptObjAttr) -> TeeResult {
         // 从 TeeCryptObjAttr 中提取 tee_cryp_obj_secret_wrapper
         match src_obj {
-            TeeCryptObjAttr::secret_value(secret) => {
-                let key = self.secret();
-                let src_key = secret.secret();
-                let src_key_size = src_key.key_size;
+            TeeCryptObjAttr::secret_value(secret) => self.from(secret),
+            _ => Err(TEE_ERROR_BAD_PARAMETERS),
+        }
+    }
 
-                if src_key_size > key.alloc_size {
-                    return Err(TEE_ERROR_BAD_STATE);
-                }
-
-                let key_data = self.data_mut();
-                let src_key_data = secret.data();
-
-                key_data[..src_key_size as usize]
-                    .copy_from_slice(&src_key_data[..src_key_size as usize]);
-                self.secret_mut().key_size = src_key_size;
-
-                Ok(())
-            }
+    fn from_crypto_attr_ref(&mut self, src_obj: &CryptoAttrRef) -> TeeResult {
+        match src_obj {
+            CryptoAttrRef::SecretValue(secret) => self.from(secret),
             _ => Err(TEE_ERROR_BAD_PARAMETERS),
         }
     }
@@ -864,6 +896,24 @@ impl tee_cryp_obj_secret_wrapper {
         let data_slice = self.data_mut();
         data_slice[..data.len()].copy_from_slice(data);
         self.secret_mut().key_size = data.len() as u32;
+        Ok(())
+    }
+
+    pub fn from(&mut self, secret: &tee_cryp_obj_secret_wrapper) -> TeeResult {
+        let key = self.secret();
+        let src_key = secret.secret();
+        let src_key_size = src_key.key_size;
+
+        if src_key_size > key.alloc_size {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+
+        let key_data = self.data_mut();
+        let src_key_data = secret.data();
+
+        key_data[..src_key_size as usize].copy_from_slice(&src_key_data[..src_key_size as usize]);
+        self.secret_mut().key_size = src_key_size;
+
         Ok(())
     }
 }
@@ -1485,6 +1535,84 @@ fn op_attr_25519_free(_attr: &mut [u8]) {
     unimplemented!();
 }
 
+pub fn tee_obj_attr_copy_from(dst: &mut tee_obj, src: &mut tee_obj) -> TeeResult {
+    let mut have_atts: u32 = 0;
+    if dst.info.objectType == TEE_TYPE_DATA {
+        return Ok(());
+    }
+    if dst.attr.is_empty() {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    let tp = tee_svc_find_type_props(dst.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+
+    if dst.info.objectType == src.info.objectType {
+        have_atts = src.have_attrs;
+        for ta in tp.type_attrs.iter() {
+            let attr_id = ta.attr_id;
+            let mut attr_ref = dst.attr[0].get_attr_by_id(attr_id as c_ulong)?;
+            let mut attr_src_ref = src.attr[0].get_attr_by_id(attr_id as c_ulong)?;
+            attr_ref.from_crypto_attr_ref(&mut attr_src_ref)?;
+        }
+    } else {
+        if (dst.info.objectType == TEE_TYPE_RSA_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_RSA_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_DSA_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_DSA_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_ECDSA_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_ECDSA_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_ECDH_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_ECDH_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_SM2_DSA_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_SM2_DSA_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_SM2_PKE_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_SM2_PKE_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_SM2_KEP_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_SM2_KEP_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_ED25519_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_ED25519_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_X25519_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_X25519_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else if (dst.info.objectType == TEE_TYPE_X448_PUBLIC_KEY) {
+            if (src.info.objectType != TEE_TYPE_X448_KEYPAIR) {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        } else {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        let tp_src = tee_svc_find_type_props(src.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+        have_atts = bit32(tp.num_type_attrs as u32) - 1;
+        for ta in tp.type_attrs.iter() {
+            let attr_id = ta.attr_id;
+            let mut attr_ref = dst.attr[0].get_attr_by_id(attr_id as c_ulong)?;
+            let mut attr_src_ref = src.attr[0].get_attr_by_id(attr_id as c_ulong)?;
+            attr_ref.from_crypto_attr_ref(&mut attr_src_ref)?;
+        }
+    }
+
+    dst.have_attrs = have_atts;
+    Ok(())
+}
+
 pub fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
     return CFG_COMPAT_GP10_DES
         && ((obj_type == TEE_TYPE_DES && sz == 56)
@@ -1895,6 +2023,36 @@ pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) 
 
     Ok(())
 }
+
+pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeResult {
+    let mut dst_o = tee_obj_get(dst as tee_obj_id_type)?;
+    let mut src_o = tee_obj_get(src as tee_obj_id_type)?;
+
+    if src_o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+    if dst_o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+    if dst_o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    let dst_mut = Arc::get_mut(&mut dst_o).ok_or(TEE_ERROR_BAD_STATE)?;
+    let src_mut = Arc::get_mut(&mut src_o).ok_or(TEE_ERROR_BAD_STATE)?;
+    tee_obj_attr_copy_from(dst_mut, src_mut)?;
+    dst_mut.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
+    dst_mut.info.objectSize = src_mut.info.objectSize;
+    if src_mut.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        with_pobj_usage_lock(&src_mut.pobj, || {
+            dst_mut.info.objectUsage = src_mut.pobj.obj_info_usage;
+        });
+    } else {
+        dst_mut.info.objectUsage = src_mut.info.objectUsage;
+    }
+    Ok(())
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_tee_svc_cryp {
     use zerocopy::IntoBytes;

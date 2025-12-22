@@ -4,18 +4,18 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+use alloc::string::ToString;
 use core::{
     ffi::{c_uint, c_ulong},
     ptr::addr_of,
 };
 
-use alloc::string::ToString;
 use tee_raw_sys::{TEE_Identity, TEE_LOGIN_TRUSTED_APP, TEE_UUID, utee_params};
 
 use crate::tee::{
     TeeResult,
     tee_session::{tee_session_ctx, with_tee_session_ctx},
-    tee_ta_manager::{tee_ta_close_session, tee_ta_get_session, tee_ta_init_session},
+    tee_ta_manager::{tee_ta_close_session, tee_ta_get_session, tee_ta_init_session, tee_ta_invoke_command},
     user_access::copy_from_user,
     uuid::Uuid,
 };
@@ -48,5 +48,17 @@ pub(crate) fn sys_tee_scn_open_ta_session(
 pub(crate) fn sys_tee_scn_close_ta_session(ta_sees: c_ulong) -> TeeResult {
     let sess_id = tee_ta_get_session(ta_sees as u32)?;
     tee_ta_close_session(sess_id)?;
+    Ok(())
+}
+
+pub(crate) fn sys_tee_scn_invoke_ta_command(
+    ta_sees: c_ulong,
+    cancel_req_to: c_ulong,
+    cmd_id: c_ulong,
+    usr_param: *mut utee_params,
+    ret_orig: *mut c_uint,
+) -> TeeResult {
+    let sess_id = tee_ta_get_session(ta_sees as u32)?;
+    tee_ta_invoke_command(sess_id, cmd_id as u32, usr_param)?;
     Ok(())
 }
