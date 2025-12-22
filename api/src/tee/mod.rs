@@ -17,6 +17,7 @@ mod libmbedtls;
 mod libutee;
 mod log;
 mod memtag;
+mod panic;
 mod property;
 mod protocol;
 mod tee_fs;
@@ -55,6 +56,7 @@ use crate::tee::{
     inter_ta::{
         sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
     },
+    panic::sys_tee_scn_panic,
     property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
 };
 
@@ -64,6 +66,7 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
     // Handle TEE-specific syscalls here
     match _sysno {
         Sysno::tee_scn_log => sys_tee_scn_log(_uctx.arg0() as _, _uctx.arg1() as _),
+        Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _),
         Sysno::tee_scn_get_property => {
             let prop_type: usize;
             unsafe {

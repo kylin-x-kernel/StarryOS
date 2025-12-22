@@ -4,15 +4,15 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, string::String, sync::Arc};
 use core::{any::Any, default::Default};
 
 use axtask::current;
+use hashbrown::HashMap;
 use slab::Slab;
 use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
-use hashbrown::HashMap;
 
 use super::{TeeResult, tee_obj::tee_obj};
 use crate::tee::tee_ta_manager::SessionIdentity;
@@ -40,6 +40,7 @@ pub struct tee_ta_ctx {
     pub for_test_only: u32,
     pub session_handle: u32,
     pub open_sessions: HashMap<u32, SessionIdentity>,
+    pub uuid: String,
 }
 
 impl TeeSessionCtxTrait for tee_session_ctx {
