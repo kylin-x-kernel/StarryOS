@@ -99,6 +99,8 @@ qemu = [
     "axfeat/vsock",
     "starry-api/vsock",
 
+    "axfeat/aarch64-pmu-watchdog",
+
     "axfeat/defplat",
     "axfeat/bus-pci",
 
@@ -168,12 +170,17 @@ features = ["irq", "fp-simd", "smp", "rtc"]
 axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
 axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
-axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch="dev"}
-axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch="dev"}
-axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch="dev"}
+axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
+axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
 
 fdtree_rs = { path = "local_crates/fdtree-rs" }
-arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
+arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
+kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard"， branch = "main"}
+
+[patch."https://github.com/arceos-org/axcpu.git"]
+axcpu = { git = "https://github.com/kylin-x-kernel/axcpu"， branch = "dev"}
+
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
 all-features = true
