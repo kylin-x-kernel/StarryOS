@@ -143,12 +143,11 @@ pub(crate) struct CryptoHashCtx {
     pub ops: Option<&'static CryptoHashOps>,
 }
 
-type TEE_Result<T = Option<Box<CryptoHashCtx>>, E = u32> = core::result::Result<T, E>;
 
 pub(crate) struct CryptoHashOps {
-    pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TEE_Result>,
-    pub update: Option<fn(ctx: &mut CryptoHashCtx, data: &[u8]) -> TEE_Result>,
-    pub final_: Option<fn(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TEE_Result>,
+    pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TeeResult>,
+    pub update: Option<fn(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult>,
+    pub final_: Option<fn(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult>,
     pub free_ctx: Option<fn(ctx: &mut CryptoHashCtx)>,
     pub copy_state: Option<fn(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx)>,
 }
@@ -185,7 +184,7 @@ pub(crate) fn crypto_hash_copy_state(dst_ctx: &mut CryptoHashCtx, src_ctx: &Cryp
     }
 }
 
-pub(crate) fn crypto_hash_init(ctx: &mut CryptoHashCtx) -> TEE_Result {
+pub(crate) fn crypto_hash_init(ctx: &mut CryptoHashCtx) -> TeeResult {
     if let Some(init_fn) = hash_ops(ctx).init {
         init_fn(ctx)
     } else {
@@ -193,7 +192,7 @@ pub(crate) fn crypto_hash_init(ctx: &mut CryptoHashCtx) -> TEE_Result {
     }
 }
 
-pub(crate) fn crypto_hash_update(ctx: &mut CryptoHashCtx, data: &[u8]) -> TEE_Result {
+pub(crate) fn crypto_hash_update(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult {
     if let Some(update_fn) = hash_ops(ctx).update {
         update_fn(ctx, data)
     } else {
@@ -201,7 +200,7 @@ pub(crate) fn crypto_hash_update(ctx: &mut CryptoHashCtx, data: &[u8]) -> TEE_Re
     }
 }
 
-pub(crate) fn crypto_hash_final(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TEE_Result {
+pub(crate) fn crypto_hash_final(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
     if let Some(final_fn) = hash_ops(ctx).final_ {
         final_fn(ctx, digest)
     } else {
