@@ -141,66 +141,270 @@ impl PartialEq for ecc_keypair {
 impl Eq for ecc_keypair {}
 
 // The crypto context used by the crypto_hash_*() functions
-pub(crate) struct CryptoHashCtx {
+pub(crate) struct CryptoHashContext {
     pub ops: Option<&'static CryptoHashOps>,
 }
 
+// Constructor for CryptoHashCtx
 pub(crate) struct CryptoHashOps {
-    pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TeeResult>,
-    pub update: Option<fn(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult>,
-    pub final_: Option<fn(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult>,
-    pub free_ctx: Option<fn(ctx: &mut CryptoHashCtx)>,
-    pub copy_state: Option<fn(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx)>,
+    pub init: Option<fn(ctx: &mut CryptoHashContext) -> TeeResult>,
+    pub update: Option<fn(ctx: &mut CryptoHashContext, data: &[u8]) -> TeeResult>,
+    pub final_: Option<fn(ctx: &mut CryptoHashContext, digest: &mut [u8]) -> TeeResult>,
+    pub free_ctx: Option<fn(ctx: &mut CryptoHashContext)>,
+    pub copy_state: Option<fn(dst_ctx: &mut CryptoHashContext, src_ctx: &CryptoHashContext)>,
 }
 
-// Constructor for CryptoHashCtx
-impl CryptoHashCtx {
-    pub fn new(ops: &'static CryptoHashOps) -> Self {
-        CryptoHashCtx { ops: Some(ops) }
-    }
+// defining hash operations for cryptographic hashing
+pub(crate) trait CryptoHashCtx {
+    // Initialize the hash context
+    fn init(&mut self) -> TeeResult;
 
-    pub fn empty() -> Self {
-        CryptoHashCtx { ops: None }
-    }
+    // Update the hash context with data
+    fn update(&mut self, data: &[u8]) -> TeeResult;
+
+    // Finalize the hash computation and return the digest
+    fn r#final(&mut self, digest: &mut [u8]) -> TeeResult;
+
+    // Free the hash context resources
+    fn free_ctx(self);
+
+    // Copy the state from one context to another
+    fn copy_state(&mut self, ctx: &dyn CryptoHashCtx);
 }
 
 // Helper function to get ops from context
-fn hash_ops(ctx: &CryptoHashCtx) -> &CryptoHashOps {
+fn hash_ops(ctx: &CryptoHashContext) -> &CryptoHashOps {
     ctx.ops.as_ref().expect("CryptoHashCtx ops is None")
 }
 
-pub(crate) fn crypto_hash_free_ctx(ctx: &mut CryptoHashCtx) {
-    if let Some(free_fn) = hash_ops(ctx).free_ctx {
-        free_fn(ctx);
-    }
+pub(crate) fn crypto_hash_free_ctx(ctx: impl CryptoHashCtx) {
+    ctx.free_ctx();
 }
 
-pub(crate) fn crypto_hash_copy_state(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx) {
-    if let Some(copy_fn) = hash_ops(dst_ctx).copy_state {
-        copy_fn(dst_ctx, src_ctx);
-    }
+pub(crate) fn crypto_hash_copy_state(ctx: &mut dyn CryptoHashCtx, src_ctx: &dyn CryptoHashCtx) {
+    ctx.copy_state(src_ctx);
 }
 
-pub(crate) fn crypto_hash_init(ctx: &mut CryptoHashCtx) -> TeeResult {
-    if let Some(init_fn) = hash_ops(ctx).init {
-        init_fn(ctx)
+pub(crate) fn crypto_hash_init(ctx: &mut dyn CryptoHashCtx) -> TeeResult {
+    ctx.init ()
+}
+
+pub(crate) fn crypto_hash_update(ctx: &mut dyn CryptoHashCtx, data: &[u8]) -> TeeResult {
+    ctx.update(data)
+}
+
+pub(crate) fn crypto_hash_final(ctx: &mut dyn CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
+    // Err(TEE_ERROR_NOT_IMPLEMENTED)
+    ctx.r#final (digest)
+}
+
+// Driver-based hash allocation (stub implementation)
+pub(crate) fn drvcrypt_hash_alloc_ctx(algo: u32) -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+// Default hash algorithm allocation functions (stub implementations)
+pub(crate) fn crypto_md5_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha1_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha224_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha256_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha384_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha512_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha3_224_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha3_256_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha3_384_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sha3_512_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_shake128_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_shake256_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+pub(crate) fn crypto_sm3_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
+    Err(TEE_ERROR_NOT_IMPLEMENTED)
+}
+
+// Main hash context allocation function
+pub(crate) fn crypto_hash_alloc_ctx(algo: u32) -> TeeResult<Box<dyn CryptoHashCtx>> {
+    let mut res = TEE_ERROR_NOT_IMPLEMENTED;
+    let mut c: Option<Box<dyn CryptoHashCtx>> = None;
+
+    // Use default cryptographic implementation if no matching drvcrypt device
+    match drvcrypt_hash_alloc_ctx(algo) {
+        Ok(ctx) => {
+            c = Some(ctx);
+            res = TEE_SUCCESS;
+        }
+        Err(error) => {
+            if error == TEE_ERROR_NOT_IMPLEMENTED {
+                // Fallback to default implementations
+                match algo {
+                    TEE_ALG_MD5 => {
+                        match crypto_md5_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA1 => {
+                        match crypto_sha1_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA224 => {
+                        match crypto_sha224_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA256 => {
+                        match crypto_sha256_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA384 => {
+                        match crypto_sha384_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA512 => {
+                        match crypto_sha512_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA3_224 => {
+                        match crypto_sha3_224_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA3_256 => {
+                        match crypto_sha3_256_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA3_384 => {
+                        match crypto_sha3_384_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHA3_512 => {
+                        match crypto_sha3_512_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHAKE128 => {
+                        match crypto_shake128_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SHAKE256 => {
+                        match crypto_shake256_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    TEE_ALG_SM3 => {
+                        match crypto_sm3_alloc_ctx() {
+                            Ok(ctx) => {
+                                c = Some(ctx);
+                                res = TEE_SUCCESS;
+                            }
+                            Err(error) => res = error,
+                        }
+                    }
+                    _ => {
+                        // Do nothing, res remains TEE_ERROR_NOT_IMPLEMENTED
+                    }
+                }
+            } else {
+                res = error;
+            }
+        }
+    }
+
+    if res == TEE_SUCCESS {
+        if let Some(ctx) = c {
+            Ok(ctx)
+        } else {
+            Err(TEE_ERROR_NOT_IMPLEMENTED)
+        }
     } else {
-        Err(TEE_ERROR_NOT_IMPLEMENTED)
-    }
-}
-
-pub(crate) fn crypto_hash_update(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult {
-    if let Some(update_fn) = hash_ops(ctx).update {
-        update_fn(ctx, data)
-    } else {
-        Err(TEE_ERROR_NOT_IMPLEMENTED)
-    }
-}
-
-pub(crate) fn crypto_hash_final(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
-    if let Some(final_fn) = hash_ops(ctx).final_ {
-        final_fn(ctx, digest)
-    } else {
-        Err(TEE_ERROR_NOT_IMPLEMENTED)
+        Err(res)
     }
 }
