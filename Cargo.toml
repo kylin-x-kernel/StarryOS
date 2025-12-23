@@ -173,6 +173,7 @@ axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_cra
 axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
 axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
+percpu = { git = "https://github.com/arceos-org/percpu", rev = "89c8a54"}
 
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
