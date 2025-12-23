@@ -69,6 +69,7 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
     match _sysno {
         Sysno::tee_scn_return => sys_tee_scn_return(_uctx.arg0() as _),
         Sysno::tee_scn_log => sys_tee_scn_log(_uctx.arg0() as _, _uctx.arg1() as _),
+        // Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _, _uctx.arg1() as _),
         Sysno::tee_scn_panic => sys_tee_scn_panic(_uctx.arg0() as _),
         Sysno::tee_scn_get_property => {
             let prop_type: usize;

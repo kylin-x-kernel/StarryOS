@@ -139,3 +139,73 @@ impl PartialEq for ecc_keypair {
 }
 
 impl Eq for ecc_keypair {}
+
+// The crypto context used by the crypto_hash_*() functions
+pub(crate) struct CryptoHashCtx {
+    pub ops: Option<&'static CryptoHashOps>,
+}
+
+
+pub(crate) struct CryptoHashOps {
+    pub init: Option<fn(ctx: &mut CryptoHashCtx) -> TeeResult>,
+    pub update: Option<fn(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult>,
+    pub final_: Option<fn(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult>,
+    pub free_ctx: Option<fn(ctx: &mut CryptoHashCtx)>,
+    pub copy_state: Option<fn(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx)>,
+}
+
+// Constructor for CryptoHashCtx
+impl CryptoHashCtx {
+    pub fn new(ops: &'static CryptoHashOps) -> Self {
+        CryptoHashCtx {
+            ops: Some(ops),
+        }
+    }
+
+    pub fn empty() -> Self {
+        CryptoHashCtx {
+            ops: None,
+        }
+    }
+}
+
+// Helper function to get ops from context
+fn hash_ops(ctx: &CryptoHashCtx) -> &CryptoHashOps {
+    ctx.ops.as_ref().expect("CryptoHashCtx ops is None")
+}
+
+pub(crate) fn crypto_hash_free_ctx(ctx: &mut CryptoHashCtx) {
+    if let Some(free_fn) = hash_ops(ctx).free_ctx {
+        free_fn(ctx);
+    }
+}
+
+pub(crate) fn crypto_hash_copy_state(dst_ctx: &mut CryptoHashCtx, src_ctx: &CryptoHashCtx) {
+    if let Some(copy_fn) = hash_ops(dst_ctx).copy_state {
+        copy_fn(dst_ctx, src_ctx);
+    }
+}
+
+pub(crate) fn crypto_hash_init(ctx: &mut CryptoHashCtx) -> TeeResult {
+    if let Some(init_fn) = hash_ops(ctx).init {
+        init_fn(ctx)
+    } else {
+        Err(TEE_ERROR_NOT_IMPLEMENTED)
+    }
+}
+
+pub(crate) fn crypto_hash_update(ctx: &mut CryptoHashCtx, data: &[u8]) -> TeeResult {
+    if let Some(update_fn) = hash_ops(ctx).update {
+        update_fn(ctx, data)
+    } else {
+        Err(TEE_ERROR_NOT_IMPLEMENTED)
+    }
+}
+
+pub(crate) fn crypto_hash_final(ctx: &mut CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
+    if let Some(final_fn) = hash_ops(ctx).final_ {
+        final_fn(ctx, digest)
+    } else {
+        Err(TEE_ERROR_NOT_IMPLEMENTED)
+    }
+}
