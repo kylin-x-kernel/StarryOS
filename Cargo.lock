@@ -115,9 +115,9 @@ dependencies = [
 
 [[package]]
 name = "arm-gic-driver"
-version = "0.15.8"
+version = "0.15.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f251a1a74133f802b55eaf5e340107b0024457aa9b2ac3c72074501bfa8509a5"
+checksum = "5487b0a69ebddf2f8affd1e0d32a875fc6213b3a15e3315f9d7beb34b174d457"
 dependencies = [
  "aarch64-cpu",
  "bitflags 2.10.0",
@@ -486,9 +486,10 @@ dependencies = [
 
 [[package]]
 name = "axio"
-version = "0.2.0"
-source = "git+https://github.com/arceos-org/axio.git?tag=dev-v02#68ece8ea2a547d0efab89996592920e084f00a1b"
+version = "0.2.1"
+source = "git+https://github.com/arceos-org/axio.git?tag=dev-v02#a743d65491ca3f482a997ad317d48f4785a8982b"
 dependencies = [
+ "autocfg",
  "axerrno 0.2.2",
 ]
 
@@ -570,7 +571,7 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "axplat-macros 0.1.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "bitflags 2.10.0",
@@ -604,7 +605,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -624,7 +625,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -637,7 +638,7 @@ dependencies = [
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -664,7 +665,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -674,7 +675,7 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -710,7 +711,7 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#bbe17e86e1b67ffae2b562db138e5f45c3590e81"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#3000f4d52024a303261ccd1adef379684e2a9535"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -1172,18 +1173,18 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10b768e943bed7bf2cab53df09f4bc34bfd217cdb57d971e769874c9a6710618"
+checksum = "d751e9e49156b02b44f9c1815bcb94b984cdcc4396ecc32521c739452808b134"
 dependencies = [
  "derive_more-impl",
 ]
 
 [[package]]
 name = "derive_more-impl"
-version = "2.1.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d286bfdaf75e988b4a78e013ecd79c581e06399ab53fbacd2d916c2f904f30b"
+checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1811,8 +1812,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "percpu"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01e56c0c558952222967b592899f98765b48590e7bd7403bfd7075f73afc6ed6"
+source = "git+https://github.com/arceos-org/percpu?rev=89c8a54#89c8a54c525430945e1f8231c594e56a8ce4fdf8"
 dependencies = [
  "cfg-if",
  "kernel_guard",
@@ -1824,8 +1824,7 @@ dependencies = [
 [[package]]
 name = "percpu_macros"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9f4cc54a2e471ff72f1499461ba381ad4eae9cbd60d29c258545b995e406e0"
+source = "git+https://github.com/arceos-org/percpu?rev=89c8a54#89c8a54c525430945e1f8231c594e56a8ce4fdf8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1846,9 +1845,9 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "portable-atomic"
-version = "1.11.1"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
+checksum = "f59e70c4aef1e55797c2e8fd94a4f2a973fc972cfde0e0b05f683667b0cd39dd"
 
 [[package]]
 name = "portable-atomic-util"
@@ -2128,12 +2127,12 @@ checksum = "e6e36312fb5ddc10d08ecdc65187402baba4ac34585cb9d1b78522ae2358d890"
 
 [[package]]
 name = "scope-local"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "231e441739fbe668e91acf8440a0b1ac83c73faec7a6d984190ee25354c2ec9a"
+checksum = "4a7d5ed5013e6436fcd78f2bcd3892a6286ef9ce6c9b61504d4c4a08d6a40eab"
 dependencies = [
  "percpu",
- "spin 0.9.8",
+ "spin 0.10.0",
 ]
 
 [[package]]
