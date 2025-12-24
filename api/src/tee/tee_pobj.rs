@@ -17,7 +17,7 @@ use lazy_static::lazy_static;
 use spin::{Mutex, RwLock};
 use tee_raw_sys::*;
 
-use super::TeeResult;
+use super::{TeeResult, tee_fs::tee_file_handle};
 
 static POBJS_USAGE_MUTEX: Mutex<()> = Mutex::new(());
 // static POBJS: LazyInit<Arc<Mutex<VecDeque<tee_pobj>>>> = LazyInit::new();
@@ -25,52 +25,68 @@ lazy_static! {
     static ref POBJS: tee_pobjs = tee_pobjs::new();
 }
 
-pub trait TeeFileOperations: Send + Sync {
+#[derive(Debug)]
+pub struct TeeFileOperations {
+    pub open: fn(
+        po: &tee_pobj,
+        size: &mut usize,
+    ) -> TeeResult<Arc<tee_file_handle>>,
+
+    pub create: fn(
+        po: &tee_pobj,
+        overwrite: bool,
+        head: &[u8],
+        attr: &[u8],
+        data_core: &[u8],
+        data_user: &[u8],
+        data_size: usize,
+    ) -> TeeResult<Arc<tee_file_handle>>,
+
+    pub close: fn(
+        fh: &mut Arc<tee_file_handle>,
+    ) -> TeeResult,
+
+    pub read: fn(
+        fh: &Arc<tee_file_handle>,
+        pos: usize,
+        buf_core: &mut [u8],
+        buf_user: &mut [u8],
+        len: &mut usize,
+    ) -> TeeResult,
+
+    pub write: fn(
+        fh: &Arc<tee_file_handle>,
+        pos: usize,
+        buf_core: &[u8],
+        buf_user: &[u8],
+        len: usize,
+    ) -> TeeResult,
+
+    pub rename: fn(
+        old_po: &mut tee_pobj,
+        new_po: &mut tee_pobj,
+        overwrite: bool,
+    ) -> TeeResult,
+
+    pub remove: fn(
+        po: &mut tee_pobj,
+    ) -> TeeResult,
+
+    pub truncate: fn(
+        fh: &mut Arc<tee_file_handle>,
+        size: usize,
+    ) -> TeeResult,
+
+    //fn opendir(uuid: &TEE_UUID, d: &mut Arc<tee_fs_dir>) -> TeeResult;
+    
+    //fn readdir(d: &mut Arc<tee_fs_dir>, ent: &mut Arc<tee_fs_dirent>) -> TeeResult;
+
+    //fn closedir(d: &mut Arc<tee_fs_dir>) -> TeeResult;
+
     #[cfg(feature = "tee_test")]
-    fn echo(&self) -> String {
-        "TeeFileOperations->echo".to_string()
-    }
+    pub echo: fn() -> String,
 }
 
-/// 包装 TeeFileOperations 指针的类型，用于在线程间安全传递
-#[repr(transparent)]
-#[derive(Debug, PartialEq)]
-pub struct TeeFileOperationsPtr(pub *const dyn TeeFileOperations);
-
-// 由于 TeeFileOperations 要求 Send + Sync，指向它的指针也应该是 Send + Sync 的
-unsafe impl Send for TeeFileOperationsPtr {}
-unsafe impl Sync for TeeFileOperationsPtr {}
-
-impl TeeFileOperationsPtr {
-    /// Create TeeFileOperationsPtr from a pointer to a trait object
-    ///
-    /// # Safety
-    /// The caller must ensure that the object pointed to by `ptr` is valid for the entire lifetime of the returned `TeeFileOperationsPtr`
-    pub fn from_ptr(ptr: *const dyn TeeFileOperations) -> Self {
-        TeeFileOperationsPtr(ptr)
-    }
-
-    /// Get the pointer to the trait object
-    pub fn as_ptr(self) -> *const dyn TeeFileOperations {
-        self.0
-    }
-
-    /// Get the pointer to the trait object
-    ///
-    /// # Safety
-    /// The caller must ensure that the object pointed to by `self.0` is valid for the entire lifetime of the returned pointer
-    pub fn as_ptr_ref(&self) -> *const dyn TeeFileOperations {
-        self.0
-    }
-
-    /// Get the reference to the trait object
-    ///
-    /// # Safety
-    /// The caller must ensure that the object pointed to by `self.0` is valid for the entire lifetime of the returned reference
-    pub fn as_ref(&self) -> &dyn TeeFileOperations {
-        unsafe { &*self.0 }
-    }
-}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -83,7 +99,7 @@ pub struct tee_pobj {
     pub obj_info_usage: u32,
     pub temporary: bool, // can be changed while creating == true
     pub creating: bool,  // can only be changed with mutex held
-    pub fops: Option<TeeFileOperationsPtr>, // Filesystem handling this object
+    pub fops: Option<&'static TeeFileOperations>, // Filesystem handling this object
 }
 
 impl default::Default for tee_pobj {
@@ -110,13 +126,13 @@ impl tee_pobj {
     /// * `obj_id` - The object ID
     /// * `obj_id_len` - The actual length of the object ID
     /// * `flags` - The flags of the object
-    /// * `fops` - The pointer to the trait object
+    /// * `fops` - The reference to the TeeFileOperations struct
     pub fn new(
         uuid: TEE_UUID,
         obj_id: &[u8],
         obj_id_len: u32,
         flags: u32,
-        fops: *const dyn TeeFileOperations,
+        fops: &'static TeeFileOperations,
     ) -> Self {
         Self {
             refcnt: 1,
@@ -127,7 +143,7 @@ impl tee_pobj {
             obj_info_usage: 0,
             temporary: false,
             creating: false,
-            fops: Some(TeeFileOperationsPtr::from_ptr(fops)),
+            fops: Some(fops),
         }
     }
 
@@ -137,13 +153,13 @@ impl tee_pobj {
     /// * `uuid` - The UUID of the object
     /// * `obj_id` - The object ID
     /// * `obj_id_len` - The actual length of the object ID
-    /// * `fops` - The pointer to the trait object
+    /// * `fops` - The reference to the TeeFileOperations struct
     pub fn matches(
         &self,
         uuid: &TEE_UUID,
         obj_id: &[u8],
         obj_id_len: u32,
-        fops: &Option<TeeFileOperationsPtr>,
+        fops: &Option<&'static TeeFileOperations>,
     ) -> bool {
         info!("matches begin");
         // check obj_id_len
@@ -162,8 +178,8 @@ impl tee_pobj {
         // check fops, using ptr::eq
         match (&self.fops, fops) {
             (Some(a), Some(b)) => {
-                info!("matches fops: {:p}, {:p}", a.as_ptr_ref(), b.as_ptr_ref());
-                let result = ptr::eq(a.as_ptr_ref(), b.as_ptr_ref());
+                info!("matches fops: {:p}, {:p}", *a as *const _, *b as *const _);
+                let result = ptr::eq(*a, *b);
                 info!("matches fops result: {}", result);
                 result
             }
@@ -195,13 +211,13 @@ impl tee_pobjs {
     /// * `uuid` - The UUID of the object
     /// * `obj_id` - The object ID
     /// * `obj_id_len` - The actual length of the object ID
-    /// * `fops` - The pointer to the trait object
+    /// * `fops` - The reference to the TeeFileOperations struct
     pub fn find_pobj(
         &self,
         uuid: &TEE_UUID,
         obj_id: &[u8],
         obj_id_len: u32,
-        fops: &Option<TeeFileOperationsPtr>,
+        fops: &Option<&'static TeeFileOperations>,
     ) -> Option<Arc<RwLock<tee_pobj>>> {
         let pobjs = self.inner.lock();
         pobjs
@@ -214,12 +230,77 @@ impl tee_pobjs {
     }
 }
 
-struct file_ops {}
+// Helper functions for REE_FS_OPS
+fn ree_fs_open(_po: &tee_pobj, _size: &mut usize) -> TeeResult<Arc<tee_file_handle>> {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
 
-impl TeeFileOperations for file_ops {}
+fn ree_fs_create(
+    _po: &tee_pobj,
+    _overwrite: bool,
+    _head: &[u8],
+    _attr: &[u8],
+    _data_core: &[u8],
+    _data_user: &[u8],
+    _data_size: usize,
+) -> TeeResult<Arc<tee_file_handle>> {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
 
-// global file_ops using lazy_static
-static REE_FS_OPS: file_ops = file_ops {};
+fn ree_fs_close(_fh: &mut Arc<tee_file_handle>) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+fn ree_fs_read(
+    _fh: &Arc<tee_file_handle>,
+    _pos: usize,
+    _buf_core: &mut [u8],
+    _buf_user: &mut [u8],
+    _len: &mut usize,
+) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+fn ree_fs_write(
+    _fh: &Arc<tee_file_handle>,
+    _pos: usize,
+    _buf_core: &[u8],
+    _buf_user: &[u8],
+    _len: usize,
+) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+fn ree_fs_truncate(_fh: &mut Arc<tee_file_handle>, _size: usize) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+fn ree_fs_rename(_old_po: &mut tee_pobj, _new_po: &mut tee_pobj, _overwrite: bool) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+fn ree_fs_remove(_po: &mut tee_pobj) -> TeeResult {
+    Err(TEE_ERROR_NOT_SUPPORTED)
+}
+
+#[cfg(feature = "tee_test")]
+fn ree_fs_echo() -> String {
+    "TeeFileOperations->echo".to_string()
+}
+
+// global file_ops
+static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
+    open: ree_fs_open,
+    create: ree_fs_create,
+    close: ree_fs_close,
+    read: ree_fs_read,
+    write: ree_fs_write,
+    truncate: ree_fs_truncate,
+    rename: ree_fs_rename,
+    remove: ree_fs_remove,
+    #[cfg(feature = "tee_test")]
+    echo: ree_fs_echo,
+};
 
 /// Usage of the tee_pobj
 #[derive(PartialEq, Debug)]
@@ -254,9 +335,6 @@ where
         f()
     }
 }
-struct tee_file_operations {}
-
-impl TeeFileOperations for tee_file_operations {}
 
 fn tee_pobj_check_access(oflags: u32, nflags: u32) -> TeeResult {
     Ok(())
@@ -270,7 +348,7 @@ fn tee_pobj_check_access(oflags: u32, nflags: u32) -> TeeResult {
 /// * `obj_id_len` - The actual length of the object ID
 /// * `flags` - The flags of the object
 /// * `usage` - The usage of the tee_pobj
-/// * `fops` - The pointer to the trait object
+/// * `fops` - The reference to the TeeFileOperations struct
 ///
 /// # Returns
 /// * The tee_pobj, can safe shared reference
@@ -280,19 +358,19 @@ pub fn tee_pobj_get(
     obj_id_len: u32,
     flags: u32,
     usage: tee_pobj_usage,
-    fops: *const dyn TeeFileOperations,
+    fops: &'static TeeFileOperations,
 ) -> TeeResult<Arc<RwLock<tee_pobj>>> {
     info!(
         "tee_pobj_get: uuid: {:x?}, obj_id: {:x?}, obj_id_len: {}, flags: {}, usage: {:?}, fops: \
          {:p}",
-        uuid, obj_id, obj_id_len, flags, usage, fops
+        uuid, obj_id, obj_id_len, flags, usage, fops as *const _
     );
     // lock the pobjs
     if let Some(obj) = POBJS.find_pobj(
         uuid,
         obj_id,
         obj_id_len,
-        &Some(TeeFileOperationsPtr::from_ptr(fops)),
+        &Some(fops),
     ) {
         let mut obj_guard = obj.write();
 
@@ -318,7 +396,7 @@ pub fn tee_pobj_get(
     obj.refcnt = 1;
     obj.uuid = *uuid;
     obj.flags = flags;
-    obj.fops = Some(TeeFileOperationsPtr::from_ptr(fops));
+    obj.fops = Some(fops);
 
     if usage == tee_pobj_usage::TEE_POBJ_USAGE_CREATE {
         obj.temporary = true;
@@ -398,8 +476,8 @@ pub mod tests_tee_pobj {
                 assert_eq!(pobj_guard.obj_id, obj_id.to_vec().into_boxed_slice());
                 assert_eq!(pobj_guard.obj_id_len, obj_id.len() as u32);
                 assert_eq!(pobj_guard.flags, 0);
-                assert_eq!(pobj_guard.fops, Some(TeeFileOperationsPtr::from_ptr(&REE_FS_OPS as *const file_ops as *const dyn TeeFileOperations)));
-                let echo = pobj_guard.fops.as_ref().unwrap().as_ref().echo();
+                assert_eq!(pobj_guard.fops.unwrap() as *const TeeFileOperations, &REE_FS_OPS as *const TeeFileOperations);
+                let echo = (pobj_guard.fops.unwrap().echo)();
                 assert_eq!(echo, "TeeFileOperations->echo");
             }
             // 2. get the same pobj
@@ -415,8 +493,8 @@ pub mod tests_tee_pobj {
                 assert_eq!(pobj_guard.obj_id, obj_id.to_vec().into_boxed_slice());
                 assert_eq!(pobj_guard.obj_id_len, obj_id.len() as u32);
                 assert_eq!(pobj_guard.flags, 0);
-                assert_eq!(pobj_guard.fops, Some(TeeFileOperationsPtr::from_ptr(&REE_FS_OPS as *const file_ops as *const dyn TeeFileOperations)));
-                let echo = pobj_guard.fops.as_ref().unwrap().as_ref().echo();
+                assert_eq!(pobj_guard.fops.unwrap() as *const TeeFileOperations, &REE_FS_OPS as *const TeeFileOperations);
+                let echo = (pobj_guard.fops.unwrap().echo)();
                 assert_eq!(echo, "TeeFileOperations->echo");
             }
         }
