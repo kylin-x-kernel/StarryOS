@@ -312,7 +312,7 @@ pub trait tee_crypto_ops {
     where
         Self: Sized;
 
-    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef>
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>>
     where
         Self: Sized;
 }
@@ -392,7 +392,7 @@ impl tee_crypto_ops for TeeCryptObj {
         }
     }
 
-    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef> {
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>> {
         match self {
             TeeCryptObj::ecc_public_key(key) => key.get_attr_by_id(attr_id),
             TeeCryptObj::ecc_keypair(keypair) => keypair.get_attr_by_id(attr_id),
@@ -960,7 +960,7 @@ impl tee_crypto_ops for tee_cryp_obj_secret_wrapper {
         Ok(Self::new(key_size_bits))
     }
 
-    fn get_attr_by_id(&mut self, _attr_id: c_ulong) -> TeeResult<CryptoAttrRef> {
+    fn get_attr_by_id(&mut self, _attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>> {
         Ok(CryptoAttrRef::SecretValue(self))
     }
 }
