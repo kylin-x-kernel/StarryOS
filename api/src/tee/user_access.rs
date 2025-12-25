@@ -147,6 +147,20 @@ pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
     drop(kbuf);
 }
 
+fn __bb_memdup_user(copy_func: fn(&mut [u8], &[u8], size_t) -> TeeResult, src: &[u8]) -> TeeResult<Box<[u8]>> {
+    let mut buf = bb_alloc(src.len())?;
+    copy_func(&mut buf, src, src.len())?;
+    Ok(buf)
+}
+
+pub fn bb_memdup_user(src: &[u8]) -> TeeResult<Box<[u8]>> {
+    __bb_memdup_user(copy_from_user, src)
+}
+
+pub fn bb_memdup_user_private(src: &[u8]) -> TeeResult<Box<[u8]>> {
+    __bb_memdup_user(copy_from_user_private, src)
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_user_access {
     //-------- test framework import --------
@@ -209,6 +223,25 @@ pub mod tests_user_access {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_bb_memdup_user() {
+            let src = [1, 2, 3, 4, 5];
+            let buf = bb_memdup_user(&src).unwrap();
+            assert_eq!(&buf[..], &src[..]);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_bb_memdup_user_private() {
+            let src = [1, 2, 3, 4, 5];
+            let buf = bb_memdup_user_private(&src).unwrap();
+            assert_eq!(&buf[..], &src[..]);
+        }
+    }
     tests_name! {
         TEST_USER_ACCESS;
         //------------------------
@@ -216,5 +249,7 @@ pub mod tests_user_access {
         test_copy_to_user,
         test_copy_from_user_u64,
         test_bb_alloc_free,
+        test_bb_memdup_user,
+        test_bb_memdup_user_private,
     }
 }
