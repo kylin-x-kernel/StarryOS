@@ -289,7 +289,7 @@ fn ree_fs_echo() -> String {
 }
 
 // global file_ops
-static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
+pub static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
     open: ree_fs_open,
     create: ree_fs_create,
     close: ree_fs_close,
@@ -315,8 +315,8 @@ pub enum tee_pobj_usage {
 ///
 /// # Arguments
 /// * `obj` - The tee_pobj
-fn pobj_need_usage_lock(obj: &tee_pobj) -> bool {
-    obj.flags & (TEE_DATA_FLAG_SHARE_WRITE | TEE_DATA_FLAG_SHARE_READ) != 0
+fn pobj_need_usage_lock(flags: u32) -> bool {
+    flags & (TEE_DATA_FLAG_SHARE_WRITE | TEE_DATA_FLAG_SHARE_READ) != 0
 }
 
 /// With usage lock
@@ -324,11 +324,11 @@ fn pobj_need_usage_lock(obj: &tee_pobj) -> bool {
 /// # Arguments
 /// * `obj` - The tee_pobj
 /// * `f` - The function to execute
-pub fn with_pobj_usage_lock<R, F>(obj: &tee_pobj, f: F) -> R
+pub fn with_pobj_usage_lock<R, F>(flags: u32, f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    if pobj_need_usage_lock(obj) {
+    if pobj_need_usage_lock(flags) {
         let _guard = POBJS_USAGE_MUTEX.lock();
         f()
     } else {
@@ -439,19 +439,19 @@ pub mod tests_tee_pobj {
 
         fn test_with_pobj_usage_lock() {
             let mut pobj = tee_pobj::default();
-            let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
+            let result: Result<(), ()> = with_pobj_usage_lock(pobj.flags, || {
                 Ok(())
             });
             assert_eq!(result, Ok::<(), ()>(()));
             // set flag
             pobj.flags = TEE_DATA_FLAG_SHARE_WRITE;
-            let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
+            let result: Result<(), ()> = with_pobj_usage_lock(pobj.flags, || {
                 Ok(())
             });
             assert_eq!(result, Ok::<(), ()>(()));
             // set flag
             pobj.flags = TEE_DATA_FLAG_SHARE_READ;
-            let result: Result<(), ()> = with_pobj_usage_lock(&pobj, || {
+            let result: Result<(), ()> = with_pobj_usage_lock(pobj.flags, || {
                 Ok(())
             });
             assert_eq!(result, Ok::<(), ()>(()));
