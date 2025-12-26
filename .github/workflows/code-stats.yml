@@ -53,6 +53,8 @@ jobs:
           cat > repos.txt << 'EOF'
           master|https://github.com/kylin-x-kernel/starry-ptrace|starry-ptrace
           master|https://github.com/kylin-x-kernel/starry-test-harness|starry-test-harness
+          master|https://gitee.com/openkylin/rust-libutee|rust-libutee
+          master|https://gitee.com/openkylin/microkylin_manager|microkylin_manager
           EOF
           
           # 添加更多仓库示例：
