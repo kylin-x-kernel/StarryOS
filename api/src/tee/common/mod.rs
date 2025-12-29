@@ -3,13 +3,7 @@
 // See LICENSES for license details.
 //
 // This file has been created by KylinSoft on 2025.
+//
+// for source:
 
-use tee_raw_sys::TEE_OBJECT_ID_MAX_LEN;
-
-#[repr(C)]
-pub struct tee_fs_dirent {
-    pub oid: [u8; TEE_OBJECT_ID_MAX_LEN as _],
-    pub oid_len: u32,
-}
-
-// pub type TeeFileHandle = TeeFsFd;
+pub mod file_ops;

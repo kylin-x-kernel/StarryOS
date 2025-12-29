@@ -2295,7 +2295,7 @@ pub mod tests_tee_svc_cryp {
             //attr[..4].copy_from_slice(value_bytes);
             let mut offs: size_t = 0;
             let result = op_attr_value_from_binary(&mut attr, &value_bytes, &mut offs);
-            info!("result: {:?}, offs: {}, attr: {:?}", result, offs, attr);
+            // info!("result: {:?}, offs: {}, attr: {:?}", result, offs, attr);
             assert!(result.is_ok());
             assert_eq!(offs, 4);
             assert_eq!(&attr[..4], &[0x11, 0x22, 0x33, 0x44]);
