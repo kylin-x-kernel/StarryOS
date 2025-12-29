@@ -22,6 +22,18 @@ scope_local::scope_local! {
     pub static TEE_TA_CTX: Arc<RwLock<tee_ta_ctx>> = Arc::default();
 }
 
+/// The tee session context.
+/// This context is used to store the session information.
+/// 
+/// parameters:
+/// - session_id: the session id
+/// - login_type: the login type
+/// - user_id: the user id
+/// - objects: the objects in the session, use Slab to store the objects，auto release the objects when the session is closed
+/// - clnt_id: the client id
+/// - cancel: the cancel flag
+/// - cancel_mask: the cancel mask
+/// - cancel_time: the cancel time
 pub struct tee_session_ctx {
     pub session_id: u32,
     pub login_type: u32,
