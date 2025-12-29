@@ -17,6 +17,7 @@ pub fn tee_test_unit() {
         tee_session::tests_tee_session::TEST_TEE_SESSION,
         tee_svc_cryp::tests_tee_svc_cryp::TEST_TEE_SVC_CRYP,
         user_access::tests_user_access::TEST_USER_ACCESS,
+        common::file_ops::tests_file_ops::TEST_FILE_OPS,
     };
 
     let mut runner = TestRunner::new();
@@ -28,7 +29,8 @@ pub fn tee_test_unit() {
             TEST_TEE_SVC_CRYP,
             TEST_USER_ACCESS,
             TEST_TEE_BIGNUM,
-            TEST_TEE_SESSION
+            TEST_TEE_SESSION,
+            TEST_FILE_OPS
         ]
     );
 }

@@ -22,7 +22,7 @@ use tee_raw_sys::{libc_compat::size_t, *};
 use super::{
     TeeResult,
     libmbedtls::bignum::BigNum,
-    tee_fs::tee_file_handle,
+    tee_ree_fs::tee_file_handle,
     tee_pobj::tee_pobj,
     tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
     tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},

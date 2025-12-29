@@ -17,76 +17,16 @@ use lazy_static::lazy_static;
 use spin::{Mutex, RwLock};
 use tee_raw_sys::*;
 
-use super::{TeeResult, tee_fs::tee_file_handle};
+use super::{
+    TeeResult,
+    tee_ree_fs::{REE_FS_OPS, TeeFileOperations, tee_file_handle},
+};
 
 static POBJS_USAGE_MUTEX: Mutex<()> = Mutex::new(());
 // static POBJS: LazyInit<Arc<Mutex<VecDeque<tee_pobj>>>> = LazyInit::new();
 lazy_static! {
     static ref POBJS: tee_pobjs = tee_pobjs::new();
 }
-
-#[derive(Debug)]
-pub struct TeeFileOperations {
-    pub open: fn(
-        po: &tee_pobj,
-        size: &mut usize,
-    ) -> TeeResult<Arc<tee_file_handle>>,
-
-    pub create: fn(
-        po: &tee_pobj,
-        overwrite: bool,
-        head: &[u8],
-        attr: &[u8],
-        data_core: &[u8],
-        data_user: &[u8],
-        data_size: usize,
-    ) -> TeeResult<Arc<tee_file_handle>>,
-
-    pub close: fn(
-        fh: &mut Arc<tee_file_handle>,
-    ) -> TeeResult,
-
-    pub read: fn(
-        fh: &Arc<tee_file_handle>,
-        pos: usize,
-        buf_core: &mut [u8],
-        buf_user: &mut [u8],
-        len: &mut usize,
-    ) -> TeeResult,
-
-    pub write: fn(
-        fh: &Arc<tee_file_handle>,
-        pos: usize,
-        buf_core: &[u8],
-        buf_user: &[u8],
-        len: usize,
-    ) -> TeeResult,
-
-    pub rename: fn(
-        old_po: &mut tee_pobj,
-        new_po: &mut tee_pobj,
-        overwrite: bool,
-    ) -> TeeResult,
-
-    pub remove: fn(
-        po: &mut tee_pobj,
-    ) -> TeeResult,
-
-    pub truncate: fn(
-        fh: &mut Arc<tee_file_handle>,
-        size: usize,
-    ) -> TeeResult,
-
-    //fn opendir(uuid: &TEE_UUID, d: &mut Arc<tee_fs_dir>) -> TeeResult;
-    
-    //fn readdir(d: &mut Arc<tee_fs_dir>, ent: &mut Arc<tee_fs_dirent>) -> TeeResult;
-
-    //fn closedir(d: &mut Arc<tee_fs_dir>) -> TeeResult;
-
-    #[cfg(feature = "tee_test")]
-    pub echo: fn() -> String,
-}
-
 
 #[repr(C)]
 #[derive(Debug)]
@@ -161,7 +101,7 @@ impl tee_pobj {
         obj_id_len: u32,
         fops: &Option<&'static TeeFileOperations>,
     ) -> bool {
-        info!("matches begin");
+        // info!("matches begin");
         // check obj_id_len
         if self.obj_id_len != obj_id_len {
             return false;
@@ -174,13 +114,13 @@ impl tee_pobj {
         if self.uuid != *uuid {
             return false;
         }
-        info!("matches fops with {:?}, {:?}", self.fops, fops);
+        // info!("matches fops with {:?}, {:?}", self.fops, fops);
         // check fops, using ptr::eq
         match (&self.fops, fops) {
             (Some(a), Some(b)) => {
-                info!("matches fops: {:p}, {:p}", *a as *const _, *b as *const _);
+                // info!("matches fops: {:p}, {:p}", *a as *const _, *b as *const _);
                 let result = ptr::eq(*a, *b);
-                info!("matches fops result: {}", result);
+                // info!("matches fops result: {}", result);
                 result
             }
             (None, None) => true,
@@ -229,78 +169,6 @@ impl tee_pobjs {
             .map(|pobj_arc| Arc::clone(pobj_arc))
     }
 }
-
-// Helper functions for REE_FS_OPS
-fn ree_fs_open(_po: &tee_pobj, _size: &mut usize) -> TeeResult<Arc<tee_file_handle>> {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_create(
-    _po: &tee_pobj,
-    _overwrite: bool,
-    _head: &[u8],
-    _attr: &[u8],
-    _data_core: &[u8],
-    _data_user: &[u8],
-    _data_size: usize,
-) -> TeeResult<Arc<tee_file_handle>> {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_close(_fh: &mut Arc<tee_file_handle>) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_read(
-    _fh: &Arc<tee_file_handle>,
-    _pos: usize,
-    _buf_core: &mut [u8],
-    _buf_user: &mut [u8],
-    _len: &mut usize,
-) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_write(
-    _fh: &Arc<tee_file_handle>,
-    _pos: usize,
-    _buf_core: &[u8],
-    _buf_user: &[u8],
-    _len: usize,
-) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_truncate(_fh: &mut Arc<tee_file_handle>, _size: usize) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_rename(_old_po: &mut tee_pobj, _new_po: &mut tee_pobj, _overwrite: bool) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-fn ree_fs_remove(_po: &mut tee_pobj) -> TeeResult {
-    Err(TEE_ERROR_NOT_SUPPORTED)
-}
-
-#[cfg(feature = "tee_test")]
-fn ree_fs_echo() -> String {
-    "TeeFileOperations->echo".to_string()
-}
-
-// global file_ops
-pub static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
-    open: ree_fs_open,
-    create: ree_fs_create,
-    close: ree_fs_close,
-    read: ree_fs_read,
-    write: ree_fs_write,
-    truncate: ree_fs_truncate,
-    rename: ree_fs_rename,
-    remove: ree_fs_remove,
-    #[cfg(feature = "tee_test")]
-    echo: ree_fs_echo,
-};
 
 /// Usage of the tee_pobj
 #[derive(PartialEq, Debug)]
@@ -360,18 +228,13 @@ pub fn tee_pobj_get(
     usage: tee_pobj_usage,
     fops: &'static TeeFileOperations,
 ) -> TeeResult<Arc<RwLock<tee_pobj>>> {
-    info!(
-        "tee_pobj_get: uuid: {:x?}, obj_id: {:x?}, obj_id_len: {}, flags: {}, usage: {:?}, fops: \
-         {:p}",
-        uuid, obj_id, obj_id_len, flags, usage, fops as *const _
-    );
+    // info!(
+    //     "tee_pobj_get: uuid: {:x?}, obj_id: {:x?}, obj_id_len: {}, flags: {}, usage: {:?}, fops: \
+    //      {:p}",
+    //     uuid, obj_id, obj_id_len, flags, usage, fops as *const _
+    // );
     // lock the pobjs
-    if let Some(obj) = POBJS.find_pobj(
-        uuid,
-        obj_id,
-        obj_id_len,
-        &Some(fops),
-    ) {
+    if let Some(obj) = POBJS.find_pobj(uuid, obj_id, obj_id_len, &Some(fops)) {
         let mut obj_guard = obj.write();
 
         if usage == tee_pobj_usage::TEE_POBJ_USAGE_ENUM {

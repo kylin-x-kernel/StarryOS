@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use tee_raw_sys::*;
 
 use super::{
-    tee_fs::tee_svc_storage_file_ops,
+    tee_ree_fs::tee_svc_storage_file_ops,
     tee_pobj::{tee_pobj_get, tee_pobj_usage, with_pobj_usage_lock},
 	tee_obj::{tee_obj, tee_obj_add, tee_obj_close},
     tee_session::with_tee_ta_ctx,
