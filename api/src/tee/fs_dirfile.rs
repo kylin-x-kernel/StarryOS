@@ -9,8 +9,9 @@ use alloc::vec::Vec;
 use tee_raw_sys::{TEE_OBJECT_ID_MAX_LEN, TEE_UUID};
 
 use super::{
-    bitstring::{BitStr, bit_clear, bit_set, bit_test, bitstr_size},
+    bitstring::{BitStr, bit_clear, bit_set, bit_test, bitstr_size, bit_nclear},
     fs_htree::TEE_FS_HTREE_HASH_SIZE,
+	TeeResult,
 };
 
 /// file handle for dirfile tee_fs_dirfile_fileh
