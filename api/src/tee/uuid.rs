@@ -71,6 +71,11 @@ impl Uuid {
     pub fn as_raw_ptr(&self) -> *const raw::TEE_UUID {
         &self.raw
     }
+
+    /// Converts a uuid to a raw `TEE_UUID` reference.
+    pub fn as_raw_ref(&self) -> &raw::TEE_UUID {
+        &self.raw
+    }
 }
 
 impl fmt::Display for Uuid {
