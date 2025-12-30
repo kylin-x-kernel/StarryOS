@@ -34,6 +34,10 @@ mod tee_session;
 mod tee_svc_cryp;
 mod tee_svc_storage;
 mod tee_ta_manager;
+mod tee_fs_key_manager;
+mod huk_subkey;
+mod otp_stubs;
+mod crypto_temp;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
