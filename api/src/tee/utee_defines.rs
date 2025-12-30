@@ -4,6 +4,7 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+pub type TeeResultCode = u32;
 pub type TEE_ALG = u32;
 pub const HW_UNIQUE_KEY_LENGTH: usize = 16;
 

@@ -9,7 +9,11 @@
 
 use alloc::boxed::Box;
 
-use tee_raw_sys::{TEE_ALG_HMAC_SHA512, TEE_ERROR_BAD_PARAMETERS, TEE_OperationMode};
+use mbedtls::hash::{Md, Type};
+use tee_raw_sys::{
+    TEE_ALG_HMAC_SHA256, TEE_ALG_HMAC_SHA512, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_BAD_STATE,
+    TEE_ERROR_NOT_IMPLEMENTED, TEE_OperationMode,
+};
 
 use crate::tee::{TeeResult, crypto_temp::aes_cbc::MbedAesCbcCtx, utee_defines::TEE_ALG};
 
@@ -156,4 +160,71 @@ pub trait CryptoHashOps {
     fn finalize(&mut self, digest: Option<&mut [u8]>) -> TeeResult;
     fn free_ctx(&mut self);
     fn copy_state(&self, dst_ctx: &mut Self);
+}
+
+// pub fn crypto_mac_alloc_ctx<A: MacAlgorithmTrait>() -> Result<A::Context, TeeResult> {
+//     A::alloc_ctx()
+// }
+
+/// Convert TEE_ALG to mbedtls::hash::Type
+/// This is a helper function instead of TryFrom implementation due to Rust's orphan rule
+fn tee_alg_to_hash_type(value: TEE_ALG) -> Result<Type, u32> {
+    match value {
+        TEE_ALG_MD5 => Ok(Type::Md5),
+        TEE_ALG_SHA256 => Ok(Type::Sha256),
+        TEE_ALG_SHA512 => Ok(Type::Sha512),
+        _ => Err(TEE_ERROR_NOT_IMPLEMENTED),
+    }
+}
+
+pub fn crypto_cipher_alloc_ctx(algo: TEE_ALG) -> Result<Box<dyn CryptoCipherOps>, TeeResult> {
+    match algo {
+        TEE_ALG_AES_ECB_NOPAD => {
+            let ctx: MbedAesCbcCtx = *MbedAesCbcCtx::alloc_cipher_ctx()?;
+            Ok(Box::new(ctx))
+        }
+        _ => Err(Err(TEE_ERROR_NOT_IMPLEMENTED)),
+    }
+}
+
+pub fn crypto_hash_free_ctx<H>(ctx: &mut H)
+where
+    H: CryptoHashOps,
+{
+    ctx.free_ctx();
+}
+
+// pub fn crypto_hash_copy_state<H>(src: &H, dst: &mut H)
+// where
+//     H: CryptoHashOps,
+// {
+//     src.copy_state(dst)
+// }
+
+// pub fn crypto_hash_alloc_ctx(t : Type) -> Result<Md, TeeResultCode> {
+//     let mut md = Md::new(t).map_err(|e| TeeResultCode::ErrorBadState)?;
+//
+//     Ok(md)
+// }
+
+pub fn crypto_hash_alloc_ctx(alg: TEE_ALG) -> TeeResult<Md> {
+    let t = tee_alg_to_hash_type(alg)?;
+    let md = Md::new(t).map_err(|_| TEE_ERROR_BAD_STATE)?;
+
+    Ok(md)
+}
+
+pub fn crypto_hash_init(_md: &mut Md) -> TeeResult {
+    // initialized in Md.new
+    Ok(())
+}
+
+pub fn crypto_hash_update(md: &mut Md, data: &[u8]) -> TeeResult {
+    md.update(data).map_err(|_| TEE_ERROR_BAD_STATE)?;
+    Ok(())
+}
+
+pub fn crypto_hash_final(md: Md, digest: &mut [u8]) -> TeeResult {
+    md.finish(digest).map_err(|_| TEE_ERROR_BAD_STATE)?;
+    Ok(())
 }
