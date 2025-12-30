@@ -26,11 +26,6 @@ use super::{
     TeeResult,
 };
 
-use self::ree_fs_rpc_read_init as rpc_read_init;
-use self::tee_fs_rpc_read_final as rpc_read_final;
-use self::ree_fs_rpc_write_init as rpc_write_init;
-use self::tee_fs_rpc_write_final as rpc_write_final;
-
 #[repr(C)]
 pub struct tee_file_handle;
 
@@ -217,67 +212,6 @@ pub fn ree_fs_rpc_read_init() -> TeeResult {
 pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
 }
-
-pub fn rpc_write(
-    fd: &FileVariant,
-    /* ht: &mut TeeFsHtree, */
-    typ: TeeFsHtreeType,
-    idx: usize,
-    vers: u8,
-    data: &[u8],
-) -> TeeResult {
-    let dlen = data.len();
-    if dlen == 0 {
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    rpc_write_init()?;
-    let _ = rpc_write_final(fd, typ, idx, vers, data)?;
-
-    Ok(())
-}
-
-pub fn rpc_write_head(
-    fd: &FileVariant,
-    /* ht: &mut TeeFsHtree, */
-    vers: u8,
-    head: &TeeFsHtreeImage,
-) -> TeeResult {
-    let data_ptr: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            head as *const TeeFsHtreeImage as *const u8,
-            size_of::<TeeFsHtreeImage>(),
-        )
-    };
-    rpc_write(fd, /* ht, */ TeeFsHtreeType::Head, 0, vers, data_ptr)?;
-    Ok(())
-}
-
-
-pub fn rpc_write_node(
-    fd: &FileVariant,
-    /* ht: &mut TeeFsHtree,*/
-    node_id: usize,
-    vers: u8,
-    head: &TeeFsHtreeNodeImage,
-) -> TeeResult {
-    let data_ptr: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            head as *const TeeFsHtreeNodeImage as *const u8,
-            size_of::<TeeFsHtreeNodeImage>(),
-        )
-    };
-    rpc_write(
-        fd,
-        /*ht,*/ TeeFsHtreeType::Node,
-        node_id - 1,
-        vers,
-        data_ptr,
-    )?;
-    Ok(())
-}
-
-
 
 /// tee_file_operations is the operations of the tee_pobj
 #[derive(Debug)]
