@@ -18,3 +18,20 @@ pub const fn bit64(nr: u32) -> u64 {
 pub const fn bit(nr: u32) -> u32 {
     bit32(nr)
 }
+
+#[macro_export]
+macro_rules! container_of {
+    ($ptr:expr, $type:ty, $member:ident) => {
+        {
+            let ptr = $ptr as *const _;
+            (ptr as usize - core::mem::offset_of!($type, $member)) as *mut $type
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! member_size {
+    ($type:ty, $member:ident) => {
+        core::mem::offset_of!($type, $member)
+    }
+}

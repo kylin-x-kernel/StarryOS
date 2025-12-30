@@ -34,7 +34,7 @@ mod tee_session;
 mod tee_svc_cryp;
 mod tee_svc_storage;
 mod tee_ta_manager;
-// mod ts_manager;
+mod ts_manager;
 mod tee_fs_key_manager;
 mod huk_subkey;
 mod otp_stubs;
@@ -75,7 +75,7 @@ use crate::tee::{
     },
     panic::sys_tee_scn_panic,
     property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
-    // tee_svc_cryp::sys_tee_scn_hash_init,
+    tee_svc_cryp::sys_tee_scn_hash_init,
     tee_time::{sys_tee_scn_wait,sys_tee_scn_get_time, sys_tee_scn_set_ta_time},
 };
 
@@ -144,7 +144,7 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             sys_tee_scn_set_ta_time(teetime_ref)
         }
 
-        // Sysno::tee_scn_hash_init => sys_tee_scn_hash_init(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _),
+        Sysno::tee_scn_hash_init => sys_tee_scn_hash_init(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _),
 
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
