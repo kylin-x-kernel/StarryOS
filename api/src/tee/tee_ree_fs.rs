@@ -17,11 +17,20 @@ use spin::{Mutex, RwLock};
 use tee_raw_sys::*;
 
 use super::{
-    common::file_ops::{TeeFileLike, FileVariant},
-    fs_htree::{TeeFsHtreeImage, TeeFsHtreeNodeImage, TeeFsHtreeType},
+    common::file_ops::{FileVariant, TeeFileLike},
+    fs_dirfile::TeeFsDirfileFileh,
+    fs_htree::{
+        TEE_FS_HTREE_HASH_SIZE, TeeFsHtree, TeeFsHtreeImage, TeeFsHtreeNodeImage, TeeFsHtreeType,
+    },
     tee_pobj::tee_pobj,
+    TeeResult,
 };
-use crate::tee::TeeResult;
+
+use self::ree_fs_rpc_read_init as rpc_read_init;
+use self::tee_fs_rpc_read_final as rpc_read_final;
+use self::ree_fs_rpc_write_init as rpc_write_init;
+use self::tee_fs_rpc_write_final as rpc_write_final;
+
 #[repr(C)]
 pub struct tee_file_handle;
 
@@ -29,6 +38,29 @@ static REE_FS_MUTEX: Mutex<()> = Mutex::new(());
 
 pub const BLOCK_SHIFT: usize = 12;
 pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
+
+#[derive(Debug, Default)]
+pub struct TeeFsFd {
+    pub ht: Box<TeeFsHtree>,
+    pub fd: FileVariant,
+    pub dfh: TeeFsDirfileFileh,
+    pub uuid: TEE_UUID,
+}
+
+/// read data from crypto RNG to buffer
+///
+/// # Arguments
+/// * `buf` - buffer to store read data
+///
+/// # Returns
+/// * `Ok(())` - success
+/// * `Err(TEE_ERROR_GENERIC)` - error
+/// TODO: Using mbedtls to implement a real RNG
+pub fn crypto_rng_read(buf: &mut [u8]) -> TeeResult {
+    buf.fill(0);
+    Ok(())
+}
+
 
 fn pos_to_block_num(position: usize) -> usize {
     position >> BLOCK_SHIFT
@@ -125,11 +157,11 @@ pub fn get_offs_size(typ: TeeFsHtreeType, idx: usize, vers: u8) -> TeeResult<(us
 }
 
 /// read data from file to buffer at offset using rpc
-/// the typical flow is: 
+/// the typical flow is:
 ///   1. call ree_fs_rpc_read_init to get offs and size to fill params
 ///   2. send OPTEE_RPC_CMD_FS to ree
 /// in starryos, just usign file operations to read data
-/// 
+///
 /// # Arguments
 /// * `fd` - file descriptor
 /// * `typ` - type of the file
@@ -152,7 +184,7 @@ pub fn tee_fs_rpc_read_final(
 }
 
 /// write data to file at offset using rpc
-/// 
+///
 /// # Arguments
 /// * `fd` - file descriptor
 /// * `typ` - type of the file
@@ -163,7 +195,7 @@ pub fn tee_fs_rpc_read_final(
 /// # Returns
 /// * `Ok(usize)` - number of bytes written
 pub fn tee_fs_rpc_write_final(
-    fd: &mut FileVariant,
+    fd: &FileVariant,
     typ: TeeFsHtreeType,
     idx: usize,
     vers: u8,
@@ -185,6 +217,67 @@ pub fn ree_fs_rpc_read_init() -> TeeResult {
 pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
 }
+
+pub fn rpc_write(
+    fd: &FileVariant,
+    /* ht: &mut TeeFsHtree, */
+    typ: TeeFsHtreeType,
+    idx: usize,
+    vers: u8,
+    data: &[u8],
+) -> TeeResult {
+    let dlen = data.len();
+    if dlen == 0 {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    rpc_write_init()?;
+    let _ = rpc_write_final(fd, typ, idx, vers, data)?;
+
+    Ok(())
+}
+
+pub fn rpc_write_head(
+    fd: &FileVariant,
+    /* ht: &mut TeeFsHtree, */
+    vers: u8,
+    head: &TeeFsHtreeImage,
+) -> TeeResult {
+    let data_ptr: &[u8] = unsafe {
+        core::slice::from_raw_parts(
+            head as *const TeeFsHtreeImage as *const u8,
+            size_of::<TeeFsHtreeImage>(),
+        )
+    };
+    rpc_write(fd, /* ht, */ TeeFsHtreeType::Head, 0, vers, data_ptr)?;
+    Ok(())
+}
+
+
+pub fn rpc_write_node(
+    fd: &FileVariant,
+    /* ht: &mut TeeFsHtree,*/
+    node_id: usize,
+    vers: u8,
+    head: &TeeFsHtreeNodeImage,
+) -> TeeResult {
+    let data_ptr: &[u8] = unsafe {
+        core::slice::from_raw_parts(
+            head as *const TeeFsHtreeNodeImage as *const u8,
+            size_of::<TeeFsHtreeNodeImage>(),
+        )
+    };
+    rpc_write(
+        fd,
+        /*ht,*/ TeeFsHtreeType::Node,
+        node_id - 1,
+        vers,
+        data_ptr,
+    )?;
+    Ok(())
+}
+
+
 
 /// tee_file_operations is the operations of the tee_pobj
 #[derive(Debug)]
@@ -318,4 +411,34 @@ pub fn tee_svc_storage_file_ops(storage_id: c_uint) -> TeeResult<&'static TeeFil
         TEE_STORAGE_PRIVATE_RPMB => Err(TEE_ERROR_NOT_SUPPORTED),
         _ => Err(TEE_ERROR_BAD_PARAMETERS),
     }
+}
+
+/// Trait for file interface operations supplied by user of this interface
+///
+/// tee_fs_dirfile_operations
+pub trait TeeFsDirfileOperations {
+    /// Opens a file
+    fn open(
+        &self,
+        create: bool,
+        hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
+        uuid: Option<&TEE_UUID>,
+        dfh: Option<&TeeFsDirfileFileh>,
+    ) -> TeeResult<Box<TeeFsFd>>;
+
+    /// Closes a file, changes are discarded unless commit_writes is called before
+    fn close(&self, fh: &mut TeeFsFd);
+
+    /// Reads from an open file
+    fn read(&self, fh: &mut TeeFsFd, pos: usize, buf: &mut [u8], len: &mut usize) -> TeeResult;
+
+    /// Writes to an open file
+    fn write(&self, fh: &mut TeeFsFd, pos: usize, buf: &[u8]) -> TeeResult;
+
+    /// Commits changes since the file was opened
+    fn commit_writes(
+        &self,
+        fh: &mut TeeFsFd,
+        hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
+    ) -> TeeResult;
 }

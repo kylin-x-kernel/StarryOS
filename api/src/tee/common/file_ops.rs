@@ -105,7 +105,7 @@ pub trait TeeFileLike {
     /// # Returns
     /// * `Ok(usize)` - number of bytes written
     /// * `Err(TEE_ERROR_GENERIC)` - error
-    fn pwrite(&mut self, buf: &[u8], offset: usize) -> TeeResult<usize>;
+    fn pwrite(&self, buf: &[u8], offset: usize) -> TeeResult<usize>;
 
     /// move file read write pointer to offset
     ///
@@ -134,7 +134,7 @@ pub trait TeeFileLike {
     /// * `Err(TEE_ERROR_GENERIC)` - error
     fn close(&mut self) -> TeeResult<()>;
 }
-
+#[derive(Debug)]
 pub struct FileVariant {
     pub fd: isize,
 }
@@ -223,7 +223,7 @@ impl TeeFileLike for FileVariant {
         })
     }
 
-    fn pwrite(&mut self, buf: &[u8], offset: usize) -> TeeResult<usize> {
+    fn pwrite(&self, buf: &[u8], offset: usize) -> TeeResult<usize> {
         with_file(self, |file| {
             file.write_at(&mut SealedBuf::from(buf), offset as _)
                 .inspect_err(|e| error!("write_at to file failed: {:?}", e))
