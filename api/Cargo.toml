@@ -78,6 +78,8 @@ zerocopy = { version = "0.8.26", features = ["derive"] }
 starry-core.workspace = true
 static_assertions = "1.1.0"
 
+memoffset = { version = "0.9", default-features = false }
+subtle = { version = "2", default-features = false }
 syscalls = { version = "0.7", default-features = false }
 tee_raw_sys = { version = "0.1", optional = true }
 mbedtls = { workspace = true, optional = true }
