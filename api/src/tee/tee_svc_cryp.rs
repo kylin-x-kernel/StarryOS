@@ -312,7 +312,7 @@ pub trait tee_crypto_ops {
     where
         Self: Sized;
 
-    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef>
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>>
     where
         Self: Sized;
 }
@@ -392,7 +392,7 @@ impl tee_crypto_ops for TeeCryptObj {
         }
     }
 
-    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef> {
+    fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>> {
         match self {
             TeeCryptObj::ecc_public_key(key) => key.get_attr_by_id(attr_id),
             TeeCryptObj::ecc_keypair(keypair) => keypair.get_attr_by_id(attr_id),
@@ -960,7 +960,7 @@ impl tee_crypto_ops for tee_cryp_obj_secret_wrapper {
         Ok(Self::new(key_size_bits))
     }
 
-    fn get_attr_by_id(&mut self, _attr_id: c_ulong) -> TeeResult<CryptoAttrRef> {
+    fn get_attr_by_id(&mut self, _attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>> {
         Ok(CryptoAttrRef::SecretValue(self))
     }
 }
@@ -1113,7 +1113,7 @@ pub fn tee_obj_set_type(
     obj.info.maxObjectSize = max_key_size as u32;
     if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
         let pobj = Arc::get_mut(&mut obj.pobj).ok_or(TEE_ERROR_BAD_STATE)?;
-        pobj.obj_info_usage = TEE_USAGE_DEFAULT;
+        pobj.write().obj_info_usage = TEE_USAGE_DEFAULT;
     } else {
         obj.info.objectUsage = TEE_USAGE_DEFAULT;
     }
@@ -1128,7 +1128,7 @@ pub(crate) fn syscall_cryp_obj_alloc(
     let mut obj = tee_obj::default();
 
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
-    let obj_id = tee_obj_add(obj)?;
+    let obj_id = tee_obj_add(Arc::new(obj))?;
     Ok(obj_id)
 }
 
@@ -1657,8 +1657,8 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     o_info.obj_size = o.info.objectSize;
     o_info.max_obj_size = o.info.maxObjectSize;
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        with_pobj_usage_lock(&o.pobj, || {
-            o_info.obj_usage = o.pobj.obj_info_usage;
+        with_pobj_usage_lock(o.pobj.read().flags, || {
+            o_info.obj_usage = o.pobj.read().obj_info_usage;
         });
     } else {
         o_info.obj_usage = o.info.objectUsage;
@@ -1690,8 +1690,8 @@ pub fn syscall_cryp_obj_get_attr(
     );
     if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
         if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-            with_pobj_usage_lock(&o.pobj, || {
-                obj_usage = o.pobj.obj_info_usage;
+            with_pobj_usage_lock(o.pobj.read().flags, || {
+                obj_usage = o.pobj.read().obj_info_usage;
             });
         } else {
             obj_usage = o.info.objectUsage;
@@ -2031,8 +2031,8 @@ pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeR
     dst_mut.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
     dst_mut.info.objectSize = src_mut.info.objectSize;
     if src_mut.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        with_pobj_usage_lock(&src_mut.pobj, || {
-            dst_mut.info.objectUsage = src_mut.pobj.obj_info_usage;
+        with_pobj_usage_lock(src_mut.pobj.read().flags, || {
+            dst_mut.info.objectUsage = src_mut.pobj.read().obj_info_usage;
         });
     } else {
         dst_mut.info.objectUsage = src_mut.info.objectUsage;
@@ -2295,7 +2295,7 @@ pub mod tests_tee_svc_cryp {
             //attr[..4].copy_from_slice(value_bytes);
             let mut offs: size_t = 0;
             let result = op_attr_value_from_binary(&mut attr, &value_bytes, &mut offs);
-            info!("result: {:?}, offs: {}, attr: {:?}", result, offs, attr);
+            // info!("result: {:?}, offs: {}, attr: {:?}", result, offs, attr);
             assert!(result.is_ok());
             assert_eq!(offs, 4);
             assert_eq!(&attr[..4], &[0x11, 0x22, 0x33, 0x44]);

@@ -20,18 +20,29 @@ mod memtag;
 mod panic;
 mod property;
 mod protocol;
+mod tee_ree_fs;
+mod fs_htree;
 mod tee_fs;
+mod utee_defines;
+mod common;
+mod fs_dirfile;
+mod bitstring;
 mod tee_obj;
 mod tee_pobj;
 mod tee_return;
 mod tee_session;
 mod tee_svc_cryp;
+mod tee_svc_storage;
 mod tee_ta_manager;
+mod tee_fs_key_manager;
+mod huk_subkey;
+mod otp_stubs;
+mod crypto_temp;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
-mod time;
+mod tee_time;
 mod types_ext;
 mod user_access;
 mod user_mode_ctx_struct;
@@ -52,14 +63,15 @@ use tee_return::sys_tee_scn_return;
 use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
-use time::*;
 
+use tee_raw_sys::TeeTime;
 use crate::tee::{
     inter_ta::{
         sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
     },
     panic::sys_tee_scn_panic,
     property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
+    tee_time::{sys_tee_scn_wait,sys_tee_scn_get_time, sys_tee_scn_set_ta_time},
 };
 
 pub type TeeResult<T = ()> = Result<T, u32>;
@@ -114,6 +126,18 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
         }
         Sysno::tee_scn_unmask_cancellation => sys_tee_scn_unmask_cancellation(_uctx.arg0() as _),
         Sysno::tee_scn_mask_cancellation => sys_tee_scn_mask_cancellation(_uctx.arg0() as _),
+        Sysno::tee_scn_wait => sys_tee_scn_wait(_uctx.arg0() as u32),
+
+        Sysno::tee_scn_get_time => {
+            let teetime_ptr = _uctx.arg1() as *mut TeeTime;
+            let teetime_ref = unsafe { &mut *teetime_ptr };
+            sys_tee_scn_get_time(_uctx.arg0() as _, teetime_ref)
+        }
+        Sysno::tee_scn_set_ta_time => {
+            let teetime_ptr = _uctx.arg1() as *const TeeTime;
+            let teetime_ref = unsafe { &*teetime_ptr };
+            sys_tee_scn_set_ta_time(teetime_ref)
+        }
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
 }

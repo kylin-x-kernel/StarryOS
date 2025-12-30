@@ -22,7 +22,7 @@ use tee_raw_sys::{libc_compat::size_t, *};
 use super::{
     TeeResult,
     libmbedtls::bignum::BigNum,
-    tee_fs::tee_file_handle,
+    tee_ree_fs::tee_file_handle,
     tee_pobj::tee_pobj,
     tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
     tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},
@@ -45,7 +45,7 @@ pub struct tee_obj {
     // void *attr;
     pub attr: Vec<TeeCryptObj>,
     ds_pos: size_t,
-    pub pobj: Arc<tee_pobj>,
+    pub pobj: Arc<RwLock<tee_pobj>>,
     fh: Arc<tee_file_handle>,
 }
 
@@ -53,6 +53,7 @@ impl default::Default for tee_obj {
     fn default() -> Self {
         tee_obj {
             info: TEE_ObjectInfo {
+                objectId: 0,
                 objectType: 0,
                 objectSize: 0,
                 maxObjectSize: 0,
@@ -65,15 +66,19 @@ impl default::Default for tee_obj {
             have_attrs: 0,
             attr: Vec::new(),
             ds_pos: 0,
-            pobj: Arc::new(tee_pobj::default()),
+            pobj: Arc::new(RwLock::new(tee_pobj::default())),
             fh: Arc::new(tee_file_handle {}),
         }
     }
 }
 
-pub fn tee_obj_add(obj: tee_obj) -> TeeResult<tee_obj_id_type> {
+pub fn tee_obj_add(obj: Arc<tee_obj>) -> TeeResult<tee_obj_id_type> {
     with_tee_session_ctx_mut(|ctx| {
-        let id = ctx.objects.insert(Arc::new(obj));
+        let id = ctx.objects.insert(obj);
+        // update obj-id in ctx.objects
+        let arc_obj = ctx.objects.get_mut(id).ok_or(TEE_ERROR_BAD_STATE)?;
+        let obj_mut = Arc::get_mut(arc_obj).ok_or(TEE_ERROR_BAD_STATE)?;
+        obj_mut.info.objectId = id as u32;
         Ok(id as tee_obj_id_type)
     })
 }
@@ -83,6 +88,26 @@ pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<tee_obj>> {
         Some(obj) => Ok(Arc::clone(obj)),
         None => Err(TEE_ERROR_ITEM_NOT_FOUND),
     })
+}
+
+pub fn tee_obj_delete(obj: &mut tee_obj) {
+    // remove from session objects
+    with_tee_session_ctx_mut(|ctx| {
+        ctx.objects.remove(obj.info.objectId as _);
+        Ok(())
+    });
+}
+
+pub fn tee_obj_close(obj: &mut tee_obj) {
+    tee_obj_delete(obj);
+
+    if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        // TODO: implement fops close
+        //obj.pobj.fops.close(&obj.fh);
+        // tee_pobj_release(obj.pobj);
+    }
+
+    // tee_obj_free(obj);
 }
 
 #[cfg(feature = "tee_test")]
@@ -102,7 +127,7 @@ pub mod tests_tee_obj {
         fn test_tee_obj_add_get() {
             let mut obj = tee_obj::default();
             obj.busy = true;
-            let obj_id = tee_obj_add(obj).expect("Failed to add tee_obj");
+            let obj_id = tee_obj_add(Arc::new(obj)).expect("Failed to add tee_obj");
             info!("Added tee_obj with id {}", obj_id);
             let retrieved_obj = tee_obj_get(obj_id).expect("Failed to get tee_obj");
             assert_eq!(retrieved_obj.busy, true);
