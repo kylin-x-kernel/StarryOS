@@ -256,6 +256,31 @@ pub(crate) fn crypto_sm3_alloc_ctx() -> TeeResult<Box<dyn CryptoHashCtx>> {
     Err(TEE_ERROR_NOT_IMPLEMENTED)
 }
 
+// defining mac operations for cryptographic hashing
+pub(crate) trait CryptoMacCtx {
+    // Initialize the hash context
+    fn init(&mut self, key: &[u8]) -> TeeResult;
+
+    // Update the hash context with data
+    fn update(&mut self, data: &[u8]) -> TeeResult;
+
+    // Finalize the hash computation and return the digest
+    fn r#final(&mut self, digest: &mut [u8]) -> TeeResult;
+
+    // Free the hash context resources
+    fn free_ctx(self);
+
+    // Copy the state from one context to another
+    fn copy_state(&mut self, ctx: &dyn CryptoMacCtx);
+}
+
+
+pub(crate) fn crypto_mac_init (
+    ctx: &mut dyn CryptoMacCtx,
+    key: &[u8]
+) -> TeeResult {
+	return ctx.init(key);
+}
 // Main hash context allocation function
 pub(crate) fn crypto_hash_alloc_ctx(algo: u32) -> TeeResult<Box<dyn CryptoHashCtx>> {
     let mut res = TEE_ERROR_NOT_IMPLEMENTED;
