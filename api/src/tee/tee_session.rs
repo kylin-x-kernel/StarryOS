@@ -15,7 +15,10 @@ use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
 use super::{TeeResult, tee_obj::tee_obj};
-use crate::tee::tee_ta_manager::SessionIdentity;
+use crate::tee:: {
+    tee_ta_manager::SessionIdentity,
+    user_ta::user_ta_ctx,
+};
 
 scope_local::scope_local! {
     /// The tee ta context.
@@ -24,7 +27,7 @@ scope_local::scope_local! {
 
 /// The tee session context.
 /// This context is used to store the session information.
-/// 
+///
 /// parameters:
 /// - session_id: the session id
 /// - login_type: the login type
@@ -43,6 +46,7 @@ pub struct tee_session_ctx {
     pub cancel: bool,
     pub cancel_mask: bool,
     pub cancel_time: TeeTime,
+    pub utx: user_ta_ctx,
 }
 
 #[repr(C)]
@@ -87,6 +91,7 @@ impl Default for tee_session_ctx {
                 seconds: 0,
                 millis: 0,
             },
+            utx: user_ta_ctx::default(),
         }
     }
 }

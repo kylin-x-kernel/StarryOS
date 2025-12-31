@@ -10,7 +10,7 @@ use core::slice::IterMut;
 use tee_raw_sys::TEE_ERROR_NOT_IMPLEMENTED;
 
 use crate::tee::TeeResult;
-use crate::tee::ts_manager::TsCtx;
+// use crate::tee::ts_manager::TsCtx;
 
 /// user ta context
 /// NOTE: NEVER USE THIS STRUCT IN YOUR CODE
@@ -19,6 +19,12 @@ pub struct user_ta_ctx {}
 
 impl Default for user_ta_ctx {
     fn default() -> Self {
+        Self {}
+    }
+}
+
+impl Clone for user_ta_ctx {
+    fn clone(&self) -> Self {
         Self {}
     }
 }
@@ -102,7 +108,7 @@ impl user_ta_ctx {
 }
 
 // 模拟 to_user_ta_ctx 函数的 Rust 版本
-pub(crate) fn to_user_ta_ctx<'a>(ctx: &'a TsCtx<'a>) -> TeeResult<&'a mut user_ta_ctx> {
-    // unsafe { core::mem::transmute(()) }
-    Err(TEE_ERROR_NOT_IMPLEMENTED)
-}
+// pub(crate) fn to_user_ta_ctx<'a>(ctx: &'a TsCtx<'a>) -> TeeResult<&'a mut user_ta_ctx> {
+//     // unsafe { core::mem::transmute(()) }
+//     Err(TEE_ERROR_NOT_IMPLEMENTED)
+// }
