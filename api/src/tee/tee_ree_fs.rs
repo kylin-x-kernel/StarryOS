@@ -17,13 +17,13 @@ use spin::{Mutex, RwLock};
 use tee_raw_sys::*;
 
 use super::{
+    TeeResult,
     common::file_ops::{FileVariant, TeeFileLike},
     fs_dirfile::TeeFsDirfileFileh,
     fs_htree::{
         TEE_FS_HTREE_HASH_SIZE, TeeFsHtree, TeeFsHtreeImage, TeeFsHtreeNodeImage, TeeFsHtreeType,
     },
     tee_pobj::tee_pobj,
-    TeeResult,
 };
 
 #[repr(C)]
@@ -55,7 +55,6 @@ pub fn crypto_rng_read(buf: &mut [u8]) -> TeeResult {
     buf.fill(0);
     Ok(())
 }
-
 
 fn pos_to_block_num(position: usize) -> usize {
     position >> BLOCK_SHIFT
@@ -211,6 +210,32 @@ pub fn ree_fs_rpc_read_init() -> TeeResult {
 /// no need to do anything in starryos, because we use file operations to write data
 pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
+}
+
+pub trait TeeFsHtreeStorageOps {
+    fn block_size(&self) -> usize;
+
+    fn rpc_read_init(&self) -> TeeResult;
+
+    fn rpc_read_final(
+        &self,
+        fd: &mut FileVariant,
+        typ: TeeFsHtreeType,
+        idx: usize,
+        vers: u8,
+        data: &mut [u8],
+    ) -> TeeResult<usize>;
+
+    fn rpc_write_init(&self) -> TeeResult;
+
+    fn rpc_write_final(
+        &self,
+        fd: &mut FileVariant,
+        typ: TeeFsHtreeType,
+        idx: usize,
+        vers: u8,
+        data: &[u8],
+    ) -> TeeResult<usize>;
 }
 
 /// tee_file_operations is the operations of the tee_pobj
