@@ -96,358 +96,45 @@ pub const ATTR_OPS_INDEX_25519: u32 = 3;
 // Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_448: u32 = 4;
 
-fn get_user_u64_as_size_t(dst: &mut usize, src: &u64) -> TeeResult {
-    let mut d: u64 = 0;
 
-    // copy_from_user: 读取用户态数据
-    copy_from_user_u64(&mut d, src)?;
 
-    // 检查是否溢出：在 32bit 平台，usize = u32，不能装下全部的 u64
-    if d > usize::MAX as u64 {
-        return Err(TEE_ERROR_OVERFLOW);
-    }
-
-    *dst = d as usize;
-
-    Ok(())
-}
-
-fn op_u32_to_binary_helper(v: u32, data: &mut [u8], offs: &mut size_t) -> TeeResult {
-    let field: u32;
-    let next_offs: size_t;
-
-    next_offs = offs
-        .checked_add(size_of::<u32>())
-        .ok_or(TEE_ERROR_OVERFLOW)?;
-
-    if data.len() >= next_offs {
-        field = tee_u32_to_big_endian(v);
-        let field_bytes: &[u8] = unsafe {
-            core::slice::from_raw_parts(
-                &field as *const u32 as *const u8,
-                core::mem::size_of::<u32>(),
-            )
-        };
-        data[*offs..*offs + size_of::<u32>()].copy_from_slice(field_bytes);
-    }
-    *offs = next_offs;
-
-    Ok(())
-}
-
-fn op_u32_from_binary_helper(v: &mut u32, data: &[u8], offs: &mut size_t) -> TeeResult {
-    let field: u32;
-
-    if data.len() < *offs + size_of::<u32>() {
-        return Err(TEE_ERROR_BAD_PARAMETERS);
-    }
-
-    let field_bytes = &data[*offs..*offs + size_of::<u32>()];
-    field = u32::from_be_bytes(
-        field_bytes
-            .try_into()
-            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?,
-    );
-    *v = field;
-    *offs += size_of::<u32>();
-
-    Ok(())
-}
-
-/// 从用户空间导入大数属性
+/// Represents the state of a cryptographic operation
 ///
-/// attr: 密钥属性指针
-/// buffer: 用户空间缓冲区
-fn op_attr_bignum_from_user(_attr: *mut u8, buffer: &[u8]) -> TeeResult {
-    let mut kbuf: Box<[u8]> = vec![0u8; buffer.len()].into_boxed_slice();
-
-    copy_from_user(kbuf.as_mut(), buffer, buffer.len())?;
-
-    // TODO: add call to crypto_bignum_bin2bn(bbuf, size, *bn);
-
-    Ok(())
-}
-
-/// 导出大数属性到用户空间
+/// This enum indicates whether a cryptographic operation has been initialized or not.
 ///
-/// attr: 密钥属性指针
-/// buffer: 用户空间缓冲区
-/// size_ref: 用户空间大小指针
-fn op_attr_bignum_to_user(_attr: *mut u8, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
-    let mut s: u64 = 0;
-
-    // copy size from user
-    copy_from_user_u64(&mut s, size_ref)?;
-    let req_size: u64 = 0; // TODO: call crypto_bignum_num_bytes
-    copy_to_user_u64(size_ref, &req_size)?;
-
-    if req_size == 0 {
-        return Ok(());
-    }
-
-    if s < req_size || buffer.is_empty() {
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    let mut kbuf: Box<[u8]> = vec![0u8; req_size as _].into_boxed_slice();
-
-    // TODO: call crypto_bignum_bn2bin with _attr to fill kbuf
-
-    copy_to_user(buffer, kbuf.as_mut(), req_size as usize)?;
-
-    Ok(())
-}
-
-/// 将大数属性序列化到二进制缓冲区
-///
-/// attr: 密钥属性指针
-/// data: 目标缓冲区,可以为空 []
-/// offs: 偏移指针
-fn op_attr_bignum_to_binary(_attr: *mut u8, data: &mut [u8], offs: &mut size_t) -> TeeResult {
-    let n: u32 = 0; // TODO: call crypto_bignum_num_bytes
-    let mut next_offs: size_t;
-
-    op_u32_to_binary_helper(n, data, offs)?;
-    next_offs = offs.checked_add(n as usize).ok_or(TEE_ERROR_OVERFLOW)?;
-
-    if data.len() >= next_offs {
-        // TODO: call crypto_bignum_bn2bin to fill data[*offs..*offs + n]
-    }
-
-    *offs = next_offs;
-    Ok(())
-}
-
-fn op_attr_bignum_from_binary(_attr: *mut u8, data: &[u8], offs: &mut size_t) -> TeeResult {
-    let mut n: u32 = 0;
-
-    op_u32_from_binary_helper(&mut n, data, offs)?;
-
-    if offs
-        .checked_add(n as usize)
-        .ok_or(TEE_ERROR_BAD_PARAMETERS)?
-        > data.len()
-    {
-        return Err(TEE_ERROR_BAD_PARAMETERS);
-    }
-
-    // TODO: call crypto_bignum_bin2bn
-
-    *offs += n as usize;
-
-    Ok(())
-}
-
-fn op_attr_bignum_from_obj(_attr: *mut u8, _src_attr: *mut u8) -> TeeResult {
-    // TODO: call crypto_bignum_copy
-    Ok(())
-}
-
-fn op_attr_bignum_clear(_attr: *mut u8) {
-    // TODO: call crypto_bignum_clear
-    unimplemented!();
-}
-
-fn op_attr_bignum_free(_attr: *mut u8) {
-    // TODO: call crypto_bignum_free
-    unimplemented!();
-}
-
-/// 从用户空间导入值属性
-///
-/// attr: 密钥属性指针
-/// buffer: 用户空间缓冲区
-/// FIXME: 这里为何不使用 copy_from_user?
-fn op_attr_value_from_user(attr: &mut [u8], user_buffer: &[u8]) -> TeeResult {
-    if user_buffer.len() != size_of::<u32>() * 2 {
-        return Err(TEE_ERROR_GENERIC);
-    }
-
-    // Note that only the first value is copied
-    attr.copy_from_slice(&user_buffer[..size_of::<u32>()]);
-
-    Ok(())
-}
-
-fn op_attr_value_to_user(attr: &[u8], buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
-    let mut s: u64 = 0;
-    copy_from_user_u64(&mut s, size_ref)?;
-
-    let value: [u32; 2] = [unsafe { *(attr.as_ptr() as *const u32) }, 0];
-    let req_size: u64 = size_of::<[u32; 2]>() as u64;
-
-    if s < req_size || buffer.is_empty() {
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    if buffer.len() < req_size as usize {
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    let value_bytes: &[u8] = unsafe {
-        core::slice::from_raw_parts(&value as *const u32 as *const u8, req_size as usize)
-    };
-    buffer[..req_size as _].copy_from_slice(value_bytes);
-
-    Ok(())
-}
-
-fn op_attr_value_to_binary(attr: &[u8], data: &mut [u8], offs: &mut size_t) -> TeeResult {
-    let value: u32 = unsafe { *(attr.as_ptr() as *const u32) };
-    op_u32_to_binary_helper(value, data, offs)
-}
-
-fn op_attr_value_from_binary(attr: &mut [u8], data: &[u8], offs: &mut size_t) -> TeeResult {
-    let value_ptr = attr.as_mut_ptr() as *mut u32;
-    op_u32_from_binary_helper(unsafe { &mut *value_ptr }, data, offs)
-}
-
-fn op_attr_value_from_obj(attr: &mut [u8], src_attr: &[u8]) -> TeeResult {
-    attr[..size_of::<u32>()].copy_from_slice(&src_attr[..size_of::<u32>()]);
-    Ok(())
-}
-
-fn op_attr_value_clear(attr: &mut [u8]) {
-    attr[..4].copy_from_slice(&[0u8; size_of::<u32>()]);
-}
-
-fn op_attr_25519_to_binary(_attr: &[u8], _data: &mut [u8], _offs: &mut size_t) -> TeeResult {
-    unimplemented!();
-}
-
-fn op_attr_25519_from_binary(_attr: &mut [u8], _data: &[u8], _offs: &mut size_t) -> TeeResult {
-    unimplemented!();
-}
-
-fn op_attr_25519_from_obj(_attr: &mut [u8], _src_attr: &[u8]) -> TeeResult {
-    unimplemented!();
-}
-
-fn op_attr_25519_clear(_attr: &mut [u8]) {
-    unimplemented!();
-}
-
-fn op_attr_25519_free(_attr: &mut [u8]) {
-    unimplemented!();
-}
-
-fn is_gp_legacy_des_key_size(obj_type: TEE_ObjectType, sz: size_t) -> bool {
-    return CFG_COMPAT_GP10_DES
-        && ((obj_type == TEE_TYPE_DES && sz == 56)
-            || (obj_type == TEE_TYPE_DES3 && (sz == 112 || sz == 168)));
-}
-
-fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResult {
-    let mut sz = key_size;
-
-    // In GP Internal API Specification 1.0 the partity bits aren't
-    // counted when telling the size of the key in bits so add them
-    // here if missing.
-    if is_gp_legacy_des_key_size(props.obj_type, sz) {
-        sz += sz / 7;
-    }
-
-    if sz % props.quanta as usize != 0 {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    if sz < props.min_size as usize {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    if sz > props.max_size as usize {
-        return Err(TEE_ERROR_NOT_SUPPORTED);
-    }
-
-    Ok(())
-}
-
-/// copy in attributes from user space to kernel space
-///
-/// _uctx: user_ta_ctx, not used now
-/// usr_attrs: user space attributes
-/// attrs: kernel space attributes
-/// return: TeeResult
-fn copy_in_attrs(
-    _uctx: &mut user_ta_ctx,
-    usr_attrs: &[utee_attribute],
-    attrs: &mut [TEE_Attribute],
-) -> TeeResult {
-    // copy usr_attrs to from user space to kernel space
-    let mut usr_attrs_buf: Box<[utee_attribute]> =
-        vec![utee_attribute::default(); usr_attrs.len()].into_boxed_slice();
-    for n in 0..usr_attrs.len() {
-        copy_from_user_struct(&mut usr_attrs_buf[n], &usr_attrs[n])?;
-    }
-
-    for n in 0..usr_attrs.len() {
-        attrs[n].attributeID = usr_attrs_buf[n].attribute_id;
-        if attrs[n].attributeID & TEE_ATTR_FLAG_VALUE != 0 {
-            attrs[n].content.value.a = usr_attrs_buf[n].a as u32;
-            attrs[n].content.value.b = usr_attrs_buf[n].b as u32;
-        } else {
-            let mut buf = usr_attrs_buf[n].a;
-            let len = usr_attrs_buf[n].b;
-            let flags = TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER;
-            // TODO: need to implement vm_check_access_rights
-            buf = memtag_strip_tag_vaddr(buf as *const c_void) as u64;
-            vm_check_access_rights(
-                &mut user_mode_ctx::default(),
-                flags,
-                buf as usize,
-                len as usize,
-            )?;
-            attrs[n].content.memref.buffer = buf as *mut c_void;
-            attrs[n].content.memref.size = len as usize;
-        }
-    }
-    Ok(())
-}
-
-enum attr_usage {
-    ATTR_USAGE_POPULATE = 0,
-    ATTR_USAGE_GENERATE_KEY = 1,
-}
-
-fn get_ec_key_size(curve: u32) -> TeeResult<usize> {
-    let mut key_size: usize = 0;
-    match curve {
-        TEE_ECC_CURVE_NIST_P192 => {
-            key_size = 192;
-        }
-        TEE_ECC_CURVE_NIST_P224 => {
-            key_size = 224;
-        }
-        TEE_ECC_CURVE_NIST_P256 => {
-            key_size = 256;
-        }
-        TEE_ECC_CURVE_NIST_P384 => {
-            key_size = 384;
-        }
-        TEE_ECC_CURVE_NIST_P521 => {
-            key_size = 521;
-        }
-        TEE_ECC_CURVE_SM2 | TEE_ECC_CURVE_25519 => {
-            key_size = 256;
-        }
-        _ => {
-            return Err(TEE_ERROR_NOT_SUPPORTED);
-        }
-    }
-    Ok(key_size)
-}
-
-// Equivalent to the C enum
+/// # Variants
+/// * `Initialized` - The cryptographic operation has been properly initialized and is ready for use
+/// * `Uninitialized` - The cryptographic operation has not been initialized yet
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CrypState {
     Initialized = 0,
     Uninitialized,
 }
 
-// Function pointer type for finalization
+/// Function pointer type for finalization
+///
+/// This type defines the signature for functions that are responsible for cleaning up
+/// or finalizing cryptographic contexts when they are no longer needed.
+///
+/// # Parameters
+/// * `*mut c_void` - A pointer to the context that needs to be finalized
 type TeeCrypCtxFinalizeFunc = unsafe extern "Rust" fn(*mut c_void);
 
-// Rust equivalent of the tee_cryp_state struct
+/// Rust equivalent of the tee_cryp_state struct
+///
+/// This structure represents the state of a cryptographic operation in the TEE environment.
+/// It contains all the necessary information to manage an active cryptographic operation,
+/// including the algorithm, keys, and context-specific data.
+///
+/// # Fields
+/// * `algo` - The cryptographic algorithm identifier (e.g., TEE_ALG_AES_ECB_NOPAD)
+/// * `mode` - The operation mode (e.g., encrypt, decrypt, sign, verify)
+/// * `key1` - Virtual address of the first key used in the operation (vaddr_t is typically usize in Rust)
+/// * `key2` - Virtual address of the second key used in the operation (for algorithms requiring multiple keys)
+/// * `ctx` - A trait object containing the specific context data for the algorithm
+/// * `ctx_finalize` - Optional function pointer for finalizing the context when the operation ends
+/// * `state` - Current state of the operation (initialized or uninitialized)
+/// * `id` - Unique identifier for this cryptographic state instance
 #[repr(C)]
 pub(crate) struct TeeCrypState {
     // Since TAILQ_ENTRY is a linked list node, we use Option<NonNull> for safe pointer handling
@@ -529,7 +216,30 @@ fn tee_svc_cryp_get_state<'a> (
     Err(TEE_ERROR_BAD_PARAMETERS)
 }
 
-// System calls: hash init
+/// Initializes a hash or MAC operation with the given state
+///
+/// This function initializes a cryptographic operation (either hash or MAC) using the provided state.
+/// For hash operations, it initializes the SM3 hash context. For MAC operations, it retrieves the
+/// key from the associated object and initializes the SM3 HMAC context.
+///
+/// # Arguments
+/// * `state` - The virtual address identifier of the cryptographic state to initialize
+/// * `_iv` - Initialization vector (currently unused, reserved for future use)
+/// * `_iv_len` - Length of the initialization vector (currently unused, reserved for future use)
+///
+/// # Returns
+/// * `TeeResult` - Returns TEE_SUCCESS on successful initialization, or appropriate error code:
+///   - TEE_ERROR_BAD_STATE: If the cryptographic context cannot be downcast to expected type
+///   - TEE_ERROR_BAD_PARAMETERS: If the key object is not initialized or has invalid parameters
+///   - Other error codes from underlying crypto operations
+///
+/// # Algorithm Support
+/// - TEE_OPERATION_DIGEST: Initializes SM3 hash context
+/// - TEE_OPERATION_MAC: Initializes SM3 HMAC context with the provided key
+///
+/// # State Management
+/// - Updates the cryptographic state to `CrypState::Initialized` after successful initialization
+/// - Verifies that the key object is properly initialized before using it for MAC operations
 pub(crate) fn sys_tee_scn_hash_init(
     state: usize,
     _iv: usize,
