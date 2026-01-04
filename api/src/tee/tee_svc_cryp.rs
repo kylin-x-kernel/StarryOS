@@ -1540,6 +1540,74 @@ fn op_attr_25519_free(_attr: &mut [u8]) {
     unimplemented!();
 }
 
+
+/// convert the attributes of the object to binary data
+/// the order is defined by TEE_CRYP_OBJ_PROPS table
+/// 
+/// # Arguments
+/// * `o` - the object
+/// * `data` - the data to store the binary data
+/// * `data_len` - the length of the data
+/// 
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_obj_attr_to_binary(o: &mut tee_obj, data: &mut [u8], data_len: &mut size_t) -> TeeResult {
+    if o.info.objectType == TEE_TYPE_DATA {
+        *data_len = 0;
+        return Ok(()); /* pure data object */
+    }
+    if o.attr.is_empty() {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    let tp = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+
+    let mut offs: size_t = 0;
+    for ta in tp.type_attrs.iter() {
+        let mut attr = o.attr[0].get_attr_by_id(ta.attr_id as _)?;
+        attr.to_binary(data, &mut offs)?;
+    }
+
+    if offs != data.len() {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    Ok(())
+}
+
+/// construct the attributes of the object from the binary data
+/// the order is defined by TEE_CRYP_OBJ_PROPS table
+/// 
+/// # Arguments
+/// * `o` - the object
+/// * `data` - the data to convert the attributes
+/// * `data_len` - the length of the data
+/// 
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_obj_attr_from_binary(o: &mut tee_obj, data: &[u8]) -> TeeResult {
+    if o.info.objectType == TEE_TYPE_DATA {
+        return Ok(()); /* pure data object */
+    }
+    if o.attr.is_empty() {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    let tp = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+
+    let mut offs: size_t = 0;
+    for ta in tp.type_attrs.iter() {
+        let mut attr = o.attr[0].get_attr_by_id(ta.attr_id as _)?;
+        attr.from_binary(data, &mut offs)?;
+    }
+
+    if offs != data.len() {
+        return Err(TEE_ERROR_CORRUPT_OBJECT);
+    }
+
+    Ok(())
+}
+
 pub fn tee_obj_attr_copy_from(dst: &mut tee_obj, src: &mut tee_obj) -> TeeResult {
     let mut have_atts: u32 = 0;
     if dst.info.objectType == TEE_TYPE_DATA {
