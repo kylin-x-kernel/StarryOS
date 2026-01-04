@@ -46,14 +46,14 @@ use super::{
     },
     user_mode_ctx_struct::user_mode_ctx,
     user_ta:: {
-        user_ta_ctx,to_user_ta_ctx
+        user_ta_ctx, //to_user_ta_ctx
     },
     utils::{bit, bit32},
     vm::vm_check_access_rights,
-    ts_manager:: {
-        TsSession,
-        ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
-    }
+    // ts_manager:: {
+    //     TsSession,
+    //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
+    // }
 };
 
 // use core::ffi::c_void;
@@ -506,12 +506,13 @@ impl TeeCrypObjSecret {
 /// * `Ok(Option<&mut TeeCrypState>)` - Returns Some with reference to found state if found,
 ///   or None if not found
 /// * `Err(TEE_Result)` - Error code if the operation fails (TEE_ERROR_BAD_PARAMETERS if not found)
-fn tee_svc_cryp_get_state<'a>(
-    sess: &'a TsSession<'a>,
+fn tee_svc_cryp_get_state<'a> (
+    // sess: &'a TsSession<'a>
+    sess: &'a mut user_ta_ctx,
     state_id: usize
 ) -> TeeResult<&'a mut TeeCrypState> {
     // Get the user TA context from the session
-    let utc = to_user_ta_ctx(sess.ctx.unwrap())?;
+    let utc = sess; //to_user_ta_ctx(sess.ctx.unwrap())?;
 
     // Iterate through the list of cryptographic states
     for s in utc.iter_mut()?
@@ -527,17 +528,23 @@ fn tee_svc_cryp_get_state<'a>(
     Err(TEE_ERROR_BAD_PARAMETERS)
 }
 
+use crate::tee::tee_session:: {
+    with_tee_session_ctx,with_tee_session_ctx_mut
+};
 // System calls: hash init
 pub(crate) fn sys_tee_scn_hash_init(
     state: usize,
     _iv: usize,
     _iv_len: usize
 ) -> TeeResult {
-    // get current session
-    let mut session = ts_get_current_session()?;
+    // get current session user_ta_ctx
+    // let session = ts_get_current_session()?;
+    let mut session = with_tee_session_ctx(|ctx| {
+        Ok(ctx.utx.clone())
+    })?;
 
     // get crypto state
-    let crypto_state = tee_svc_cryp_get_state(&session, state)?;
+    let crypto_state = tee_svc_cryp_get_state(&mut session, state)?;
 
     // 根据算法类型执行不同的初始化
     match tee_alg_get_class(crypto_state.algo) {
@@ -584,10 +591,10 @@ pub(crate) fn sys_tee_scn_hash_init(
         _ => return Err(TEE_ERROR_BAD_PARAMETERS),
     }
 
-    // // 更新状态
-    // if let Some(mut state) = session.crypto_service.get_state_mut(state) {
-    //     state.state = CryptoStateType::Initialized;
-    // }
+    // 更新状态
+    if CrypState::Initialized != crypto_state.state {
+        crypto_state.state = CrypState::Initialized;
+    }
 
     Ok(())
 }

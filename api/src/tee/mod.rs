@@ -37,7 +37,7 @@ mod tee_svc_storage;
 mod tee_ta_manager;
 mod tee_misc;
 mod ree_fs_rpc;
-mod ts_manager;
+// mod ts_manager;
 mod tee_fs_key_manager;
 mod huk_subkey;
 mod otp_stubs;
