@@ -16,6 +16,7 @@ pub fn tee_test_unit() {
         tee_obj::tests_tee_obj::TEST_TEE_OBJ, tee_pobj::tests_tee_pobj::TEST_TEE_POBJ,
         tee_session::tests_tee_session::TEST_TEE_SESSION,
         tee_svc_cryp::tests_tee_svc_cryp::TEST_TEE_SVC_CRYP,
+        tee_svc_storage::tests_tee_svc_storage::TEST_TEE_SVC_STORAGE,
         user_access::tests_user_access::TEST_USER_ACCESS,
         common::file_ops::tests_file_ops::TEST_FILE_OPS,
     };
@@ -27,6 +28,7 @@ pub fn tee_test_unit() {
             TEST_TEE_POBJ,
             TEST_TEE_OBJ,
             TEST_TEE_SVC_CRYP,
+            TEST_TEE_SVC_STORAGE,
             TEST_USER_ACCESS,
             TEST_TEE_BIGNUM,
             TEST_TEE_SESSION,

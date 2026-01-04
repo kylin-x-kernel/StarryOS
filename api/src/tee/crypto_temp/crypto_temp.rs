@@ -169,11 +169,11 @@ pub trait CryptoHashOps {
 /// Convert TEE_ALG to mbedtls::hash::Type
 /// This is a helper function instead of TryFrom implementation due to Rust's orphan rule
 fn tee_alg_to_hash_type(value: TEE_ALG) -> Result<Type, u32> {
-    match value {
-        TEE_ALG_MD5 => Ok(Type::Md5),
-        TEE_ALG_SHA256 => Ok(Type::Sha256),
-        TEE_ALG_SHA512 => Ok(Type::Sha512),
-        _ => Err(TEE_ERROR_NOT_IMPLEMENTED),
+        match value {
+            TEE_ALG_MD5 => Ok(Type::Md5),
+            TEE_ALG_SHA256 => Ok(Type::Sha256),
+            TEE_ALG_SHA512 => Ok(Type::Sha512),
+            _ => Err(TEE_ERROR_NOT_IMPLEMENTED),
     }
 }
 
