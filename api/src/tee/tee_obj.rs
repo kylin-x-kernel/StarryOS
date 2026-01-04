@@ -44,9 +44,10 @@ pub struct tee_obj {
     pub have_attrs: u32, // bitfield identifying set properties
     // void *attr;
     pub attr: Vec<TeeCryptObj>,
-    ds_pos: size_t,
+    pub ds_pos: size_t,
     pub pobj: Arc<RwLock<tee_pobj>>,
-    fh: Arc<tee_file_handle>,
+    /// file handle for the pobject
+    pub fh: Box<tee_file_handle>,
 }
 
 impl default::Default for tee_obj {
@@ -67,7 +68,7 @@ impl default::Default for tee_obj {
             attr: Vec::new(),
             ds_pos: 0,
             pobj: Arc::new(RwLock::new(tee_pobj::default())),
-            fh: Arc::new(tee_file_handle {}),
+            fh: Box::new(tee_file_handle::default()),
         }
     }
 }
