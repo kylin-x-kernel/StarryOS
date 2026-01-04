@@ -34,6 +34,8 @@ mod tee_session;
 mod tee_svc_cryp;
 mod tee_svc_storage;
 mod tee_ta_manager;
+mod tee_misc;
+mod ree_fs_rpc;
 // mod ts_manager;
 mod tee_fs_key_manager;
 mod huk_subkey;
@@ -78,6 +80,11 @@ use crate::tee::{
     // tee_svc_cryp::sys_tee_scn_hash_init,
     tee_time::{sys_tee_scn_wait,sys_tee_scn_get_time, sys_tee_scn_set_ta_time},
 };
+
+pub use tee_ree_fs::ree_fs_rpc_read_init as rpc_read_init;
+pub use tee_ree_fs::ree_fs_rpc_write_init as rpc_write_init;
+pub use tee_ree_fs::tee_fs_rpc_read_final as rpc_read_final;
+pub use tee_ree_fs::tee_fs_rpc_write_final as rpc_write_final;
 
 pub type TeeResult<T = ()> = Result<T, u32>;
 
