@@ -24,7 +24,24 @@ pub fn roundup_u<T: Copy
     + core::ops::Sub<Output = T>
     + core::ops::BitAnd<Output = T>
     + core::ops::Not<Output = T>
-    + From<u8>>(v: T, size: T) -> T 
+    + From<u8>>(v: T, size: T) -> T
 {
     (v + (size - T::from(1))) & !(size - T::from(1))
+}
+
+#[macro_export]
+macro_rules! container_of {
+    ($ptr:expr, $type:ty, $member:ident) => {
+        {
+            let ptr = $ptr as *const _;
+            (ptr as usize - core::mem::offset_of!($type, $member)) as *mut $type
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! member_size {
+    ($type:ty, $member:ident) => {
+        core::mem::offset_of!($type, $member)
+    }
 }
