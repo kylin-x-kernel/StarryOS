@@ -16,11 +16,17 @@ use slab::Slab;
 use spin::RwLock;
 use starry_core::task::AsThread;
 use tee_raw_sys::TEE_ERROR_GENERIC;
+use axfs_ng_vfs::VfsError;
 
 use crate::{
     file::{SealedBuf, SealedBufMut, resolve_at, with_fs},
     tee::TeeResult,
 };
+
+pub const FS_MODE_644 : u32 = (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+pub const FS_OFLAG_DEFAULT : u32 = O_CREAT | O_RDWR;
+pub const FS_OFLAG_RW : u32 = O_RDWR;
+pub const FS_OFLAG_RW_TRUNC : u32 = O_RDWR | O_TRUNC;
 
 scope_local::scope_local! {
     /// The open objects for TA.
@@ -174,13 +180,12 @@ where
 }
 
 impl FileVariant {
-    pub fn open(path: &str, flags: c_int, mode: u32) -> TeeResult<Self> {
+    pub fn open(path: &str, flags: u32, mode: u32) -> Result<Self, VfsError> {
         let mode = mode & !current().as_thread().proc_data.umask();
 
-        let options = flags_to_options(flags, mode, (0, 0));
+        let options = flags_to_options(flags as c_int, mode as __kernel_mode_t, (0, 0));
         let fd = with_fs(AT_FDCWD, |fs| options.open(fs, path))
-            .and_then(|it| add_to_fd(it, flags as _))
-            .map_err(|_| TEE_ERROR_GENERIC)?;
+            .and_then(|it| add_to_fd(it, flags as _))?;
 
         info!("FileVariant::open = fd: {}", fd);
         Ok(Self { fd })
@@ -189,6 +194,34 @@ impl FileVariant {
     /// get raw file descriptor
     pub fn as_raw_fd(&self) -> isize {
         self.fd
+    }
+
+    /// remove file
+    ///
+    /// # Arguments
+    /// * `path` - the path of the file to remove
+    /// # Returns
+    /// * `TeeResult` - the result of the operation
+    pub fn remove(path: &str) -> TeeResult {
+        with_fs(AT_FDCWD, |fs| fs.remove_file(path))
+            .inspect_err(|e| error!("remove file failed: {:?}", e))
+            .map_err(|_| TEE_ERROR_GENERIC)?;
+
+        Ok(())
+    }
+
+    /// check if file exists
+    ///
+    /// # Arguments
+    /// * `path` - the path of the file to check
+    /// # Returns
+    /// * `bool` - true if file exists, false otherwise
+    pub fn exists(path: &str) -> bool {
+        let loc = resolve_at(AT_FDCWD, Some(path), AT_EMPTY_PATH);
+        match loc {
+            Ok(loc) => loc.stat().is_ok(),
+            Err(_) => false,
+        }
     }
 }
 
@@ -276,7 +309,7 @@ pub fn tee_get_file_size(path: &str) -> TeeResult<usize> {
 }
 
 pub fn file_ops_test() {
-    let mut fd = FileVariant::open("/tmp/test.txt", (O_RDWR | O_CREAT) as c_int, 0o644);
+    let mut fd = FileVariant::open("/tmp/test.txt", (O_RDWR | O_CREAT) as u32, 0o644);
     assert!(fd.is_ok());
     let mut fd = fd.unwrap();
 
@@ -300,7 +333,7 @@ pub mod tests_file_ops {
         using TestResult;
 
         fn test_file_ops_read() {
-            let mut fd = FileVariant::open("/tmp/test.txt", (O_RDWR | O_CREAT) as c_int, 0o644);
+            let mut fd = FileVariant::open("/tmp/test.txt", (O_RDWR | O_CREAT) as u32, 0o644);
             assert!(fd.is_ok());
             let mut fd = fd.unwrap();
             // // write 1024 bytes to file
@@ -337,9 +370,37 @@ pub mod tests_file_ops {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_file_ops_exists() {
+            let path = "/tmp/test.txt.not_exists";
+            assert!(!FileVariant::exists(path));
+            // create file
+            {
+                let mut fd = FileVariant::open(path, (O_RDWR | O_CREAT) as u32, 0o644);
+                assert!(fd.is_ok());
+            }
+            // check if file exists
+            assert!(FileVariant::exists(path));
+            // remove file
+            {
+                let n = FileVariant::remove(path);
+                assert!(n.is_ok());
+            }
+            // check if file exists
+            assert!(!FileVariant::exists(path));
+            // // remove file again
+            // {
+            //     let n = FileVariant::remove(path);
+            //     assert!(n.is_ok());
+            // }
+        }
+    }
     tests_name! {
         TEST_FILE_OPS;
         //------------------------
         test_file_ops_read,
+        test_file_ops_exists,
     }
 }
