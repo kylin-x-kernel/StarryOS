@@ -201,6 +201,16 @@ pub struct TeeFsHtree {
     pub data: TeeFsHtreeData,
 }
 
+/// read the data from the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `typ` - the type of the data
+/// * `idx` - the index of the data
+/// * `vers` - the version of the data
+/// * `data` - the data to read
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_read(
     fd: &mut FileVariant,
     // ht: &mut TeeFsHtree,
@@ -224,6 +234,14 @@ pub fn rpc_read(
     Ok(())
 }
 
+/// read the head from the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `vers` - the version of the head
+/// * `head` - the head of the tree
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_read_head(
     fd: &mut FileVariant,
     // ht: &mut TeeFsHtree,
@@ -240,6 +258,15 @@ pub fn rpc_read_head(
     Ok(())
 }
 
+/// read the node from the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `node_id` - the id of the node
+/// * `vers` - the version of the node
+/// * `head` - the head of the node
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_read_node(
     fd: &mut FileVariant,
     // ht: &mut TeeFsHtree,
@@ -264,6 +291,16 @@ pub fn rpc_read_node(
     Ok(())
 }
 
+/// write the data to the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `typ` - the type of the data
+/// * `idx` - the index of the data
+/// * `vers` - the version of the data
+/// * `data` - the data to write
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_write(
     fd: &FileVariant,
     // ht: &mut TeeFsHtree,
@@ -283,6 +320,14 @@ pub fn rpc_write(
     Ok(())
 }
 
+/// write the head to the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `vers` - the version of the head
+/// * `head` - the head of the tree
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_write_head(
     fd: &FileVariant,
     // ht: &mut TeeFsHtree,
@@ -299,6 +344,15 @@ pub fn rpc_write_head(
     Ok(())
 }
 
+/// write the node to the storage
+///
+/// # Arguments
+/// * `fd` - the file descriptor
+/// * `node_id` - the id of the node
+/// * `vers` - the version of the node
+/// * `head` - the head of the node
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn rpc_write_node(
     fd: &FileVariant,
     // ht: &mut TeeFsHtree,
@@ -323,6 +377,14 @@ pub fn rpc_write_node(
     Ok(())
 }
 
+/// calc the hash of the node
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn calc_node(
     mut node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -346,6 +408,15 @@ pub fn calc_node(
     Ok(())
 }
 
+/// calc the hash of the node with context
+///
+/// # Arguments
+/// * `md` - the hash context
+/// * `node` - the node
+/// * `meta` - the meta of the tree
+/// * `digest` - the digest of the hash
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn calc_node_hash_with_ctx(
     mut md: Md,
     node: &HtreeNode,
@@ -375,6 +446,15 @@ pub fn calc_node_hash_with_ctx(
     Ok(())
 }
 
+/// calc the hash of the node with type
+///
+/// # Arguments
+/// * `t` - the type of the hash
+/// * `node` - the node
+/// * `meta` - the meta of the tree
+/// * `digest` - the digest of the hash
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn calc_node_hash_with_type(
     t: TEE_ALG,
     node: &HtreeNode,
@@ -387,6 +467,14 @@ pub fn calc_node_hash_with_type(
     Ok(())
 }
 
+/// calc the hash of the node
+///
+/// # Arguments
+/// * `node` - the node
+/// * `meta` - the meta of the tree
+/// * `digest` - the digest of the hash
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn calc_node_hash(
     node: &HtreeNode,
     meta: &TeeFsHtreeMeta,
@@ -395,6 +483,15 @@ pub fn calc_node_hash(
     calc_node_hash_with_type(TEE_ALG_SHA256, node, Some(meta), digest)
 }
 
+/// traverse the tree post order
+///
+/// # Arguments
+/// * `cb` - the callback function
+/// * `node` - the node
+/// * `tee_fs_htree` - the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn traverse_post_order<F>(
     mut cb: F,
     node: &mut HtreeNode,
@@ -418,6 +515,15 @@ where
     Ok(())
 }
 
+/// traverse the tree post order
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `visitor` - the visitor function
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn post_order_traverse<F>(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -445,6 +551,15 @@ where
     Ok(())
 }
 
+/// traverse the tree post order mut
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `visitor` - the visitor function
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn post_order_traverse_mut<F>(
     node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -469,6 +584,15 @@ where
 
     Ok(())
 }
+
+/// free the node
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn free_node(
     _node: &HtreeNode,
     _ht_data: &TeeFsHtreeData,
@@ -477,6 +601,14 @@ pub fn free_node(
     Ok(())
 }
 
+/// verify the node
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn verify_node(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -508,6 +640,14 @@ pub fn verify_node(
     Ok(())
 }
 
+/// print the hash of the node
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn print_node_hash(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -530,6 +670,14 @@ pub fn print_node_hash(
     Ok(())
 }
 
+/// sync the node to the storage
+///
+/// # Arguments
+/// * `node` - the node
+/// * `ht_data` - the data of the tree
+/// * `fd` - the file descriptor
+/// # Returns
+/// * `TeeResult` - the result of the operation
 fn htree_sync_node_to_storage(
     mut node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
@@ -580,6 +728,13 @@ fn htree_sync_node_to_storage(
     Ok(())
 }
 
+/// create cipher for encrypt or decrypt
+///
+/// # Arguments
+/// * `alg` - the algorithm of the cipher
+/// * `key_bytes` - the length of the key
+/// # Returns
+/// * `TeeResult<Cipher<M, Authenticated, Fresh>>` - the cipher for encrypt or decrypt
 fn create_cipher<M: Operation>(
     alg: TEE_ALG,
     key_bytes: usize,
@@ -698,6 +853,34 @@ fn authenc_init_decrypt(
         (ni_iv, true)
     } else {
         (&head.iv, false)
+    };
+
+    authenc_init_core(fek, head, iv, ni_is_some, root_hash)
+}
+
+/// special version for encrypt, using separated parameters to avoid borrow conflicts
+///
+/// # Arguments
+/// * `fek` - the key for encrypt
+/// * `head` - the head of the tree (only needs to be mutable if ni_iv is None)
+/// * `ni_iv` - the iv from the node (will be filled with random data), if None use head.iv
+/// * `root_hash` - the hash of the root
+/// # Returns
+/// * `Cipher<Encryption, Authenticated, CipherData>` - the cipher for encrypt
+fn authenc_init_encrypt(
+    fek: &[u8; TEE_FS_HTREE_FEK_SIZE],
+    head: &TeeFsHtreeImage,
+    ni_iv: Option<&mut [u8; TEE_FS_HTREE_IV_SIZE]>,
+    root_hash: Option<&[u8; TEE_FS_HTREE_HASH_SIZE]>,
+) -> TeeResult<Cipher<Encryption, Authenticated, CipherData>> {
+    let (iv, ni_is_some) = if let Some(ni_iv) = ni_iv {
+        crypto_rng_read(ni_iv)?;
+        (ni_iv as &[u8; TEE_FS_HTREE_IV_SIZE], true)
+    } else {
+        // This case should not happen in tee_fs_htree_write_block
+        // as we always pass Some(&mut node.node.iv)
+        // But we keep it for completeness
+        return Err(TEE_ERROR_GENERIC);
     };
 
     authenc_init_core(fek, head, iv, ni_is_some, root_hash)
@@ -1399,4 +1582,124 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
     }
 
     result
+}
+
+/// write the block of the tree
+///
+/// # Arguments
+/// * `ht` - the tree
+/// * `storage` - the storage
+/// * `fd` - the file descriptor
+/// * `block_num` - the block number
+/// * `block` - the block
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_fs_htree_write_block<S: TeeFsHtreeStorageOps>(
+    ht: &mut TeeFsHtree,
+    storage: &S,
+    fd: &mut FileVariant,
+    block_num: usize,
+    block: &[u8; BLOCK_SIZE],
+) -> TeeResult {
+    // before calling authenc_init, get the root hash first
+    let root_hash = ht.root.node.hash;
+
+    // extract fek and head before getting node to avoid borrow conflicts
+    let fek = ht.data.fek;
+    let head = ht.data.head;
+
+    let result = (|| {
+        // get node once for all operations
+        let node = get_block_node(ht, true, block_num).map_err(|_| TEE_ERROR_CORRUPT_OBJECT)?;
+
+        // if block not updated, toggle committed flag
+        let block_vers = {
+            if !node.block_updated {
+                node.node.flags ^= HTREE_NODE_COMMITTED_BLOCK as u16;
+            }
+
+            if (node.node.flags & HTREE_NODE_COMMITTED_BLOCK as u16) != 0 {
+                1
+            } else {
+                0
+            }
+        };
+
+        // allocate encryption buffer
+        let mut enc_block = vec![0u8; storage.block_size()];
+
+        // initialize write operation
+        storage.rpc_write_init()?;
+
+        // use authenc_init_encrypt, directly use extracted fek and head (immutable) since ni_iv is Some
+        // authenc_init_encrypt will generate random IV for node.node.iv
+        let cipher = authenc_init_encrypt(&fek, &head, Some(&mut node.node.iv), Some(&root_hash))
+            .map_err(|_| TEE_ERROR_CORRUPT_OBJECT)?;
+
+        // encrypt data block
+        authenc_encrypt_final(cipher, &mut node.node.tag, block, &mut enc_block)?;
+
+        // mark node as updated and dirty
+        node.block_updated = true;
+        node.dirty = true;
+
+        // node borrow will be released when going out of scope
+        // write encrypted data
+        storage.rpc_write_final(fd, TeeFsHtreeType::Block, block_num, block_vers, &enc_block)?;
+
+        // mark tree as dirty
+        ht.data.dirty = true;
+
+        Ok(())
+    })();
+
+    if result.is_err() {
+        error!("tee_fs_htree_write_block error! {:?}", result);
+        // tee_fs_htree_close(ht)?;
+    }
+
+    result
+}
+
+/// truncate the tree
+///
+/// # Arguments
+/// * `ht` - the tree
+/// * `block_num` - the block number
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_fs_htree_truncate(ht: &mut TeeFsHtree, block_num: usize) -> TeeResult {
+    let node_id = block_num_to_node_id(block_num);
+
+    while node_id < ht.data.imeta.max_node_id as usize {
+        let current_max_node_id = ht.data.imeta.max_node_id as usize;
+        let node = find_closest_node(ht, current_max_node_id);
+        assert!(node.id == current_max_node_id);
+        assert!(node.get_child_by_index(0).is_none() && node.get_child_by_index(1).is_none());
+        assert!(node.parent.is_some());
+
+        // Get the parent node pointer and child node index, then release the node reference
+        let (parent_ptr, child_index) = if let Some(parent) = node.parent {
+            (parent, node.id & 1)
+        } else {
+            unreachable!() // already ensured by assert that parent exists
+        };
+
+        // node reference will be released automatically when scope ends, here explicitly mark it as not used
+        let _ = node;
+
+        // Use unsafe to get the mutable reference of the parent node from NonNull
+        // Safety: parent pointer lifetime is guaranteed by tee_fs_htree, valid during node existence
+        let parent_node = unsafe { &mut *parent_ptr.as_ptr() };
+
+        // Set the corresponding child tree of the parent node to None
+        if child_index == 0 {
+            parent_node.left = None;
+        } else {
+            parent_node.right = None;
+        }
+        ht.data.imeta.max_node_id -= 1;
+        ht.data.dirty = true;
+    }
+    Ok(())
 }
