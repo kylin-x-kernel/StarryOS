@@ -4,6 +4,10 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+use crate::tee::tee_session:: {
+    with_tee_session_ctx,with_tee_session_ctx_mut
+};
+
 use alloc::{
     alloc::{alloc, dealloc},
     boxed::Box,
@@ -445,16 +449,17 @@ type TeeCrypCtxFinalizeFunc = unsafe extern "Rust" fn(*mut c_void);
 
 // Rust equivalent of the tee_cryp_state struct
 #[repr(C)]
-struct TeeCrypState<'a > {
+pub(crate) struct TeeCrypState {
     // Since TAILQ_ENTRY is a linked list node, we use Option<NonNull> for safe pointer handling
-    link: Option<NonNull<TeeCrypState<'a>>>,
-    algo: u32,
-    mode: u32,
-    key1: usize, // vaddr_t is typically usize in Rust
-    key2: usize,
-    ctx: &'a mut dyn Any,
-    ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
-    state: CrypState,
+    // pub link: Option<NonNull<TeeCrypState<'a>>>,
+    pub algo: u32,
+    pub mode: u32,
+    pub key1: usize, // vaddr_t is typically usize in Rust
+    pub key2: usize,
+    pub ctx: &'static mut dyn Any,
+    pub ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
+    pub state: CrypState,
+    pub id: usize,
 }
 
 // Rust equivalent of the tee_cryp_obj_secret struct
@@ -508,19 +513,15 @@ impl TeeCrypObjSecret {
 /// * `Err(TEE_Result)` - Error code if the operation fails (TEE_ERROR_BAD_PARAMETERS if not found)
 fn tee_svc_cryp_get_state<'a> (
     // sess: &'a TsSession<'a>
-    sess: &'a mut user_ta_ctx,
+    sess: &'a mut Vec<TeeCrypState>,
     state_id: usize
 ) -> TeeResult<&'a mut TeeCrypState> {
-    // Get the user TA context from the session
-    let utc = sess; //to_user_ta_ctx(sess.ctx.unwrap())?;
-
     // Iterate through the list of cryptographic states
-    for s in utc.iter_mut()?
-        .as_mut_slice() {
-        // Check if the current state's address matches the requested state ID
-        if state_id == s as *mut usize as *mut TeeCrypState as usize {
+    // Get the user TA context from the session
+    for s in sess.iter_mut() {
+        if state_id == s.id {
             // Found the state, return it wrapped in Some
-            return Ok(unsafe { &mut*(s as *mut usize as *mut TeeCrypState) });
+            return Ok(s);
         }
     }
 
@@ -528,9 +529,6 @@ fn tee_svc_cryp_get_state<'a> (
     Err(TEE_ERROR_BAD_PARAMETERS)
 }
 
-use crate::tee::tee_session:: {
-    with_tee_session_ctx,with_tee_session_ctx_mut
-};
 // System calls: hash init
 pub(crate) fn sys_tee_scn_hash_init(
     state: usize,
@@ -539,62 +537,67 @@ pub(crate) fn sys_tee_scn_hash_init(
 ) -> TeeResult {
     // get current session user_ta_ctx
     // let session = ts_get_current_session()?;
-    let mut session = with_tee_session_ctx(|ctx| {
-        Ok(ctx.utx.clone())
-    })?;
+    // let mut session =
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                // get crypto state
+                let mut crypto_state; // = tee_svc_cryp_get_state(session, state)?;
+                crypto_state = tee_svc_cryp_get_state(s, state)?;
+                // 根据算法类型执行不同的初始化
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+                            crypto_hash_init(ctx)?;
+                        } else {
+                            return Err(TEE_ERROR_BAD_STATE);
+                        }
 
-    // get crypto state
-    let crypto_state = tee_svc_cryp_get_state(&mut session, state)?;
-
-    // 根据算法类型执行不同的初始化
-    match tee_alg_get_class(crypto_state.algo) {
-        TEE_OPERATION_DIGEST => {
-            if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-                crypto_hash_init(ctx)?;
-            } else {
-                return Err(TEE_ERROR_BAD_STATE);
-            }
-
-        }
-        TEE_OPERATION_MAC => {
-            // get key
-            let o: Arc<tee_obj> = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
-            if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
-               return Err(TEE_ERROR_BAD_PARAMETERS);
-            }
-
-            let key = o.attr.get(0);
-            let key1 = o.attr.get(1);
-            if let Some(key) = key {
-                if let Some(key1) = key1 {
-                    if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-                        let len =  match key {
-                            TeeCryptObj::obj_secret(key) => key.layout.size(),
-                            _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-                        };
-                        let data =  match key1 {
-                            TeeCryptObj::obj_secret(key) => key.secret() as *const tee_cryp_obj_secret as *const u8,
-                            _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-                        };
-                        let key = unsafe { from_raw_parts(data, len) };
-                        crypto_mac_init(ctx, key)?;
-                    } else {
-                        return Err(TEE_ERROR_BAD_STATE);
                     }
-                } else {
-                    return Err(TEE_ERROR_BAD_PARAMETERS);
-                }
-            } else {
-                return Err(TEE_ERROR_BAD_PARAMETERS);
-            }
-        }
-        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-    }
+                    TEE_OPERATION_MAC => {
+                        // get key
+                        let o: Arc<tee_obj> = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
+                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                        }
 
-    // 更新状态
-    if CrypState::Initialized != crypto_state.state {
-        crypto_state.state = CrypState::Initialized;
-    }
+                        let key = o.attr.get(0);
+                        let key1 = o.attr.get(1);
+                        if let Some(key) = key {
+                            if let Some(key1) = key1 {
+                                if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+                                    let len =  match key {
+                                        TeeCryptObj::obj_secret(key) => key.layout.size(),
+                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                                    };
+                                    let data =  match key1 {
+                                        TeeCryptObj::obj_secret(key) => key.secret() as *const tee_cryp_obj_secret as *const u8,
+                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                                    };
+                                    let key = unsafe { from_raw_parts(data, len) };
+                                    crypto_mac_init(ctx, key)?;
+                                } else {
+                                    return Err(TEE_ERROR_BAD_STATE);
+                                }
+                            } else {
+                                return Err(TEE_ERROR_BAD_PARAMETERS);
+                            }
+                        } else {
+                            return Err(TEE_ERROR_BAD_PARAMETERS);
+                        }
+                    }
+                    _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                }
+
+                // 更新状态
+                if CrypState::Initialized != crypto_state.state {
+                    crypto_state.state = CrypState::Initialized;
+                }
+                return Ok(());
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+    })?;
 
     Ok(())
 }

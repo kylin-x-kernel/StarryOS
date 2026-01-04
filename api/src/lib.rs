@@ -3,7 +3,6 @@
 #![feature(bstr)]
 #![allow(missing_docs)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
-#![feature(slice_iter_mut_as_mut_slice)]
 
 #[macro_use]
 extern crate axlog;
