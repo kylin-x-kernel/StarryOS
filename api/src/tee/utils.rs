@@ -19,6 +19,16 @@ pub const fn bit(nr: u32) -> u32 {
     bit32(nr)
 }
 
+pub fn roundup_u<T: Copy
+    + core::ops::Add<Output = T>
+    + core::ops::Sub<Output = T>
+    + core::ops::BitAnd<Output = T>
+    + core::ops::Not<Output = T>
+    + From<u8>>(v: T, size: T) -> T 
+{
+    (v + (size - T::from(1))) & !(size - T::from(1))
+}
+
 #[macro_export]
 macro_rules! container_of {
     ($ptr:expr, $type:ty, $member:ident) => {

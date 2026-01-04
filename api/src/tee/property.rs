@@ -14,7 +14,7 @@ use core::{
 use tee_raw_sys::{
     TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_ITEM_NOT_FOUND, TEE_ERROR_NOT_IMPLEMENTED,
     TEE_ERROR_NOT_SUPPORTED, TEE_ERROR_SHORT_BUFFER, TEE_Identity, TEE_PROPSET_CURRENT_CLIENT,
-    TEE_PROPSET_CURRENT_TA, TEE_PROPSET_TEE_IMPLEMENTATION, TEE_PropSetHandle,
+    TEE_PROPSET_CURRENT_TA, TEE_PROPSET_TEE_IMPLEMENTATION, TEE_PropSetHandle, TEE_UUID,
 };
 
 use crate::tee::{
@@ -78,7 +78,9 @@ impl PropType {
     }
 }
 
+// Properties of the set TEE_PROPSET_CURRENT_CLIENT
 struct ClientIdentity;
+struct ClientEndian;
 
 impl TEEProps for ClientIdentity {
     fn name(&self) -> CString {
@@ -105,6 +107,59 @@ impl TEEProps for ClientIdentity {
     }
 }
 
+impl TEEProps for ClientEndian {
+    fn name(&self) -> CString {
+        CString::new("gpd.client.endian").unwrap()
+    }
+
+    fn prop_type(&self) -> PropType {
+        PropType::U32
+    }
+
+    fn get(&self, buf: *mut c_void, blen: &mut u32) -> TeeResult {
+        const endian: u32 = 0;
+        let prop_size = size_of::<endian>() as u32;
+        if *blen < prop_size {
+            *blen = prop_size;
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+        *blen = prop_size;
+        copy_to_user(
+            unsafe { slice::from_raw_parts_mut(buf as _, *blen as usize) },
+            unsafe { slice::from_raw_parts(addr_of!(endian) as _, size_of::<endian>()) },
+            *blen as usize,
+        )
+    }
+}
+
+// Properties of the set TEE_PROPSET_CURRENT_TA
+struct TAAppID;
+
+impl TEEProps for TAAppID {
+    fn name(&self) -> CString {
+        CString::new("gpd.ta.appID").unwrap()
+    }
+
+    fn prop_type(&self) -> PropType {
+        PropType::UUID
+    }
+
+    fn get(&self, buf: *mut c_void, blen: &mut u32) -> TeeResult {
+        let prop_size = size_of::<TEE_UUID>() as u32;
+        if *blen < prop_size {
+            *blen = prop_size;
+            return Err(TEE_ERROR_SHORT_BUFFER);
+        }
+        *blen = prop_size;
+        let uuid = with_tee_session_ctx(|ctx| Ok(ctx.clnt_id))?.uuid;
+        copy_to_user(
+            unsafe { slice::from_raw_parts_mut(buf as _, *blen as usize) },
+            unsafe { slice::from_raw_parts(addr_of!(uuid) as _, size_of::<TEE_UUID>()) },
+            *blen as usize,
+        )
+    }
+}
+
 fn get_prop_struct(prop_set: PropertySet, index: c_ulong) -> TeeResult<Box<dyn TEEProps>> {
     match prop_set {
         PropertySet::CurrentClient => match index {
@@ -117,7 +172,11 @@ fn get_prop_struct(prop_set: PropertySet, index: c_ulong) -> TeeResult<Box<dyn T
 
 fn get_prop_index(name: &str) -> TeeResult<u32> {
     match name {
+        // TEE_PROPSET_CURRENT_CLIENT
         "gpd.client.identity" => Ok(0),
+        "gpd.client.endian" => Ok(1),
+        // TEE_PROPSET_CURRENT_TA
+        "gpd.ta.appID" => Ok(0),
         _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
     }
 }

@@ -4,16 +4,26 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::vec::Vec;
-
-use tee_raw_sys::{TEE_OBJECT_ID_MAX_LEN, TEE_UUID};
-
-use super::{
-    bitstring::{BitStr, bit_clear, bit_set, bit_test, bitstr_size, bit_nclear},
-    fs_htree::TEE_FS_HTREE_HASH_SIZE,
-	TeeResult,
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
 };
 
+use bytemuck::{Pod, Zeroable};
+use tee_raw_sys::{
+    TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_ITEM_NOT_FOUND, TEE_ERROR_SHORT_BUFFER,
+    TEE_OBJECT_ID_MAX_LEN, TEE_UUID,
+};
+
+use super::{
+    TeeResult,
+    bitstring::{BitStr, bit_clear, bit_ffc, bit_nclear, bit_set, bit_test, bitstr_size},
+    fs_htree::TEE_FS_HTREE_HASH_SIZE,
+    tee_fs::TeeFileHandle,
+    tee_ree_fs::{ReeDirfOps, TeeFsDirfileOperations},
+};
 /// file handle for dirfile tee_fs_dirfile_fileh
 ///
 /// # Fields
@@ -44,18 +54,30 @@ pub struct DirFileEntry {
     file_number: u32,
 }
 
+impl Default for DirFileEntry {
+    fn default() -> Self {
+        Self {
+            uuid: Default::default(),
+            oid: [0; TEE_OBJECT_ID_MAX_LEN as _],
+            oid_len: 0,
+            hash: [0; TEE_FS_HTREE_HASH_SIZE],
+            file_number: 0,
+        }
+    }
+}
 pub const OID_EMPTY_NAME: u8 = 1;
 
+#[derive(Debug, Default)]
 pub struct TeeFsDirfileDirh {
-    // fops: ReeDirfOps,
-    // fh: TeeFileHandle,
+    fops: ReeDirfOps,
+    fh: TeeFileHandle,
     pub nbits: usize,
     pub files: Vec<BitStr>,
     ndents: usize,
 }
 
 /// grow the files array if needed
-/// 
+///
 /// File layout
 ///
 /// dirfile_entry.0
@@ -63,7 +85,6 @@ pub struct TeeFsDirfileDirh {
 /// dirfile_entry.n
 ///
 /// where n the index is disconnected from file_number in struct dirfile_entry
-///
 fn maybe_grow_files(dirh: &mut TeeFsDirfileDirh, idx: usize) -> TeeResult {
     if idx < dirh.nbits {
         return Ok(());
@@ -108,19 +129,323 @@ pub fn set_file(dirh: &mut TeeFsDirfileDirh, idx: usize) -> TeeResult {
     Ok(())
 }
 
-// pub fn read_dent(dirh: &mut TeeFsDirfileDirh, idx: usize, dent: &mut DirFileEntry) -> TeeResult {
-//     let entry_size = core::mem::size_of::<DirFileEntry>();
-//     let offset = entry_size * idx;
-//     let mut len = entry_size;
+pub fn tee_fs_dirfile_fileh_to_fname(
+    dfh: Option<&TeeFsDirfileFileh>,
+    fname_buffer: &mut [u8],
+) -> TeeResult<usize> {
+    let s = if let Some(dfh_val) = dfh {
+        // Format the file_number as a hexadecimal string
+        format!("{:x}", dfh_val.file_number)
+    } else {
+        "dirf.db".to_string()
+    };
 
-//     // 读取目录项数据
-//     dirh.fops
-//         .read(&mut dirh.fh, offset, bytemuck::bytes_of_mut(dent), &mut len)?;
+    let bytes = s.as_bytes();
+    let required_len = bytes.len();
 
-//     // 验证读取的数据长度
-//     if len != entry_size {
-//         return TeeResultCode::ErrorItemNotFound.into_result();
-//     }
+    if fname_buffer.len() < required_len {
+        // If the buffer is too small, return the required length and the error
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
 
-//     Ok(())
-// }
+    // Copy the bytes into the provided buffer
+    fname_buffer[..bytes.len()].copy_from_slice(bytes);
+
+    Ok(required_len)
+}
+
+pub fn tee_fs_dirfile_rename(
+    dirh: &mut TeeFsDirfileDirh,
+    uuid: &TEE_UUID,
+    dfh: &mut TeeFsDirfileFileh,
+    oid: &[u8],
+) -> TeeResult {
+    let mut dent = DirFileEntry::default();
+
+    if oid.is_empty() || oid.len() > dent.oid.len() {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    dent.uuid = *uuid;
+    dent.oid[..oid.len()].copy_from_slice(oid);
+    dent.oid_len = oid.len() as u32;
+    dent.hash.copy_from_slice(&dfh.hash);
+    dent.file_number = dfh.file_number;
+
+    if dfh.idx < 0 {
+        let dfh2 = match tee_fs_dirfile_find(dirh, uuid, oid) {
+            Ok(v) => v,
+            Err(res) if res == TEE_ERROR_ITEM_NOT_FOUND => {
+                // 再试一次，用空 oid
+                tee_fs_dirfile_find(dirh, uuid, &[])? // 如果还错，向上传播错误
+            }
+            Err(res) => return Err(res),
+        };
+
+        dfh.idx = dfh2.idx;
+    }
+
+    write_dent(dirh, dfh.idx as usize, &mut dent)?;
+
+    Ok(())
+}
+
+pub fn read_dent(dirh: &mut TeeFsDirfileDirh, idx: usize, dent: &mut DirFileEntry) -> TeeResult {
+    let entry_size = core::mem::size_of::<DirFileEntry>();
+    let offset = entry_size * idx;
+    let mut len = entry_size;
+
+    // 读取目录项数据
+    // convert DirFileEntry to mutable byte slice
+    // safety: DirFileEntry is #[repr(C)], memory layout is determined, size is fixed, can be safely converted
+    let dent_bytes = unsafe {
+        core::slice::from_raw_parts_mut(dent as *mut DirFileEntry as *mut u8, entry_size)
+    };
+    dirh.fops.read(&mut dirh.fh, offset, dent_bytes, &mut len)?;
+
+    // 验证读取的数据长度
+    if len != entry_size {
+        return Err(TEE_ERROR_ITEM_NOT_FOUND);
+    }
+
+    Ok(())
+}
+
+pub fn write_dent(dirh: &mut TeeFsDirfileDirh, n: usize, dent: &mut DirFileEntry) -> TeeResult {
+    let entry_size = core::mem::size_of::<DirFileEntry>();
+
+    // convert DirFileEntry to byte slice
+    // safety: DirFileEntry is #[repr(C)], memory layout is determined, size is fixed, can be safely converted
+    let dent_bytes = unsafe {
+        core::slice::from_raw_parts(dent as *const DirFileEntry as *const u8, entry_size)
+    };
+    dirh.fops.write(&mut dirh.fh, entry_size * n, dent_bytes)?;
+
+    if n >= dirh.ndents {
+        dirh.ndents = n + 1;
+    }
+
+    Ok(())
+}
+
+pub fn tee_fs_dirfile_open(
+    create: bool,
+    hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
+    fops: &ReeDirfOps,
+) -> TeeResult<Box<TeeFsDirfileDirh>> {
+    let mut dirh = Box::new(TeeFsDirfileDirh::default());
+    dirh.fops = *fops;
+
+    let fd = fops.open(create, hash, None, None)?;
+    dirh.fh = *fd;
+
+    let mut n = 0;
+
+    let result = (|| {
+        for idx in 0.. {
+            n = idx;
+
+            let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+            match read_dent(&mut *dirh, idx, &mut dent) {
+                Err(TEE_ERROR_ITEM_NOT_FOUND) => {
+                    // 读到末尾正常退出循环
+                    break;
+                }
+                Err(e) => {
+                    // 其他错误直接返回
+                    return Err(e);
+                }
+                Ok(()) => {}
+            }
+
+            if dent.oid_len == 0 {
+                continue;
+            }
+
+            if test_file(&mut *dirh, dent.file_number as usize) {
+                // 清除重复文件号
+                let mut zero_dent: DirFileEntry = unsafe { core::mem::zeroed() };
+                write_dent(&mut *dirh, n, &mut zero_dent)?;
+                continue;
+            }
+            set_file(&mut *dirh, dent.file_number as usize)?;
+        }
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => (),
+        Err(e) => {
+            // tee_fs_dirfile_close(&mut *dirh)?;
+            return Err(e);
+        }
+    }
+
+    dirh.ndents = n;
+    Ok(dirh)
+}
+
+pub fn tee_fs_dirfile_find(
+    dirh: &mut TeeFsDirfileDirh,
+    uuid: &TEE_UUID,
+    oid: &[u8],
+) -> TeeResult<TeeFsDirfileFileh> {
+    let oidlen = oid.len();
+    let mut first_free: Option<usize> = None;
+    let mut n: usize = 0;
+    let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+
+    for idx in 0.. {
+        n = idx;
+
+        // 读取目录项
+        match read_dent(dirh, idx, &mut dent) {
+            // 如果目录项不存在且没有指定 oid
+            Err(TEE_ERROR_ITEM_NOT_FOUND) if oidlen == 0 => {
+                dent = unsafe { core::mem::zeroed() };
+                if let Some(free_idx) = first_free {
+                    n = free_idx;
+                }
+                break;
+            }
+            // 其他错误直接返回
+            // Err(TeeResultCode::ErrorItemNotFound) => return Ok(None),
+            Err(e) => return Err(e),
+            Ok(()) => {}
+        }
+
+        // 记录第一个空闲位置
+        if dent.oid_len == 0 && first_free.is_none() {
+            first_free = Some(idx);
+        }
+
+        // 如果 oid 长度不匹配，继续查找
+        if dent.oid_len as usize != oidlen {
+            continue;
+        }
+
+        // 如果指定了 oid，则确保文件存在
+        if oidlen > 0 && !test_file(dirh, dent.file_number as usize) {
+            continue;
+        }
+
+        // 匹配 uuid 和 oid
+        if &dent.uuid == uuid && (oidlen == 0 || &dent.oid[..oidlen] == oid) {
+            break;
+        }
+    }
+
+    // 构建文件句柄 dfh
+    let mut dfh = TeeFsDirfileFileh {
+        idx: n as i32,
+        file_number: dent.file_number,
+        hash: [0u8; TEE_FS_HTREE_HASH_SIZE],
+    };
+    dfh.hash.copy_from_slice(&dent.hash);
+
+    Ok(dfh)
+}
+
+pub fn tee_fs_dirfile_remove(dirh: &mut TeeFsDirfileDirh, dfh: &TeeFsDirfileFileh) -> TeeResult {
+    let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+    read_dent(dirh, dfh.idx as usize, &mut dent)?;
+
+    if dent.oid_len == 0 {
+        return Ok(());
+    }
+
+    let file_number = dent.file_number;
+    core::assert!(dfh.file_number == file_number);
+    core::assert!(test_file(dirh, file_number as usize));
+
+    dent = unsafe { core::mem::zeroed() };
+    write_dent(dirh, dfh.idx as usize, &mut dent)?;
+    clear_file(dirh, file_number as usize);
+
+    Ok(())
+}
+
+pub fn tee_fs_dirfile_update_hash(
+    dirh: &mut TeeFsDirfileDirh,
+    dfh: &TeeFsDirfileFileh,
+) -> TeeResult {
+    let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+
+    read_dent(dirh, dfh.idx as usize, &mut dent)?;
+    core::assert!(dent.file_number == dfh.file_number);
+    core::assert!(test_file(dirh, dent.file_number as usize));
+
+    dent.hash.copy_from_slice(&dfh.hash);
+
+    write_dent(dirh, dfh.idx as usize, &mut dent)
+}
+
+pub fn tee_fs_dirfile_close(dirh: &mut TeeFsDirfileDirh) -> TeeResult {
+    dirh.fops.close(&mut dirh.fh);
+
+    // drop(dirh.files);
+    // drop(dirh);
+    Ok(())
+}
+
+pub fn tee_fs_dirfile_commit_writes(
+    dirh: &mut TeeFsDirfileDirh,
+    hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
+) -> TeeResult {
+    dirh.fops.commit_writes(&mut dirh.fh, hash)
+}
+
+pub fn tee_fs_dirfile_get_tmp(
+    dirh: &mut TeeFsDirfileDirh,
+    dfh: &mut TeeFsDirfileFileh,
+) -> TeeResult {
+    let mut i: isize = 0;
+
+    if !dirh.files.is_empty() {
+        bit_ffc(&dirh.files, dirh.nbits, &mut i);
+        if i == -1 {
+            i = dirh.nbits as isize;
+        }
+    }
+
+    set_file(dirh, i as usize)?;
+    dfh.file_number = i as u32;
+
+    Ok(())
+}
+
+pub fn tee_fs_dirfile_get_next(
+    dirh: &mut TeeFsDirfileDirh,
+    uuid: &TEE_UUID,
+    idx: &mut i32,
+    oid: &mut [u8],
+) -> TeeResult<usize> {
+    let mut i = *idx + 1;
+
+    if i < 0 {
+        i = 0;
+    }
+
+    let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+
+    loop {
+        read_dent(dirh, i as usize, &mut dent)?;
+        if dent.uuid == *uuid && dent.oid_len > 0 {
+            break;
+        }
+        i += 1;
+    }
+
+    // 检查缓冲区是否足够
+    let len = dent.oid_len as usize;
+
+    if oid.len() < len {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    oid[..len].copy_from_slice(&dent.oid[..len]);
+
+    *idx = i;
+
+    Ok(len)
+}
