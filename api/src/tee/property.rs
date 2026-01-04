@@ -117,8 +117,8 @@ impl TEEProps for ClientEndian {
     }
 
     fn get(&self, buf: *mut c_void, blen: &mut u32) -> TeeResult {
-        const endian: u32 = 0;
-        let prop_size = size_of::<endian>() as u32;
+        let endian: u32 = 0;
+        let prop_size = size_of::<u32>() as u32;
         if *blen < prop_size {
             *blen = prop_size;
             return Err(TEE_ERROR_SHORT_BUFFER);
@@ -126,7 +126,7 @@ impl TEEProps for ClientEndian {
         *blen = prop_size;
         copy_to_user(
             unsafe { slice::from_raw_parts_mut(buf as _, *blen as usize) },
-            unsafe { slice::from_raw_parts(addr_of!(endian) as _, size_of::<endian>()) },
+            unsafe { slice::from_raw_parts(addr_of!(endian) as _, size_of::<u32>()) },
             *blen as usize,
         )
     }
