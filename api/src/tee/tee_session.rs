@@ -12,7 +12,7 @@ use core::{any::Any, default::Default};
 use axtask::current;
 use hashbrown::HashMap;
 use slab::Slab;
-use spin::RwLock;
+use spin::{Mutex, RwLock};
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
@@ -46,7 +46,7 @@ pub struct tee_session_ctx {
     pub session_id: u32,
     pub login_type: u32,
     pub user_id: u32,
-    pub objects: Slab<Arc<tee_obj>>,
+    pub objects: Slab<Arc<Mutex<tee_obj>>>,
     pub clnt_id: TEE_Identity,
     pub cancel: bool,
     pub cancel_mask: bool,
