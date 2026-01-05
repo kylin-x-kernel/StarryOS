@@ -15,6 +15,7 @@ use tee_raw_sys::*;
 
 use super::{
     fs_dirfile::{TeeFsDirfileFileh, tee_fs_dirfile_fileh_to_fname},
+    tee_fs_key_manager::tee_fs_init_key_manager,
     tee_misc::{tee_b2hs, tee_b2hs_hsbuf_size},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
     tee_pobj::{tee_pobj_get, tee_pobj_usage, with_pobj_usage_lock},
@@ -111,20 +112,27 @@ fn remove_corrupt_obj(o: &mut tee_obj) -> TeeResult {
 }
 
 fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
-    info!("tee_svc_storage_read_head: o: {:?}", o);
-    let fops = o.pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
+    tee_debug!("tee_svc_storage_read_head: o: {:?}", o);
 
+    // 先获取 fops，然后立即释放读锁，避免与后续的写锁冲突
+    let fops = {
+        let guard = o.pobj.read();
+        guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+    }; // guard 在这里被释放，读锁被释放
+
+    tee_debug!("tee_svc_storage_read_head: fops: {:?}", fops);
     let mut size: usize = 0;
-    let pobj = Arc::get_mut(&mut o.pobj).ok_or_else(|| {
-        error!("get pobj failed");
-        TEE_ERROR_BAD_STATE
-    })?;
-
-    // open the file, store the file handle in tee_obj.fh
-    o.fh = (fops.open)(&mut pobj.write(), Some(&mut size)).inspect_err(|e| {
-        error!("open failed: {:?}", e);
-    })?;
-
+    {
+        tee_debug!("try to get write lock");
+        // 现在可以安全地获取写锁，因为读锁已经释放
+        let mut pobj_guard = o.pobj.write();
+        tee_debug!("get write lock");
+        // open the file, store the file handle in tee_obj.fh
+        o.fh = (fops.open)(&mut *pobj_guard, Some(&mut size)).inspect_err(|e| {
+            error!("open failed: {:X?}", e);
+        })?;
+    }
+    tee_debug!("tee_svc_storage_read_head: size: {}", size);
     // read the head
     let mut head = tee_svc_storage_head::zeroed();
     let mut head_slice = bytes_of_mut(&mut head);
@@ -144,7 +152,11 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
         return Err(TEE_ERROR_CORRUPT_OBJECT);
     }
 
-    info!("bytes: {}, size_of_val(&head): {}", bytes, size_of_val(&head));
+    tee_debug!(
+        "bytes: {}, size_of_val(&head): {}",
+        bytes,
+        size_of_val(&head)
+    );
     if bytes != size_of_val(&head) {
         return Err(TEE_ERROR_BAD_FORMAT);
     }
@@ -183,6 +195,7 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
 
     o.info.dataSize = size - size_of_val(&head) - head.attr_size as usize;
     o.info.objectSize = head.objectSize as u32;
+    // 需要再次获取写锁来修改 obj_info_usage
     o.pobj.write().obj_info_usage = head.objectUsage as u32;
     o.info.objectType = head.objectType as u32;
     o.have_attrs = head.have_attrs as u32;
@@ -235,7 +248,7 @@ pub fn syscall_storage_obj_open(
     // let uuid = Uuid::parse_str(&uuid)?;
     let uuid = Uuid::new_raw(0, 0, 0, [0; 8]);
 
-    info!("syscall_storage_obj_open: step 1 : tee_pobj_get");
+    tee_debug!("syscall_storage_obj_open: step 1 : tee_pobj_get");
     let po = tee_pobj_get(
         uuid.as_raw_ref(),
         &oid_bbuf,
@@ -247,17 +260,22 @@ pub fn syscall_storage_obj_open(
 
     let mut o = tee_obj::default();
 
-    info!("syscall_storage_obj_open: step 2 : tee_obj_add");
+    tee_debug!("syscall_storage_obj_open: step 2 : tee_obj_add");
     // set handleFlags
     o.info.handleFlags = TEE_HANDLE_FLAG_PERSISTENT | TEE_HANDLE_FLAG_INITIALIZED | flags as u32;
     o.pobj = po.clone();
     let tee_obj_id: u32 = tee_obj_add(o)? as u32;
 
     let mut o_arc = tee_obj_get(tee_obj_id as tee_obj_id_type)?;
-    info!("o_arc: {:?}", o_arc);
+    tee_debug!("o_arc: {:?}", o_arc);
+    // 提前读取 flags，确保 po.read() 的 guard 已经释放
+    let pobj_flags = {
+        let guard = po.read();
+        guard.flags
+    }; // guard 在这里被释放
     let obj_open = (|| -> TeeResult {
-        info!("syscall_storage_obj_open: step 3 : tee_svc_storage_read_head");
-        with_pobj_usage_lock(po.read().flags, || -> TeeResult {
+        tee_debug!("syscall_storage_obj_open: step 3 : tee_svc_storage_read_head");
+        with_pobj_usage_lock(pobj_flags, || -> TeeResult {
             // TODO: implement call tee_svc_storage_read_head();
             tee_svc_storage_read_head(&mut o_arc.lock());
             // check if need call tee_obj_close()
@@ -465,6 +483,9 @@ pub mod tests_tee_svc_storage {
     test_fn! {
         using TestResult;
         fn test_syscall_storage_obj_open() {
+            let res = tee_fs_init_key_manager();
+            assert!(res.is_ok());
+
             let storage_id = TEE_STORAGE_PRIVATE as c_ulong;
             let object_id = "test_object";
             let object_id_len = object_id.len();
@@ -490,6 +511,6 @@ pub mod tests_tee_svc_storage {
         test_tee_b2hs_null_termination,
         test_tee_b2hs_short_output_buffer,
         //------------------------
-        // test_syscall_storage_obj_open,
+        test_syscall_storage_obj_open,
     }
 }

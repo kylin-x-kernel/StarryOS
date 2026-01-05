@@ -21,19 +21,17 @@ pub const fn bit(nr: u32) -> u32 {
 
 #[macro_export]
 macro_rules! container_of {
-    ($ptr:expr, $type:ty, $member:ident) => {
-        {
-            let ptr = $ptr as *const _;
-            (ptr as usize - core::mem::offset_of!($type, $member)) as *mut $type
-        }
-    }
+    ($ptr:expr, $type:ty, $member:ident) => {{
+        let ptr = $ptr as *const _;
+        (ptr as usize - core::mem::offset_of!($type, $member)) as *mut $type
+    }};
 }
 
 #[macro_export]
 macro_rules! member_size {
     ($type:ty, $member:ident) => {
         core::mem::offset_of!($type, $member)
-    }
+    };
 }
 
 pub fn roundup_u<
@@ -57,11 +55,9 @@ pub mod tests_utils {
     use super::*;
     use crate::{
         assert, assert_eq, assert_ne,
-        tee::{TestDescriptor, TestResult},
+        tee::{TestDescriptor, TestResult, bitstring::bit_ffc},
         test_fn, tests, tests_name,
     };
-
-    use crate::tee::bitstring::bit_ffc;
 
     test_fn! {
         using TestResult;

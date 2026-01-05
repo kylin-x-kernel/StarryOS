@@ -1,11 +1,9 @@
 use tee_raw_sys::*;
+
 #[cfg(feature = "tee")]
-use crate::tee:: {
-    TEE_ALG_SM4_XTS,
-    TEE_ALG_RSASSA_PKCS1_V1_5,
-    TEE_ALG_DES3_CMAC,
-    TEE_ALG_RSASSA_PKCS1_PSS_MGF1_MD5,
-    TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5,
+use crate::tee::{
+    TEE_ALG_DES3_CMAC, TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5, TEE_ALG_RSASSA_PKCS1_PSS_MGF1_MD5,
+    TEE_ALG_RSASSA_PKCS1_V1_5, TEE_ALG_SM4_XTS,
 };
 
 pub(crate) fn tee_u32_to_big_endian(x: u32) -> u32 {

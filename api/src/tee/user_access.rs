@@ -147,7 +147,10 @@ pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
     drop(kbuf);
 }
 
-fn __bb_memdup_user(copy_func: fn(&mut [u8], &[u8], size_t) -> TeeResult, src: &[u8]) -> TeeResult<Box<[u8]>> {
+fn __bb_memdup_user(
+    copy_func: fn(&mut [u8], &[u8], size_t) -> TeeResult,
+    src: &[u8],
+) -> TeeResult<Box<[u8]>> {
     let mut buf = bb_alloc(src.len())?;
     copy_func(&mut buf, src, src.len())?;
     Ok(buf)

@@ -1085,6 +1085,7 @@ pub fn print_tree_hash(ht: &TeeFsHtree) -> TeeResult {
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn init_root_node(ht: &mut TeeFsHtree) -> TeeResult {
+    tee_debug!("init_root_node");
     let _hash = crypto_hash_alloc_ctx(TEE_ALG_SHA256)?;
 
     ht.root.id = 1;
@@ -1382,6 +1383,10 @@ pub fn tee_fs_htree_sync_to_storage(
     // if ht.is_none() {
     //     return Err(TeeResultCode::ErrorCorruptObject);
     // }
+    tee_debug!(
+        "tee_fs_htree_sync_to_storage: ht.data.dirty: {:?}",
+        ht.data.dirty
+    );
 
     if !ht.data.dirty {
         return Ok(());
@@ -1428,6 +1433,13 @@ pub fn tee_fs_htree_open(
     hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
     uuid: Option<&TEE_UUID>,
 ) -> TeeResult<Box<TeeFsHtree>> {
+    tee_debug!(
+        "tee_fs_htree_open: fd: {:?}, create: {:?}, hash: {:?}, uuid: {:?}",
+        fd,
+        create,
+        hash,
+        uuid
+    );
     let mut ht = Box::new(TeeFsHtree::default());
     if let Some(uuid_val) = uuid {
         ht.data.uuid = *uuid_val;
@@ -1436,6 +1448,7 @@ pub fn tee_fs_htree_open(
     let init_result = (|| {
         if create {
             let mut dummy_head = TeeFsHtreeImage::default();
+            tee_debug!("tee_fs_htree_open: create: true");
             crypto_rng_read(&mut ht.data.fek).map_err(|e| e)?;
             tee_fs_fek_crypt(
                 Some(&ht.data.uuid),
@@ -1541,6 +1554,10 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
     block_num: usize,
     block: &mut [u8; BLOCK_SIZE],
 ) -> TeeResult {
+    info!(
+        "tee_fs_htree_read_block: ht: {:#?},  fd: {:#?}, block_num: {:#?}, block: {:#X?}",
+        ht, fd, block_num, block
+    );
     // first get the node and extract the necessary information, then release the node borrow
     let (block_vers, ni_iv, ni_tag) = {
         let node = get_block_node(ht, false, block_num).map_err(|_| TEE_ERROR_CORRUPT_OBJECT)?;

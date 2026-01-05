@@ -4,9 +4,7 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{
-    boxed::Box, string::String, sync::Arc,vec::Vec,
-};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::{any::Any, default::Default};
 
 use axtask::current;
@@ -16,14 +14,8 @@ use spin::{Mutex, RwLock};
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
-use super::{
-    TeeResult, tee_obj::tee_obj,tee_svc_cryp2::TeeCrypState,
-};
-
-use crate::tee:: {
-    tee_ta_manager::SessionIdentity,
-    user_ta::user_ta_ctx,
-};
+use super::{TeeResult, tee_obj::tee_obj, tee_svc_cryp2::TeeCrypState};
+use crate::tee::{tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx};
 
 scope_local::scope_local! {
     /// The tee ta context.

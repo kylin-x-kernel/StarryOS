@@ -106,6 +106,14 @@ pub fn tee_fs_fek_crypt(
     size: usize,
     out_key: Option<&mut [u8]>,
 ) -> TeeResult {
+    tee_debug!(
+        "tee_fs_fek_crypt: uuid: {:?}, mode: {:?}, in_key: {:?}, size: {:?}, out_key: {:?}",
+        uuid,
+        mode as u32,
+        in_key,
+        size,
+        out_key
+    );
     let mut dst_key = vec![0u8; size];
     let mut tsk = [0u8; TEE_FS_KM_TSK_SIZE];
 

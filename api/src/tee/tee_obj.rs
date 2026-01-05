@@ -9,11 +9,11 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
-use bincode::de;
 use core::{default, ffi::c_ulong};
 
 use axerrno::{AxError, AxResult};
 use axtask::current;
+use bincode::de;
 use flatten_objects::FlattenObjects;
 use slab::Slab;
 use spin::{Mutex, RwLock};
@@ -23,8 +23,8 @@ use tee_raw_sys::{libc_compat::size_t, *};
 use super::{
     TeeResult,
     libmbedtls::bignum::BigNum,
-    tee_ree_fs::tee_file_handle,
     tee_pobj::tee_pobj,
+    tee_ree_fs::tee_file_handle,
     tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
     tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},
 };
@@ -80,15 +80,15 @@ pub fn tee_obj_add(mut obj: tee_obj) -> TeeResult<tee_obj_id_type> {
         // 获取一个可用的 ID
         let vacant = ctx.objects.vacant_entry();
         let id = vacant.key();
-        
+
         // 设置 objectId
         obj.info.objectId = id as u32;
-        
+
         // 创建 Arc 并插入
         let arc_obj = Arc::new(Mutex::new(obj));
         let inserted_id = vacant.insert(arc_obj);
         info!("tee_obj_add: id: {}", id);
-        
+
         Ok(id as tee_obj_id_type)
     })
 }
@@ -113,7 +113,7 @@ pub fn tee_obj_close(obj: &mut tee_obj) {
 
     if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
         // TODO: implement fops close
-        //obj.pobj.fops.close(&obj.fh);
+        // obj.pobj.fops.close(&obj.fh);
         // tee_pobj_release(obj.pobj);
     }
 
