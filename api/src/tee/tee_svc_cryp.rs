@@ -384,7 +384,7 @@ impl tee_crypto_ops for TeeCryptObj {
             | TEE_TYPE_GENERIC_SECRET
             // | TEE_TYPE_HKDF_IKM
             // | TEE_TYPE_CONCAT_KDF_Z
-            // | TEE_TYPE_PBKDF2_PASSWORD 
+            // | TEE_TYPE_PBKDF2_PASSWORD
             => {
                 <tee_cryp_obj_secret_wrapper as tee_crypto_ops>::new(key_type, key_size_bits).map(TeeCryptObj::obj_secret)
             }
@@ -842,7 +842,7 @@ pub(crate) struct tee_cryp_obj_secret {
 #[derive(Debug)]
 pub struct tee_cryp_obj_secret_wrapper {
     ptr: NonNull<tee_cryp_obj_secret>,
-    layout: Layout,
+    pub layout: Layout,
 }
 
 impl tee_cryp_obj_secret_wrapper {

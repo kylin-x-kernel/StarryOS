@@ -4,7 +4,9 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{boxed::Box, string::String, sync::Arc};
+use alloc::{
+    boxed::Box, string::String, sync::Arc,vec::Vec,
+};
 use core::{any::Any, default::Default};
 
 use axtask::current;
@@ -14,8 +16,14 @@ use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
-use super::{TeeResult, tee_obj::tee_obj};
-use crate::tee::tee_ta_manager::SessionIdentity;
+use super::{
+    TeeResult, tee_obj::tee_obj,tee_svc_cryp2::TeeCrypState,
+};
+
+use crate::tee:: {
+    tee_ta_manager::SessionIdentity,
+    user_ta::user_ta_ctx,
+};
 
 scope_local::scope_local! {
     /// The tee ta context.
@@ -24,7 +32,7 @@ scope_local::scope_local! {
 
 /// The tee session context.
 /// This context is used to store the session information.
-/// 
+///
 /// parameters:
 /// - session_id: the session id
 /// - login_type: the login type
@@ -43,6 +51,8 @@ pub struct tee_session_ctx {
     pub cancel: bool,
     pub cancel_mask: bool,
     pub cancel_time: TeeTime,
+    // pub cryp_state: Option<&'static mut Vec<TeeCrypState>>,
+    pub cryp_state: Option<Vec<TeeCrypState>>,
 }
 
 #[repr(C)]
@@ -87,6 +97,7 @@ impl Default for tee_session_ctx {
                 seconds: 0,
                 millis: 0,
             },
+            cryp_state: None,
         }
     }
 }

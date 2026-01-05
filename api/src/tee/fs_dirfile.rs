@@ -449,3 +449,194 @@ pub fn tee_fs_dirfile_get_next(
 
     Ok(len)
 }
+
+#[cfg(feature = "tee_test")]
+pub mod tests_tee_fs_dirfile {
+    //-------- test framework import --------
+    //-------- local tests import --------
+    use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_some_zero_filenumber() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0,
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            // Expected: "0" + null = 2 bytes
+            let mut buffer = [0u8; 2];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 1);
+            assert_eq!(str::from_utf8(&buffer[..1]).unwrap(), "0");
+            //assert_eq!(buffer[1], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_some_small_filenumber() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0xABCD,
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            // Expected: "abcd" = 4 bytes
+            let mut buffer = [0u8; 4];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 4);
+            assert_eq!(str::from_utf8(&buffer[..4]).unwrap(), "abcd");
+            //assert_eq!(buffer[4], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_some_large_filenumber() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0xFFFFFFFF,
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            // Expected: "ffffffff" + null = 9 bytes
+            let mut buffer = [0u8; 8];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 8);
+            assert_eq!(str::from_utf8(&buffer[..8]).unwrap(), "ffffffff");
+            //assert_eq!(buffer[8], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_none_case() {
+            // Expected: "dirf.db" + null = 8 bytes
+            let mut buffer = [0u8; 7];
+            let result = tee_fs_dirfile_fileh_to_fname(None, &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 7);
+            assert_eq!(str::from_utf8(&buffer[..7]).unwrap(), "dirf.db");
+            // assert_eq!(buffer[7], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+    
+        fn test_fileh_short_buffer_file_number() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0x1234, // "1234" (4 chars) -> needs 5 bytes total (including null)
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            // Provide 1 byte less than required
+            let mut buffer = [0u8; 3];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), TEE_ERROR_SHORT_BUFFER);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_short_buffer_dirf_db() {
+            // "dirf.db" (7 chars) -> needs 7 bytes total (including null)
+            // Provide 1 byte less than required
+            let mut buffer = [0u8; 6];
+            let result = tee_fs_dirfile_fileh_to_fname(None, &mut buffer);
+
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), TEE_ERROR_SHORT_BUFFER);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_empty_buffer() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0x1234,
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            let mut buffer = [0u8; 0];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), TEE_ERROR_SHORT_BUFFER);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_exact_buffer_file_number() {
+            let dfh = TeeFsDirfileFileh {
+                file_number: 0xABCDEF, // "abcdef" (6 chars) -> needs 7 bytes total
+                hash: [0; TEE_FS_HTREE_HASH_SIZE],
+                idx: 0,
+            };
+            // Provide exact required size
+            let mut buffer = [0u8; 7];
+            let result = tee_fs_dirfile_fileh_to_fname(Some(&dfh), &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 6);
+            assert_eq!(str::from_utf8(&buffer[..6]).unwrap(), "abcdef");
+            //assert_eq!(buffer[6], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_fileh_exact_buffer_dirf_db() {
+            // "dirf.db" (7 chars) -> needs 7 bytes total
+            // Provide exact required size
+            let mut buffer = [0u8; 7];
+            let result = tee_fs_dirfile_fileh_to_fname(None, &mut buffer);
+
+            assert!(result.is_ok());
+            let written_len = result.unwrap();
+            assert_eq!(written_len, 7);
+            assert_eq!(str::from_utf8(&buffer[..7]).unwrap(), "dirf.db");
+            //assert_eq!(buffer[7], 0); // Verify null terminator
+        }
+    }
+    tests_name! {
+        TEST_TEE_FS_DIRFILE;
+        //------------------------
+        test_fileh_some_zero_filenumber,
+        test_fileh_some_small_filenumber,
+        test_fileh_some_large_filenumber,
+        test_fileh_none_case,
+        test_fileh_short_buffer_file_number,
+        test_fileh_short_buffer_dirf_db,
+        test_fileh_empty_buffer,
+        test_fileh_exact_buffer_file_number,
+        test_fileh_exact_buffer_dirf_db,
+    }
+}

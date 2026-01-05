@@ -19,6 +19,11 @@ pub fn tee_test_unit() {
         tee_svc_storage::tests_tee_svc_storage::TEST_TEE_SVC_STORAGE,
         user_access::tests_user_access::TEST_USER_ACCESS,
         common::file_ops::tests_file_ops::TEST_FILE_OPS,
+        fs_dirfile::tests_tee_fs_dirfile::TEST_TEE_FS_DIRFILE,
+        utils::tests_utils::TEST_TEE_UTILS,
+        tee_misc::tests_tee_misc::TEST_TEE_MISC,
+        tee_ree_fs::tests_tee_ree_fs::TEST_TEE_REE_FS,
+        fs_htree::tests_fs_htree::TEST_FS_HTREE,
     };
 
     let mut runner = TestRunner::new();
@@ -32,7 +37,12 @@ pub fn tee_test_unit() {
             TEST_USER_ACCESS,
             TEST_TEE_BIGNUM,
             TEST_TEE_SESSION,
-            TEST_FILE_OPS
+            TEST_FILE_OPS,
+            TEST_TEE_FS_DIRFILE,
+            TEST_TEE_UTILS,
+            TEST_TEE_MISC,
+            TEST_TEE_REE_FS,
+            TEST_FS_HTREE,
         ]
     );
 }
