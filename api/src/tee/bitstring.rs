@@ -1,4 +1,3 @@
-
 /// 位图类型别名
 pub type BitStr = u8;
 
