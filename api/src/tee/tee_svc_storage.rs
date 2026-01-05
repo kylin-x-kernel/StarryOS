@@ -173,8 +173,11 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
     tee_obj_attr_from_binary(o, &attr_data)?;
 
     o.info.dataSize = size - size_of_val(&head) - head.attr_size as usize;
+	o.info.objectSize = head.objectSize as u32;
+	o.pobj.write().obj_info_usage = head.objectUsage as u32;
+	o.info.objectType = head.objectType as u32;
+	o.have_attrs = head.have_attrs as u32;
 
-    // o.info.dataSize = size - size_of::<tee_svc_storage_head>() - head.attr_size;
     Ok(())
 }
 
@@ -274,6 +277,7 @@ pub mod tests_tee_svc_storage {
         tee::{TestDescriptor, TestResult},
         test_fn, tests, tests_name,
     };
+    const TEE_DIRNAME_BUFFER_REQUIRED_LEN :usize = tee_b2hs_hsbuf_size(TEE_UUID_HEX_LEN) + 1;
 
     test_fn! {
         using TestResult;
@@ -283,10 +287,177 @@ pub mod tests_tee_svc_storage {
         }
     }
 
+      // Helper to create a TeeUuid from its raw byte representation for predictable testing
+    // This assumes little-endian for u16/u32 fields, adjust if your target is big-endian.
+    fn create_uuid_from_bytes(bytes: [u8; 16]) -> TEE_UUID {
+        TEE_UUID {
+            timeLow: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+            timeMid: u16::from_le_bytes([bytes[4], bytes[5]]),
+            timeHiAndVersion: u16::from_le_bytes([bytes[6], bytes[7]]),
+            clockSeqAndNode: [bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]],
+        }
+    }
+
+    // --- Tests for tee_svc_storage_create_dirname ---
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_standard_uuid() {
+            let uuid_bytes: [u8; 16] = [
+                0x78, 0x56, 0x34, 0x12, // time_low (reversed for LE)
+                0xBC, 0x9A,             // time_mid (reversed for LE)
+                0xF0, 0xDE,             // time_hi_and_version (reversed for LE)
+                0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, // clock_seq_and_node
+            ];
+            let uuid = create_uuid_from_bytes(uuid_bytes);
+
+            // Use the defined constant for buffer size
+            let mut buf = [0u8; TEE_DIRNAME_BUFFER_REQUIRED_LEN];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_ok());
+            // Verify the string content, excluding the final null terminator for str::from_utf8
+            assert_eq!(str::from_utf8(&buf[..TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1]).unwrap(), "/78563412BC9AF0DE1122334455667788");
+            // Verify the final null terminator
+            assert_eq!(buf[TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1], 0);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_all_zeros_uuid() {
+            let uuid = TEE_UUID {
+                timeLow: 0, timeMid: 0, timeHiAndVersion: 0, clockSeqAndNode: [0; 8],
+            };
+            let mut buf = [0u8; TEE_DIRNAME_BUFFER_REQUIRED_LEN];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_ok());
+            assert_eq!(str::from_utf8(&buf[..TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1]).unwrap(), "/00000000000000000000000000000000");
+            assert_eq!(buf[TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1], 0);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_specific_uuid_values() {
+            let uuid_bytes: [u8; 16] = [
+                0x01, 0x02, 0x03, 0x04,
+                0x05, 0x06,
+                0x07, 0x08,
+                0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+            ];
+            let uuid = create_uuid_from_bytes(uuid_bytes);
+            let mut buf = [0u8; TEE_DIRNAME_BUFFER_REQUIRED_LEN];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_ok());
+            assert_eq!(str::from_utf8(&buf[..TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1]).unwrap(), "/0102030405060708090A0B0C0D0E0F10");
+            assert_eq!(buf[TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1], 0);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_short_buffer() {
+            let uuid = TEE_UUID {
+                timeLow: 0, timeMid: 0, timeHiAndVersion: 0, clockSeqAndNode: [0; 8],
+            };
+            // Provide a buffer one byte smaller than required
+            let mut buf = [0u8; TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), TEE_ERROR_SHORT_BUFFER);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_empty_buffer() {
+            let uuid = TEE_UUID {
+                timeLow: 0, timeMid: 0, timeHiAndVersion: 0, clockSeqAndNode: [0; 8],
+            };
+            let mut buf = [0u8; 0];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err(), TEE_ERROR_SHORT_BUFFER);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_create_dirname_exact_buffer() {
+            let uuid = TEE_UUID {
+                timeLow: 0xAABBCCDD, timeMid: 0xEEFF, timeHiAndVersion: 0x1122, clockSeqAndNode: [0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA],
+            };
+            let mut buf = [0u8; TEE_DIRNAME_BUFFER_REQUIRED_LEN];
+            let result = tee_svc_storage_create_dirname(&mut buf, &uuid);
+
+            assert!(result.is_ok());
+            // Expected hex string based on LE byte order:
+            // AABBCCDD -> "DDCCBBAA"
+            // EEFF     -> "FFEE"
+            // 1122     -> "2211"
+            // 33..AA   -> "33445566778899AA"
+            assert_eq!(str::from_utf8(&buf[..TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1]).unwrap(), "/DDCCBBAAFFEE221133445566778899AA");
+            assert_eq!(buf[TEE_DIRNAME_BUFFER_REQUIRED_LEN - 1], 0);
+        }
+    }
+
+    // --- Additional tests for tee_b2hs if needed ---
+
+    test_fn! {
+        using TestResult;
+        fn test_tee_b2hs_uppercase_conversion() {
+            let b = &[0xab, 0xcd, 0xef];
+            let mut hs = [0u8; tee_b2hs_hsbuf_size(3)]; // 3 bytes * 2 hex chars + 1 null = 7
+            let result = tee_b2hs(b, &mut hs);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), 6); // Returns length without null
+            assert_eq!(str::from_utf8(&hs[..6]).unwrap(), "ABCDEF");
+            assert_eq!(hs[6], 0); // Verify null terminator
+            warn!("Hello from test debug");
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_tee_b2hs_null_termination() {
+            let b = &[0x12];
+            let mut hs = [0u8; tee_b2hs_hsbuf_size(1)]; // 1 byte * 2 hex chars + 1 null = 3
+            let result = tee_b2hs(b, &mut hs);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), 2);
+            assert_eq!(str::from_utf8(&hs[..2]).unwrap(), "12");
+            assert_eq!(hs[2], 0); // Verify null terminator
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_tee_b2hs_short_output_buffer() {
+            let b = &[0x12, 0x34]; // Needs 4 hex chars + 1 null = 5 bytes
+            let mut hs = [0u8; tee_b2hs_hsbuf_size(2) - 1]; // Provide 1 byte less than required
+            let result = tee_b2hs(b, &mut hs);
+            assert!(result.is_err());
+        }
+    }
+
     tests_name! {
         TEST_TEE_SVC_STORAGE;
         //------------------------
         test_size_of_val,
+        test_create_dirname_standard_uuid,
+        test_create_dirname_all_zeros_uuid,
+        test_create_dirname_specific_uuid_values,
+        test_create_dirname_short_buffer,
+        test_create_dirname_empty_buffer,
+        test_create_dirname_exact_buffer,
+        test_tee_b2hs_uppercase_conversion,
+        test_tee_b2hs_null_termination,
+        test_tee_b2hs_short_output_buffer,
     }
 }
 
