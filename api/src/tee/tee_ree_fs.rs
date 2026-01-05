@@ -45,7 +45,10 @@ use super::{
     tee_pobj::tee_pobj,
     user_access::copy_to_user,
     utils::roundup_u,
+    tee_api_defines_extensions::{TEE_STORAGE_PRIVATE_REE, TEE_STORAGE_PRIVATE_RPMB},
 };
+
+use tee_raw_sys::TEE_STORAGE_PRIVATE;
 
 pub type tee_file_handle = TeeFsFd;
 

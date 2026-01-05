@@ -266,7 +266,8 @@ pub(crate) fn sys_tee_scn_hash_init(
                     }
                     TEE_OPERATION_MAC => {
                         // get key
-                        let o: Arc<tee_obj> = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        let o_arc = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        let o = o_arc.lock();
                         if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
                         return Err(TEE_ERROR_BAD_PARAMETERS);
                         }
