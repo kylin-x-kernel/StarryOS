@@ -519,3 +519,41 @@ pub fn send_signal_to_process_group(pgid: Pid, sig: Option<SignalInfo>) -> AxRes
 
     Ok(())
 }
+
+pub fn dump_tasks() {
+    use axtask::TaskState;
+    warn!("=== Task Dump ===");
+    let current_id = current().id().as_u64();
+    for task in tasks() {
+        warn!(
+            "Task ID: {}, Name: {}, State: {:?}, CPU: {} wait for: {:?}",
+            task.id().as_u64(),
+            task.name(),
+            task.state(),
+            task.cpu_id(),
+            task.get_wait_task(),
+        );
+
+        if task.id().as_u64() == current_id {
+            let backtrace = axbacktrace::Backtrace::capture();
+            warn!("Backtrace: {}", backtrace);
+        } else if task.state() == TaskState::Blocked {
+            #[cfg(target_arch = "aarch64")]
+            {
+                // Unsafe access to task context - user assumes it's safe for blocked tasks
+                let ctx = task.ctx(); // Assuming this method exists or we add it
+                // In AArch64, FP is x29
+                let fp = ctx.r29; // Adjust index based on TaskContext definition
+                let backtrace = axbacktrace::Backtrace::from_fp(fp as _);
+                warn!("Backtrace: {}", backtrace);
+            }
+            #[cfg(not(target_arch = "aarch64"))]
+            {
+                warn!("Backtrace: Not implemented for this arch");
+            }
+        } else {
+            warn!("Backtrace: Not available (task running or other state)");
+        }
+    }
+    warn!("=== End Task Dump ===");
+}

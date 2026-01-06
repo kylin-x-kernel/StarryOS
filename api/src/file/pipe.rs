@@ -27,11 +27,18 @@ use crate::file::{IoDst, IoSrc};
 
 const RING_BUFFER_INIT_SIZE: usize = 65536; // 64 KiB
 
+struct SharedData {
+    writer_cnt: usize,
+    reader_cnt: usize,
+    eof: bool,
+}
+
 struct Shared {
     buffer: Mutex<HeapRb<u8>>,
     poll_rx: PollSet,
     poll_tx: PollSet,
     poll_close: PollSet,
+    data: Mutex<SharedData>,
 }
 
 pub struct Pipe {
@@ -41,7 +48,37 @@ pub struct Pipe {
 }
 impl Drop for Pipe {
     fn drop(&mut self) {
+        let mut data = self.shared.data.lock();
+        if self.read_side {
+            data.reader_cnt -= 1;
+        } else {
+            data.writer_cnt -= 1;
+            if data.writer_cnt == 0 {
+                data.eof = true;
+                drop(data);  // Release the lock before waking
+                self.shared.poll_rx.wake();
+            }
+        }
         self.shared.poll_close.wake();
+    }
+}
+
+impl Clone for Pipe {
+    fn clone(&self) -> Self {
+        {
+            let mut data = self.shared.data.lock();
+            if self.read_side {
+                data.reader_cnt += 1;
+            } else {
+                data.writer_cnt += 1;
+            }
+        }
+
+        Self {
+            read_side: self.read_side,
+            shared: self.shared.clone(),
+            non_blocking: AtomicBool::new(self.non_blocking.load(Ordering::Acquire)),
+        }
     }
 }
 
@@ -52,6 +89,11 @@ impl Pipe {
             poll_rx: PollSet::new(),
             poll_tx: PollSet::new(),
             poll_close: PollSet::new(),
+            data: Mutex::new(SharedData {
+                writer_cnt: 1,
+                reader_cnt: 1,
+                eof: false,
+            }),
         });
         let read_end = Pipe {
             read_side: true,
@@ -118,7 +160,16 @@ impl FileLike for Pipe {
             return Ok(0);
         }
 
+        if self.shared.data.lock().eof {
+            return Ok(0);
+        }
+
         block_on(poll_io(self, IoEvents::IN, self.nonblocking(), || {
+            let data = self.shared.data.lock();
+            if data.eof {
+                return Ok(0);
+            }
+
             let read = {
                 let cons = self.shared.buffer.lock();
                 let (left, right) = cons.as_slices();

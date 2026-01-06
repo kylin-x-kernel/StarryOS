@@ -155,6 +155,14 @@ impl<R: TtyRead, W: TtyWrite> InputReader<R, W> {
     }
 
     fn check_send_signal(&self, term: &Termios2, ch: u8) {
+        match ch {
+            b'\x1c' => { // Ctrl+\
+                // Dump tasks instead of SIGQUIT
+                starry_core::task::dump_tasks();
+                return; // Do not send signal
+            }
+            _ => {}
+        }
         if !term.canonical() || !term.has_lflag(ISIG) {
             return;
         }
