@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "axplat-macros 0.1.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "bitflags 2.10.0",
@@ -609,7 +609,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -630,7 +630,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -643,7 +643,7 @@ dependencies = [
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -670,7 +670,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -680,7 +680,7 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -716,7 +716,7 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#64d3ece979a1a01e4d5572f6e77a897528336b94"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
 dependencies = [
  "axconfig-macros",
  "axcpu",
