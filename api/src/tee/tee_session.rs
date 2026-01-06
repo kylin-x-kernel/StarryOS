@@ -4,26 +4,18 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{
-    boxed::Box, string::String, sync::Arc,vec::Vec,
-};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::{any::Any, default::Default};
 
 use axtask::current;
 use hashbrown::HashMap;
 use slab::Slab;
-use spin::RwLock;
+use spin::{Mutex, RwLock};
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
-use super::{
-    TeeResult, tee_obj::tee_obj,tee_svc_cryp2::TeeCrypState,
-};
-
-use crate::tee:: {
-    tee_ta_manager::SessionIdentity,
-    user_ta::user_ta_ctx,
-};
+use super::{TeeResult, tee_obj::tee_obj, tee_svc_cryp2::TeeCrypState};
+use crate::tee::{tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx};
 
 scope_local::scope_local! {
     /// The tee ta context.
@@ -46,7 +38,7 @@ pub struct tee_session_ctx {
     pub session_id: u32,
     pub login_type: u32,
     pub user_id: u32,
-    pub objects: Slab<Arc<tee_obj>>,
+    pub objects: Slab<Arc<Mutex<tee_obj>>>,
     pub clnt_id: TEE_Identity,
     pub cancel: bool,
     pub cancel_mask: bool,

@@ -8,6 +8,7 @@ use core::ffi::c_int;
 
 use axerrno::{AxError, AxResult};
 use axfs::{FS_CONTEXT, File, FileBackend, FileFlags, OpenOptions, OpenResult};
+use axfs_ng_vfs::VfsError;
 use axio::{Seek, SeekFrom};
 use axtask::current;
 use linux_raw_sys::general::*;
@@ -16,17 +17,16 @@ use slab::Slab;
 use spin::RwLock;
 use starry_core::task::AsThread;
 use tee_raw_sys::TEE_ERROR_GENERIC;
-use axfs_ng_vfs::VfsError;
 
 use crate::{
     file::{SealedBuf, SealedBufMut, resolve_at, with_fs},
     tee::TeeResult,
 };
 
-pub const FS_MODE_644 : u32 = (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-pub const FS_OFLAG_DEFAULT : u32 = O_CREAT | O_RDWR;
-pub const FS_OFLAG_RW : u32 = O_RDWR;
-pub const FS_OFLAG_RW_TRUNC : u32 = O_RDWR | O_TRUNC;
+pub const FS_MODE_644: u32 = (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+pub const FS_OFLAG_DEFAULT: u32 = O_CREAT | O_RDWR;
+pub const FS_OFLAG_RW: u32 = O_RDWR;
+pub const FS_OFLAG_RW_TRUNC: u32 = O_RDWR | O_TRUNC;
 
 scope_local::scope_local! {
     /// The open objects for TA.
@@ -181,13 +181,19 @@ where
 
 impl FileVariant {
     pub fn open(path: &str, flags: u32, mode: u32) -> Result<Self, VfsError> {
+        tee_debug!(
+            "FileVariant::open: path: {}, flags: {}, mode: {}",
+            path,
+            flags,
+            mode
+        );
         let mode = mode & !current().as_thread().proc_data.umask();
 
         let options = flags_to_options(flags as c_int, mode as __kernel_mode_t, (0, 0));
         let fd = with_fs(AT_FDCWD, |fs| options.open(fs, path))
             .and_then(|it| add_to_fd(it, flags as _))?;
 
-        info!("FileVariant::open = fd: {}", fd);
+        tee_debug!("FileVariant::open = fd: {}", fd);
         Ok(Self { fd })
     }
 
@@ -243,7 +249,7 @@ impl TeeFileLike for FileVariant {
     }
 
     fn write(&mut self, buf: &[u8]) -> TeeResult<usize> {
-        info!(
+        tee_debug!(
             "FileVariant::write = fd: {}, buf: {:x?}, len: {}",
             self.fd,
             buf,

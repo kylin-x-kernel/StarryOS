@@ -201,8 +201,13 @@ pub fn read_dent(dirh: &mut TeeFsDirfileDirh, idx: usize, dent: &mut DirFileEntr
     let dent_bytes = unsafe {
         core::slice::from_raw_parts_mut(dent as *mut DirFileEntry as *mut u8, entry_size)
     };
-    dirh.fops.read(&mut dirh.fh, offset, dent_bytes, &mut len)?;
+    dirh.fops
+        .read(&mut dirh.fh, offset, dent_bytes, &mut len)
+        .inspect_err(|e| {
+            error!("read_dent: error: {:?}", e);
+        })?;
 
+    tee_debug!("read_dent: len: {:?}, entry_size: {:?}", len, entry_size);
     // 验证读取的数据长度
     if len != entry_size {
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
@@ -239,6 +244,7 @@ pub fn tee_fs_dirfile_open(
     let fd = fops.open(create, hash, None, None)?;
     dirh.fh = *fd;
 
+    tee_debug!("tee_fs_dirfile_open: dirh.fh: {:?}", dirh.fh);
     let mut n = 0;
 
     let result = (|| {
@@ -249,6 +255,7 @@ pub fn tee_fs_dirfile_open(
             match read_dent(&mut *dirh, idx, &mut dent) {
                 Err(TEE_ERROR_ITEM_NOT_FOUND) => {
                     // 读到末尾正常退出循环
+                    tee_debug!("read_dent: TEE_ERROR_ITEM_NOT_FOUND at idx: {:?}", idx);
                     break;
                 }
                 Err(e) => {
@@ -282,6 +289,7 @@ pub fn tee_fs_dirfile_open(
     }
 
     dirh.ndents = n;
+    tee_debug!("tee_fs_dirfile_open: dirh.ndents: {:?}", dirh.ndents);
     Ok(dirh)
 }
 
@@ -290,6 +298,7 @@ pub fn tee_fs_dirfile_find(
     uuid: &TEE_UUID,
     oid: &[u8],
 ) -> TeeResult<TeeFsDirfileFileh> {
+    tee_debug!("tee_fs_dirfile_find: uuid: {:?}, oid: {:?}", uuid, oid);
     let oidlen = oid.len();
     let mut first_free: Option<usize> = None;
     let mut n: usize = 0;
@@ -542,7 +551,7 @@ pub mod tests_tee_fs_dirfile {
 
     test_fn! {
         using TestResult;
-    
+
         fn test_fileh_short_buffer_file_number() {
             let dfh = TeeFsDirfileFileh {
                 file_number: 0x1234, // "1234" (4 chars) -> needs 5 bytes total (including null)

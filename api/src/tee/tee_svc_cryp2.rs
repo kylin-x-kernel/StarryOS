@@ -4,10 +4,6 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use crate::tee::tee_session:: {
-    with_tee_session_ctx,with_tee_session_ctx_mut
-};
-
 use alloc::{
     alloc::{alloc, dealloc},
     boxed::Box,
@@ -16,30 +12,46 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use core::slice::{from_raw_parts, from_raw_parts_mut};
 use core::{
-    alloc::Layout, any::Any, ffi::{c_char, c_uint, c_ulong, c_void}, /*from,*/ mem::size_of, ops::{Deref, DerefMut}, ptr::NonNull, slice, time::Duration
+    alloc::Layout,
+    any::Any,
+    ffi::{c_char, c_uint, c_ulong, c_void},
+    // from,
+    mem::size_of,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+    slice,
+    time::Duration,
 };
 
 use axerrno::{AxError, AxResult};
 use lazy_static::lazy_static;
 use tee_raw_sys::{libc_compat::size_t, *};
 
+// use core::ffi::c_void;
+// use core::ptr::NonNull;
+use super::tee_svc_cryp::{
+    TeeCryptObj,
+    tee_cryp_obj_secret,
+    // tee_svc_cryp_obj_find_type_attr_idx,
+    tee_cryp_obj_secret_wrapper,
+    tee_cryp_obj_type_props,
+};
 use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{
-        ecc_keypair, ecc_public_key,crypto_hash_init,CryptoHashCtx,CryptoMacCtx,crypto_mac_init,
+        CryptoHashCtx, CryptoMacCtx, crypto_hash_init, crypto_mac_init, ecc_keypair, ecc_public_key,
     },
-    crypto::{
-        sm3_hash::SM3HashCtx,
-        sm3_hmac::SM3HmacCtx,
-    },
+    crypto::{sm3_hash::SM3HashCtx, sm3_hmac::SM3HmacCtx},
     libmbedtls::bignum::{
         crypto_bignum_bin2bn, crypto_bignum_bn2bin, crypto_bignum_copy, crypto_bignum_num_bits,
         crypto_bignum_num_bytes,
     },
-    libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines:: {
-        tee_u32_to_big_endian,tee_alg_get_class },
+    libutee::{
+        tee_api_objects::TEE_USAGE_DEFAULT,
+        utee_defines::{tee_alg_get_class, tee_u32_to_big_endian},
     },
     memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
@@ -49,8 +61,8 @@ use super::{
         copy_to_user_struct, copy_to_user_u64,
     },
     user_mode_ctx_struct::user_mode_ctx,
-    user_ta:: {
-        user_ta_ctx, //to_user_ta_ctx
+    user_ta::{
+        user_ta_ctx, // to_user_ta_ctx
     },
     utils::{bit, bit32},
     vm::vm_check_access_rights,
@@ -59,21 +71,14 @@ use super::{
     //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
     // }
 };
-
-// use core::ffi::c_void;
-// use core::ptr::NonNull;
-use super::tee_svc_cryp:: {
-    tee_cryp_obj_secret,
-    TeeCryptObj,
-    tee_cryp_obj_type_props,
-    // tee_svc_cryp_obj_find_type_attr_idx,
-    tee_cryp_obj_secret_wrapper,
+use crate::{
+    mm::vm_load_string,
+    tee,
+    tee::{
+        libmbedtls::bignum::BigNum,
+        tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+    },
 };
-
-use core::slice::from_raw_parts;
-use core::slice::from_raw_parts_mut;
-
-use crate::{mm::vm_load_string, tee, tee::libmbedtls::bignum::BigNum};
 
 pub const TEE_TYPE_ATTR_OPTIONAL: u32 = bit(0);
 pub const TEE_TYPE_ATTR_REQUIRED: u32 = bit(1);
@@ -95,8 +100,6 @@ pub const ATTR_OPS_INDEX_VALUE: u32 = 2;
 pub const ATTR_OPS_INDEX_25519: u32 = 3;
 // Convert to/from big-endian byte array and provider-specific bignum
 pub const ATTR_OPS_INDEX_448: u32 = 4;
-
-
 
 /// Represents the state of a cryptographic operation
 ///
@@ -198,10 +201,10 @@ impl TeeCrypObjSecret {
 /// * `Ok(Option<&mut TeeCrypState>)` - Returns Some with reference to found state if found,
 ///   or None if not found
 /// * `Err(TEE_Result)` - Error code if the operation fails (TEE_ERROR_BAD_PARAMETERS if not found)
-fn tee_svc_cryp_get_state<'a> (
+fn tee_svc_cryp_get_state<'a>(
     // sess: &'a TsSession<'a>
     sess: &'a mut Vec<TeeCrypState>,
-    state_id: usize
+    state_id: usize,
 ) -> TeeResult<&'a mut TeeCrypState> {
     // Iterate through the list of cryptographic states
     // Get the user TA context from the session
@@ -240,11 +243,7 @@ fn tee_svc_cryp_get_state<'a> (
 /// # State Management
 /// - Updates the cryptographic state to `CrypState::Initialized` after successful initialization
 /// - Verifies that the key object is properly initialized before using it for MAC operations
-pub(crate) fn sys_tee_scn_hash_init(
-    state: usize,
-    _iv: usize,
-    _iv_len: usize
-) -> TeeResult {
+pub(crate) fn sys_tee_scn_hash_init(state: usize, _iv: usize, _iv_len: usize) -> TeeResult {
     // get current session user_ta_ctx
     // let session = ts_get_current_session()?;
     // let mut session =
@@ -262,13 +261,13 @@ pub(crate) fn sys_tee_scn_hash_init(
                         } else {
                             return Err(TEE_ERROR_BAD_STATE);
                         }
-
                     }
                     TEE_OPERATION_MAC => {
                         // get key
-                        let o: Arc<tee_obj> = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        let o_arc = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        let o = o_arc.lock();
                         if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
-                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                            return Err(TEE_ERROR_BAD_PARAMETERS);
                         }
 
                         let key = o.attr.get(0);
@@ -276,12 +275,14 @@ pub(crate) fn sys_tee_scn_hash_init(
                         if let Some(key) = key {
                             if let Some(key1) = key1 {
                                 if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-                                    let len =  match key {
+                                    let len = match key {
                                         TeeCryptObj::obj_secret(key) => key.layout.size(),
                                         _ => return Err(TEE_ERROR_BAD_PARAMETERS),
                                     };
-                                    let data =  match key1 {
-                                        TeeCryptObj::obj_secret(key) => key.secret() as *const tee_cryp_obj_secret as *const u8,
+                                    let data = match key1 {
+                                        TeeCryptObj::obj_secret(key) => {
+                                            key.secret() as *const tee_cryp_obj_secret as *const u8
+                                        }
                                         _ => return Err(TEE_ERROR_BAD_PARAMETERS),
                                     };
                                     let key = unsafe { from_raw_parts(data, len) };

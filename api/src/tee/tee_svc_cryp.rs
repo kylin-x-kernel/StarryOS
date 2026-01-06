@@ -16,6 +16,8 @@ use core::{
     alloc::Layout,
     any::Any,
     ffi::{c_char, c_uint, c_ulong, c_void},
+    fmt,
+    fmt::Debug,
     mem::size_of,
     ops::{Deref, DerefMut},
     ptr::NonNull,
@@ -320,7 +322,6 @@ pub trait tee_crypto_ops {
 /// 加密对象类型
 ///
 /// 对应类型 TEE_TYPE_*
-#[allow(dead_code)]
 pub enum TeeCryptObj {
     ecc_keypair(ecc_keypair),
     ecc_public_key(ecc_public_key),
@@ -328,6 +329,17 @@ pub enum TeeCryptObj {
     // obj_value(AttrValue),
     // obj_bignum(BigNum),
     None,
+}
+
+impl Debug for TeeCryptObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TeeCryptObj::ecc_keypair(_) => write!(f, "TeeCryptObj::ecc_keypair"),
+            TeeCryptObj::ecc_public_key(_) => write!(f, "TeeCryptObj::ecc_public_key"),
+            TeeCryptObj::obj_secret(_) => write!(f, "TeeCryptObj::obj_secret"),
+            TeeCryptObj::None => write!(f, "TeeCryptObj::None"),
+        }
+    }
 }
 
 impl Default for TeeCryptObj {
@@ -1128,7 +1140,7 @@ pub(crate) fn syscall_cryp_obj_alloc(
     let mut obj = tee_obj::default();
 
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
-    let obj_id = tee_obj_add(Arc::new(obj))?;
+    let obj_id = tee_obj_add(obj)?;
     Ok(obj_id)
 }
 
@@ -1540,18 +1552,21 @@ fn op_attr_25519_free(_attr: &mut [u8]) {
     unimplemented!();
 }
 
-
 /// convert the attributes of the object to binary data
 /// the order is defined by TEE_CRYP_OBJ_PROPS table
-/// 
+///
 /// # Arguments
 /// * `o` - the object
 /// * `data` - the data to store the binary data
 /// * `data_len` - the length of the data
-/// 
+///
 /// # Returns
 /// * `TeeResult` - the result of the operation
-pub fn tee_obj_attr_to_binary(o: &mut tee_obj, data: &mut [u8], data_len: &mut size_t) -> TeeResult {
+pub fn tee_obj_attr_to_binary(
+    o: &mut tee_obj,
+    data: &mut [u8],
+    data_len: &mut size_t,
+) -> TeeResult {
     if o.info.objectType == TEE_TYPE_DATA {
         *data_len = 0;
         return Ok(()); /* pure data object */
@@ -1577,12 +1592,12 @@ pub fn tee_obj_attr_to_binary(o: &mut tee_obj, data: &mut [u8], data_len: &mut s
 
 /// construct the attributes of the object from the binary data
 /// the order is defined by TEE_CRYP_OBJ_PROPS table
-/// 
+///
 /// # Arguments
 /// * `o` - the object
 /// * `data` - the data to convert the attributes
 /// * `data_len` - the length of the data
-/// 
+///
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn tee_obj_attr_from_binary(o: &mut tee_obj, data: &[u8]) -> TeeResult {
@@ -1719,7 +1734,8 @@ fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResul
 
 pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -> TeeResult {
     let mut o_info: utee_object_info = utee_object_info::default();
-    let o = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let o = o_arc.lock();
 
     o_info.obj_type = o.info.objectType;
     o_info.obj_size = o.info.objectSize;
@@ -1746,7 +1762,8 @@ pub fn syscall_cryp_obj_get_attr(
     size: &mut u64,
 ) -> TeeResult<u32> {
     let mut obj_usage = 0;
-    let mut o = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let mut o = o_arc.lock();
 
     if o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
@@ -1780,11 +1797,9 @@ pub fn syscall_cryp_obj_get_attr(
     // let ops = type_props.type_attrs[idx].ops_index;
     // let attr = (o.attr[idx] as *const u8) as *const u8;
     // return ops.to_user(attr, sess, buffer, size);
-    if let Some(o_mut) = Arc::get_mut(&mut o) {
-        if !o_mut.attr.is_empty() {
-            let attr_ref = o_mut.attr[0].get_attr_by_id(attr_id)?;
-            attr_ref.to_user(buffer, size)?;
-        }
+    if !o.attr.is_empty() {
+        let attr_ref = o.attr[0].get_attr_by_id(attr_id)?;
+        attr_ref.to_user(buffer, size)?;
     }
 
     Ok(TEE_SUCCESS)
@@ -2045,7 +2060,8 @@ fn tee_svc_cryp_obj_populate_type(
 }
 
 pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) -> TeeResult {
-    let mut o = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let mut o = o_arc.lock();
 
     // Must be a transient object
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
@@ -2071,17 +2087,18 @@ pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) 
 
     tee_svc_cryp_check_attr(attr_usage::ATTR_USAGE_POPULATE, type_props, &attrs)?;
 
-    let o_mut = Arc::get_mut(&mut o).ok_or(TEE_ERROR_BAD_STATE)?;
-    tee_svc_cryp_obj_populate_type(o_mut, type_props, &attrs)?;
+    tee_svc_cryp_obj_populate_type(&mut o, type_props, &attrs)?;
 
-    o_mut.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
+    o.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
 
     Ok(())
 }
 
 pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeResult {
-    let mut dst_o = tee_obj_get(dst as tee_obj_id_type)?;
-    let mut src_o = tee_obj_get(src as tee_obj_id_type)?;
+    let dst_o_arc = tee_obj_get(dst as tee_obj_id_type)?;
+    let mut dst_o = dst_o_arc.lock();
+    let src_o_arc = tee_obj_get(src as tee_obj_id_type)?;
+    let mut src_o = src_o_arc.lock();
 
     if src_o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
@@ -2093,17 +2110,15 @@ pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeR
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
-    let dst_mut = Arc::get_mut(&mut dst_o).ok_or(TEE_ERROR_BAD_STATE)?;
-    let src_mut = Arc::get_mut(&mut src_o).ok_or(TEE_ERROR_BAD_STATE)?;
-    tee_obj_attr_copy_from(dst_mut, src_mut)?;
-    dst_mut.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
-    dst_mut.info.objectSize = src_mut.info.objectSize;
-    if src_mut.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        with_pobj_usage_lock(src_mut.pobj.read().flags, || {
-            dst_mut.info.objectUsage = src_mut.pobj.read().obj_info_usage;
+    tee_obj_attr_copy_from(&mut dst_o, &mut src_o)?;
+    dst_o.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
+    dst_o.info.objectSize = src_o.info.objectSize;
+    if src_o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        with_pobj_usage_lock(src_o.pobj.read().flags, || {
+            dst_o.info.objectUsage = src_o.pobj.read().obj_info_usage;
         });
     } else {
-        dst_mut.info.objectUsage = src_mut.info.objectUsage;
+        dst_o.info.objectUsage = src_o.info.objectUsage;
     }
     Ok(())
 }
@@ -2525,7 +2540,8 @@ pub mod tests_tee_svc_cryp {
 
         fn test_syscall_cryp_obj_alloc() {
             let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256).unwrap();
-            let obj = tee_obj_get(obj_id).unwrap();
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type).unwrap();
+            let obj = obj_arc.lock();
             assert_eq!(obj.info.objectType, TEE_TYPE_ECDSA_PUBLIC_KEY);
             assert_eq!(obj.info.maxObjectSize, 256);
             assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);

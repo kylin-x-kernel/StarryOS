@@ -4,9 +4,10 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use super::{crypto_temp::{CryptoHashOps}};
-use crate::tee::{TeeResult, utee_defines::TEE_MAX_HASH_SIZE, common::array};
 use tee_raw_sys::{TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_BAD_STATE};
+
+use super::crypto_temp::CryptoHashOps;
+use crate::tee::{TeeResult, common::array, utee_defines::TEE_MAX_HASH_SIZE};
 //--------------------from rust-mbedtls bindings.rs --------------------
 #[allow(non_camel_case_types)]
 pub struct md_info_t {}
@@ -20,11 +21,7 @@ pub fn md_starts(_ctx: *mut md_context_t) -> i32 {
     0
 }
 #[allow(dead_code)]
-pub fn md_update(
-    _ctx: *mut md_context_t,
-    _input: *const u8,
-    _ilen: usize,
-) -> u32 {
+pub fn md_update(_ctx: *mut md_context_t, _input: *const u8, _ilen: usize) -> u32 {
     0
 }
 #[allow(dead_code)]
@@ -32,13 +29,13 @@ pub fn md_get_size(_md_info: *const md_info_t) -> u8 {
     32 // 假设返回 SHA-256 的大小
 }
 #[allow(dead_code)]
-pub fn md_finish(_ctx: *mut md_context_t, _output: *mut  u8) ->  i32 {
+pub fn md_finish(_ctx: *mut md_context_t, _output: *mut u8) -> i32 {
     0
 }
 #[allow(dead_code)]
 pub fn md_free(_ctx: *mut md_context_t) {}
 #[allow(dead_code)]
-pub fn md_clone(_dst: *mut md_context_t, _src: *const md_context_t) ->  i32 {
+pub fn md_clone(_dst: *mut md_context_t, _src: *const md_context_t) -> i32 {
     0
 }
 
@@ -49,9 +46,8 @@ pub struct MbedHashCtx<'a> {
 }
 
 impl CryptoHashOps for MbedHashCtx<'_> {
-
     fn init(&mut self) -> TeeResult {
-       if md_starts(&mut self.md_context) != 0 {
+        if md_starts(&mut self.md_context) != 0 {
             Err(TEE_ERROR_BAD_STATE)
         } else {
             Ok(())
@@ -77,7 +73,7 @@ impl CryptoHashOps for MbedHashCtx<'_> {
         }
 
         match digest {
-            Some( user_buf) => {
+            Some(user_buf) => {
                 let target_ptr = if user_buf.len() >= hash_size {
                     user_buf.as_mut_ptr()
                 } else {
@@ -106,10 +102,7 @@ impl CryptoHashOps for MbedHashCtx<'_> {
     }
 
     fn copy_state(&self, dst_ctx: &mut Self) {
-        if md_clone(
-            &mut dst_ctx.md_context,
-            &self.md_context,
-        ) != 0 {
+        if md_clone(&mut dst_ctx.md_context, &self.md_context) != 0 {
             // TODO panic
         }
     }

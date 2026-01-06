@@ -5,35 +5,37 @@
 // This file has been modified by KylinSoft on 2025.
 //
 
-use crate::tee::user_access::copy_to_user_struct;
+use alloc::vec::Vec;
+use core::cell::UnsafeCell;
+
+use axhal::time::{TimeValue, monotonic_time, wall_time};
+use tee_raw_sys::{
+    TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_OVERFLOW, TEE_ERROR_TIME_NOT_SET, TEE_SUCCESS, TEE_UUID,
+    TeeTime,
+};
+
 use crate::tee::{
     TeeResult,
     tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+    user_access::copy_to_user_struct,
 };
-use alloc::vec::Vec;
-use axhal::time::{TimeValue, monotonic_time, wall_time};
-use core::cell::UnsafeCell;
-use tee_raw_sys::{
-    TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_OVERFLOW, TEE_ERROR_TIME_NOT_SET, TEE_SUCCESS,
-};
-use tee_raw_sys::{TEE_UUID, TeeTime};
 
 pub fn tee_time_get_sys_time() -> axhal::time::TimeValue {
     wall_time()
 }
 fn tee_time_get_ree_time() -> axhal::time::TimeValue {
-        //TODO WANGZHEN,optee有3种方式实现这个thread_rpc_cmd函数，有SMC,FFA,RPC，我们基于虚拟化场景，只能使用RPC方式。参考thread_optee_abi.c
+    // TODO WANGZHEN,optee有3种方式实现这个thread_rpc_cmd函数，有SMC,FFA,RPC，我们基于虚拟化场景，只能使用RPC方式。参考thread_optee_abi.c
     // struct thread_param params = THREAD_PARAM_VALUE(OUT, 0, 0, 0);
-	// TEE_Result res = TEE_SUCCESS;
+    // TEE_Result res = TEE_SUCCESS;
 
-	// if (!time)
-	// 	return TEE_ERROR_BAD_PARAMETERS;
+    // if (!time)
+    // 	return TEE_ERROR_BAD_PARAMETERS;
 
-	// res = thread_rpc_cmd(OPTEE_RPC_CMD_GET_TIME, 1, &params);
-	// if (res == TEE_SUCCESS) {
-	// 	time->seconds = params.u.value.a;
-	// 	time->millis = params.u.value.b / 1000000;
-	// }
+    // res = thread_rpc_cmd(OPTEE_RPC_CMD_GET_TIME, 1, &params);
+    // if (res == TEE_SUCCESS) {
+    // 	time->seconds = params.u.value.a;
+    // 	time->millis = params.u.value.b / 1000000;
+    // }
     wall_time()
 }
 
@@ -92,8 +94,9 @@ pub(crate) fn sys_tee_scn_get_time(cat: u64, teetime: &mut TeeTime) -> TeeResult
 }
 
 pub(crate) fn sys_tee_scn_set_ta_time(mytime: &TeeTime) -> TeeResult {
-    use crate::tee::user_access::copy_from_user_struct;
     use tee_raw_sys::{TEE_ERROR_BAD_PARAMETERS, TEE_SUCCESS};
+
+    use crate::tee::user_access::copy_from_user_struct;
 
     // Copy time data from user space to kernel space
     let mut t: TeeTime = TeeTime {

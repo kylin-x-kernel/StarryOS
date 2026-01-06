@@ -198,8 +198,10 @@ where
 {
     if pobj_need_usage_lock(flags) {
         let _guard = POBJS_USAGE_MUTEX.lock();
+        info!("with_pobj_usage_lock: POBJS_USAGE_MUTEX locked");
         f()
     } else {
+        info!("with_pobj_usage_lock: POBJS_USAGE_MUTEX not locked");
         f()
     }
 }

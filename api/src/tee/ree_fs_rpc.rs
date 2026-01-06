@@ -11,7 +11,9 @@ use tee_raw_sys::{TEE_ERROR_BAD_FORMAT, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_ITEM
 
 use super::{
     TeeResult,
-    common::file_ops::{FileVariant, FS_MODE_644, FS_OFLAG_DEFAULT, FS_OFLAG_RW, FS_OFLAG_RW_TRUNC, TeeFileLike},
+    common::file_ops::{
+        FS_MODE_644, FS_OFLAG_DEFAULT, FS_OFLAG_RW, FS_OFLAG_RW_TRUNC, FileVariant, TeeFileLike,
+    },
     fs_dirfile::TeeFsDirfileFileh,
     tee_fs::TEE_FS_NAME_MAX,
     tee_svc_storage::tee_svc_storage_create_filename_dfh,
@@ -69,9 +71,7 @@ pub fn tee_fs_rpc_open_dfh(dfh: Option<&TeeFsDirfileFileh>) -> TeeResult<FileVar
 ///
 /// # Returns
 /// * `TeeResult<FileVariant>` - the file variant
-pub fn tee_fs_rpc_create_dfh(
-    dfh: Option<&TeeFsDirfileFileh>,
-) -> TeeResult<FileVariant> {
+pub fn tee_fs_rpc_create_dfh(dfh: Option<&TeeFsDirfileFileh>) -> TeeResult<FileVariant> {
     operation_open_dfh(FS_OFLAG_DEFAULT, dfh)
 }
 

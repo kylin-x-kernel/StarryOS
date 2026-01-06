@@ -1,6 +1,7 @@
+use tee_raw_sys::TEE_ERROR_NOT_IMPLEMENTED;
+
 use super::crypto::CryptoHashCtx;
 use crate::tee::TeeResult;
-use tee_raw_sys::TEE_ERROR_NOT_IMPLEMENTED;
 pub struct SM3HashCtx;
 impl CryptoHashCtx for SM3HashCtx {
     // Initialize the hash context
@@ -9,22 +10,22 @@ impl CryptoHashCtx for SM3HashCtx {
     }
 
     // Update the hash context with data
-    fn update(&mut self, data: &[u8]) -> TeeResult{
+    fn update(&mut self, data: &[u8]) -> TeeResult {
         Err(TEE_ERROR_NOT_IMPLEMENTED)
     }
 
     // Finalize the hash computation and return the digest
-    fn r#final(&mut self, digest: &mut [u8]) -> TeeResult{
+    fn r#final(&mut self, digest: &mut [u8]) -> TeeResult {
         Err(TEE_ERROR_NOT_IMPLEMENTED)
     }
 
     // Free the hash context resources
-    fn free_ctx(self){
+    fn free_ctx(self) {
         unimplemented!("Not implemented")
     }
 
     // Copy the state from one context to another
-    fn copy_state(&mut self, ctx: &dyn CryptoHashCtx){
+    fn copy_state(&mut self, ctx: &dyn CryptoHashCtx) {
         unimplemented!("Not implemented")
     }
 
