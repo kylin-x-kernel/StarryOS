@@ -12,7 +12,6 @@ use alloc::{
     vec,
     vec::Vec,
 };
-
 use core::{
     ffi::c_uint,
     ptr,
@@ -21,7 +20,7 @@ use core::{
 
 use lazy_static::lazy_static;
 use spin::{Mutex, RwLock};
-use tee_raw_sys::*;
+use tee_raw_sys::{TEE_STORAGE_PRIVATE, *};
 
 use super::{
     TeeResult,
@@ -41,6 +40,7 @@ use super::{
         tee_fs_rpc_close, tee_fs_rpc_create_dfh, tee_fs_rpc_open_dfh, tee_fs_rpc_remove_dfh,
         tee_fs_rpc_truncate,
     },
+    tee_api_defines_extensions::{TEE_STORAGE_PRIVATE_REE, TEE_STORAGE_PRIVATE_RPMB},
     tee_fs::tee_fs_dirent,
     tee_pobj::tee_pobj,
     user_access::copy_to_user,
@@ -349,6 +349,7 @@ pub fn ree_fs_open_primitive(
         tee_fs_rpc_open_dfh(dfh)
     };
 
+    tee_debug!("ree_fs_open_primitive: fd: {:?}", fd);
     let fd = match fd {
         Ok(fd) => fd,
         Err(e) => return Err(e),
@@ -468,12 +469,21 @@ pub fn ree_fs_read_primitive(
     buf_user: &mut [u8],
     len: &mut usize,
 ) -> TeeResult {
+    tee_debug!(
+        "ree_fs_read_primitive: fh: {:?}, pos: {:?}, buf_core: {:?}, buf_user: {:?}, len: {:?}",
+        fh,
+        pos,
+        buf_core,
+        buf_user,
+        len
+    );
     let mut remain_bytes = *len;
     let meta = tee_fs_htree_get_meta(&mut fh.ht);
 
     // One of buf_core and buf_user must be NULL
     debug_assert!(buf_core.len() > 0 || buf_user.len() > 0);
 
+    tee_debug!("ree_fs_read_primitive: check boundary conditions");
     // 检查边界条件
     if (pos + remain_bytes) < remain_bytes || pos > meta.length as usize {
         remain_bytes = 0;
@@ -481,6 +491,7 @@ pub fn ree_fs_read_primitive(
         remain_bytes = meta.length as usize - pos;
     }
 
+    tee_debug!(" pos: {:?}, remain_bytes: {:?}", pos, remain_bytes);
     // 实际读取的数据长度
     *len = remain_bytes;
 
@@ -492,6 +503,11 @@ pub fn ree_fs_read_primitive(
     let mut start_block_num = pos_to_block_num(pos);
     let end_block_num = pos_to_block_num(pos + remain_bytes - 1);
 
+    tee_debug!(
+        "ree_fs_read_primitive: start_block_num: {:#?}, end_block_num: {:#?}",
+        start_block_num,
+        end_block_num
+    );
     let mut block = get_tmp_block().map_err(|e| {
         error!("Failed to allocate temporary block: {:?}", e);
         TEE_ERROR_OUT_OF_MEMORY
@@ -650,6 +666,13 @@ impl TeeFsDirfileOperations for ReeDirfOps {
         uuid: Option<&TEE_UUID>,
         dfh: Option<&TeeFsDirfileFileh>,
     ) -> TeeResult<Box<TeeFsFd>> {
+        tee_debug!(
+            "ReeDirfOps::open: create: {}, hash: {:?}, uuid: {:?}, dfh: {:?}",
+            create,
+            hash,
+            uuid,
+            dfh
+        );
         ree_fs_open_primitive(uuid, create, hash, dfh)
     }
 
@@ -658,7 +681,9 @@ impl TeeFsDirfileOperations for ReeDirfOps {
     }
 
     fn read(&self, fh: &mut TeeFsFd, pos: usize, buf: &mut [u8], len: &mut usize) -> TeeResult {
-        ree_fs_read_primitive(fh, pos, buf, &mut [], len)
+        ree_fs_read_primitive(fh, pos, buf, &mut [], len).inspect_err(|e| {
+            error!("ReeDirfOps::read: error: {:?}", e);
+        })
     }
 
     fn write(&self, fh: &mut TeeFsFd, pos: usize, buf: &[u8]) -> TeeResult {
@@ -718,10 +743,12 @@ pub struct TeeFileOperations {
 }
 
 pub fn ree_fs_open(po: &mut tee_pobj, size: Option<&mut usize>) -> TeeResult<Box<TeeFsFd>> {
+    tee_debug!("ree_fs_open: po: {:?}", po);
     // lock, for thread (process) safety
     let _guard = REE_FS_MUTEX.lock();
 
     let dirh_ptr = get_dirh()?;
+    tee_debug!("ree_fs_open: dirh_ptr: {:?}", dirh_ptr);
     let dirh = unsafe {
         assert!(!dirh_ptr.is_null());
         &mut *dirh_ptr
@@ -1054,7 +1081,9 @@ fn open_dirh() -> TeeResult<Box<TeeFsDirfileDirh>> {
     match tee_fs_dirfile_open(false, None, &ree_dir_ops) {
         Ok(dirh) => Ok(Box::new(*dirh)),
         Err(TEE_ERROR_ITEM_NOT_FOUND) => {
+            tee_debug!("open_dirh: TEE_ERROR_ITEM_NOT_FOUND, create new dirh");
             let dirh = tee_fs_dirfile_open(true, None, &ree_dir_ops)?;
+            tee_debug!("open_dirh: create new dirh: {:?}", dirh);
             Ok(Box::new(*dirh))
         }
         Err(e) => Err(e),
@@ -1089,12 +1118,19 @@ impl ReeFsDirh {
 
     /// 对应get_dirh
     pub fn get_dirh(&self) -> TeeResult<*mut TeeFsDirfileDirh> {
-        let h = self.handle.load(Ordering::Acquire);
+        let mut h = self.handle.load(Ordering::Acquire);
         if h.is_null() {
             let a = open_dirh()?;
-            self.handle.store(Box::into_raw(a), Ordering::Release);
+            h = Box::into_raw(a);
+            self.handle.store(h, Ordering::Release);
         }
         self.refcount.fetch_add(1, Ordering::AcqRel);
+
+        tee_debug!(
+            "get_dirh: h with refcount: {:?} and h: {:?}",
+            self.refcount.load(Ordering::Acquire),
+            h
+        );
         Ok(h)
     }
 
@@ -1238,11 +1274,9 @@ pub mod tests_tee_ree_fs {
     use super::*;
     use crate::{
         assert, assert_eq, assert_ne,
-        tee::{TestDescriptor, TestResult},
+        tee::{TestDescriptor, TestResult, tee_fs_key_manager::tee_fs_init_key_manager},
         test_fn, tests, tests_name,
     };
-
-    use crate::tee::tee_fs_key_manager::tee_fs_init_key_manager;
 
     const NODE_SIZE_TEST: usize = size_of::<super::TeeFsHtreeNodeImage>(); // 66
     const HTREE_IMAGE_SIZE_TEST: usize = size_of::<super::TeeFsHtreeImage>(); // 256
@@ -1253,7 +1287,7 @@ pub mod tests_tee_ree_fs {
         fn test_get_offs_size_head() {
             // Case 1: Head type, version 0
             let result = get_offs_size(TeeFsHtreeType::Head, 0, 0);
-            assert_eq!(result.unwrap(), (0 as usize, HTREE_IMAGE_SIZE_TEST)); // (0, 256)    
+            assert_eq!(result.unwrap(), (0 as usize, HTREE_IMAGE_SIZE_TEST)); // (0, 256)
 
             // Case 2: Head type, version 1
             let result = get_offs_size(TeeFsHtreeType::Head, 0, 1);
@@ -1272,7 +1306,7 @@ pub mod tests_tee_ree_fs {
             // pbn = 1 + ((0 / 31) * 31 * 2) = 1
             // offs = 1 * 4096 + 2 * 66 * (0 % 31) + 66 * 0 = 4096 + 0 + 0 = 4096
             let result = get_offs_size(TeeFsHtreeType::Node, 0, 0);
-            assert_eq!(result.unwrap(), (4096, NODE_SIZE_TEST));  
+            assert_eq!(result.unwrap(), (4096, NODE_SIZE_TEST));
 
             // Case 5: Node type, first node in first block_nodes group (idx 0), version 1
             // offs = 1 * 4096 + 2 * 66 * 0 + 66 * 1 = 4096 + 66 = 4162

@@ -147,7 +147,10 @@ pub fn bb_free(kbuf: Box<[u8]>, len: usize) {
     drop(kbuf);
 }
 
-fn __bb_memdup_user(copy_func: fn(&mut [u8], &[u8], size_t) -> TeeResult, src: &[u8]) -> TeeResult<Box<[u8]>> {
+fn __bb_memdup_user(
+    copy_func: fn(&mut [u8], &[u8], size_t) -> TeeResult,
+    src: &[u8],
+) -> TeeResult<Box<[u8]>> {
     let mut buf = bb_alloc(src.len())?;
     copy_func(&mut buf, src, src.len())?;
     Ok(buf)
@@ -157,9 +160,26 @@ pub fn bb_memdup_user(src: &[u8]) -> TeeResult<Box<[u8]>> {
     __bb_memdup_user(copy_from_user, src)
 }
 
-pub fn bb_memdup_user_private(src: &[u8]) -> TeeResult<Box<[u8]>> {
+pub(crate) fn bb_memdup_user_private(src: &[u8]) -> TeeResult<Box<[u8]>> {
     __bb_memdup_user(copy_from_user_private, src)
 }
+
+/// Enter user access context
+/// This enables safe access to user-space memory
+#[inline(always)]
+pub(crate) fn enter_user_access() {
+    // Implementation would enable user memory access permissions
+    // In OP-TEE, this handles entering user context for cryptographic operations
+}
+
+/// Exit user access context
+/// This restores kernel/secure-world memory access permissions
+#[inline(always)]
+pub(crate) fn exit_user_access() {
+    // Implementation would disable user memory access permissions
+    // In OP-TEE, this handles returning from user context
+}
+
 
 #[cfg(feature = "tee_test")]
 pub mod tests_user_access {

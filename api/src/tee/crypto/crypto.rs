@@ -186,7 +186,7 @@ pub(crate) fn crypto_hash_copy_state(ctx: &mut dyn CryptoHashCtx, src_ctx: &dyn 
 }
 
 pub(crate) fn crypto_hash_init(ctx: &mut dyn CryptoHashCtx) -> TeeResult {
-    ctx.init ()
+    ctx.init()
 }
 
 pub(crate) fn crypto_hash_update(ctx: &mut dyn CryptoHashCtx, data: &[u8]) -> TeeResult {
@@ -195,7 +195,7 @@ pub(crate) fn crypto_hash_update(ctx: &mut dyn CryptoHashCtx, data: &[u8]) -> Te
 
 pub(crate) fn crypto_hash_final(ctx: &mut dyn CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
-    ctx.r#final (digest)
+    ctx.r#final(digest)
 }
 
 // Driver-based hash allocation (stub implementation)
@@ -274,12 +274,8 @@ pub(crate) trait CryptoMacCtx {
     fn copy_state(&mut self, ctx: &dyn CryptoMacCtx);
 }
 
-
-pub(crate) fn crypto_mac_init (
-    ctx: &mut dyn CryptoMacCtx,
-    key: &[u8]
-) -> TeeResult {
-	return ctx.init(key);
+pub(crate) fn crypto_mac_init(ctx: &mut dyn CryptoMacCtx, key: &[u8]) -> TeeResult {
+    return ctx.init(key);
 }
 // Main hash context allocation function
 pub(crate) fn crypto_hash_alloc_ctx(algo: u32) -> TeeResult<Box<dyn CryptoHashCtx>> {
@@ -296,123 +292,97 @@ pub(crate) fn crypto_hash_alloc_ctx(algo: u32) -> TeeResult<Box<dyn CryptoHashCt
             if error == TEE_ERROR_NOT_IMPLEMENTED {
                 // Fallback to default implementations
                 match algo {
-                    TEE_ALG_MD5 => {
-                        match crypto_md5_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                    TEE_ALG_MD5 => match crypto_md5_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA1 => {
-                        match crypto_sha1_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA1 => match crypto_sha1_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA224 => {
-                        match crypto_sha224_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA224 => match crypto_sha224_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA256 => {
-                        match crypto_sha256_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA256 => match crypto_sha256_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA384 => {
-                        match crypto_sha384_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA384 => match crypto_sha384_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA512 => {
-                        match crypto_sha512_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA512 => match crypto_sha512_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA3_224 => {
-                        match crypto_sha3_224_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA3_224 => match crypto_sha3_224_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA3_256 => {
-                        match crypto_sha3_256_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA3_256 => match crypto_sha3_256_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA3_384 => {
-                        match crypto_sha3_384_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA3_384 => match crypto_sha3_384_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHA3_512 => {
-                        match crypto_sha3_512_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHA3_512 => match crypto_sha3_512_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHAKE128 => {
-                        match crypto_shake128_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHAKE128 => match crypto_shake128_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SHAKE256 => {
-                        match crypto_shake256_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SHAKE256 => match crypto_shake256_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
-                    TEE_ALG_SM3 => {
-                        match crypto_sm3_alloc_ctx() {
-                            Ok(ctx) => {
-                                c = Some(ctx);
-                                res = TEE_SUCCESS;
-                            }
-                            Err(error) => res = error,
+                        Err(error) => res = error,
+                    },
+                    TEE_ALG_SM3 => match crypto_sm3_alloc_ctx() {
+                        Ok(ctx) => {
+                            c = Some(ctx);
+                            res = TEE_SUCCESS;
                         }
-                    }
+                        Err(error) => res = error,
+                    },
                     _ => {
                         // Do nothing, res remains TEE_ERROR_NOT_IMPLEMENTED
                     }

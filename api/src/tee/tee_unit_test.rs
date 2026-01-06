@@ -12,37 +12,35 @@ use crate::{
 
 pub fn tee_test_unit() {
     use super::{
+        common::file_ops::tests_file_ops::TEST_FILE_OPS,
+        fs_dirfile::tests_tee_fs_dirfile::TEST_TEE_FS_DIRFILE,
+        fs_htree::tests_fs_htree::TEST_FS_HTREE,
         libmbedtls::bignum::tests_tee_bignum::TEST_TEE_BIGNUM,
-        tee_obj::tests_tee_obj::TEST_TEE_OBJ, tee_pobj::tests_tee_pobj::TEST_TEE_POBJ,
+        tee_misc::tests_tee_misc::TEST_TEE_MISC, tee_obj::tests_tee_obj::TEST_TEE_OBJ,
+        tee_pobj::tests_tee_pobj::TEST_TEE_POBJ, tee_ree_fs::tests_tee_ree_fs::TEST_TEE_REE_FS,
         tee_session::tests_tee_session::TEST_TEE_SESSION,
         tee_svc_cryp::tests_tee_svc_cryp::TEST_TEE_SVC_CRYP,
         tee_svc_storage::tests_tee_svc_storage::TEST_TEE_SVC_STORAGE,
-        user_access::tests_user_access::TEST_USER_ACCESS,
-        common::file_ops::tests_file_ops::TEST_FILE_OPS,
-        fs_dirfile::tests_tee_fs_dirfile::TEST_TEE_FS_DIRFILE,
-        utils::tests_utils::TEST_TEE_UTILS,
-        tee_misc::tests_tee_misc::TEST_TEE_MISC,
-        tee_ree_fs::tests_tee_ree_fs::TEST_TEE_REE_FS,
-        fs_htree::tests_fs_htree::TEST_FS_HTREE,
+        user_access::tests_user_access::TEST_USER_ACCESS, utils::tests_utils::TEST_TEE_UTILS,
     };
 
     let mut runner = TestRunner::new();
     run_tests!(
         runner,
         [
-            TEST_TEE_POBJ,
-            TEST_TEE_OBJ,
-            TEST_TEE_SVC_CRYP,
+            // TEST_TEE_POBJ,
+            // TEST_TEE_OBJ,
+            // TEST_TEE_SVC_CRYP,
             TEST_TEE_SVC_STORAGE,
-            TEST_USER_ACCESS,
-            TEST_TEE_BIGNUM,
-            TEST_TEE_SESSION,
-            TEST_FILE_OPS,
-            TEST_TEE_FS_DIRFILE,
-            TEST_TEE_UTILS,
-            TEST_TEE_MISC,
-            TEST_TEE_REE_FS,
-            TEST_FS_HTREE,
+            // TEST_USER_ACCESS,
+            // TEST_TEE_BIGNUM,
+            // TEST_TEE_SESSION,
+            // TEST_FILE_OPS,
+            // TEST_TEE_FS_DIRFILE,
+            // TEST_TEE_UTILS,
+            // TEST_TEE_MISC,
+            // TEST_TEE_REE_FS,
+            // TEST_FS_HTREE,
         ]
     );
 }

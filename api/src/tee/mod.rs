@@ -9,9 +9,15 @@
 #![allow(unused)]
 #![allow(missing_docs)]
 #![allow(non_upper_case_globals)]
+#[macro_use]
+mod macros;
+mod bitstring;
 mod cancel;
+mod common;
 mod config;
 mod crypto;
+mod fs_dirfile;
+mod fs_htree;
 mod inter_ta;
 mod libmbedtls;
 mod libutee;
@@ -20,33 +26,30 @@ mod memtag;
 mod panic;
 mod property;
 mod protocol;
-mod tee_ree_fs;
-mod fs_htree;
+mod ree_fs_rpc;
 mod tee_fs;
-mod utee_defines;
-mod common;
-mod fs_dirfile;
-mod bitstring;
+mod tee_misc;
 mod tee_obj;
 mod tee_pobj;
+mod tee_ree_fs;
 mod tee_return;
 mod tee_session;
 mod tee_svc_cryp;
 mod tee_svc_cryp2;
 mod tee_svc_storage;
 mod tee_ta_manager;
-mod tee_misc;
-mod ree_fs_rpc;
+mod utee_defines;
 // mod ts_manager;
-mod tee_fs_key_manager;
+mod crypto_temp;
 mod huk_subkey;
 mod otp_stubs;
-mod crypto_temp;
+mod tee_api_defines_extensions;
+mod tee_fs_key_manager;
+mod tee_time;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
 mod test;
-mod tee_time;
 mod types_ext;
 mod user_access;
 mod user_mode_ctx_struct;
@@ -54,9 +57,6 @@ mod user_ta;
 mod utils;
 mod uuid;
 mod vm;
-mod tee_api_defines_extensions;
-pub use tee_api_defines_extensions::*;
-
 use core::arch::asm;
 
 use axerrno::{AxError, AxResult};
@@ -64,14 +64,18 @@ use axhal::uspace::UserContext;
 use cancel::*;
 use log::*;
 use syscalls::Sysno;
-use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
+pub use tee_api_defines_extensions::*;
+use tee_raw_sys::{TEE_ERROR_NOT_SUPPORTED, TeeTime};
+pub use tee_ree_fs::{
+    ree_fs_rpc_read_init as rpc_read_init, ree_fs_rpc_write_init as rpc_write_init,
+    tee_fs_rpc_read_final as rpc_read_final, tee_fs_rpc_write_final as rpc_write_final,
+};
 use tee_return::sys_tee_scn_return;
 #[cfg(feature = "tee_test")]
 use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
 
-use tee_raw_sys::TeeTime;
 use crate::tee::{
     inter_ta::{
         sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
@@ -80,13 +84,9 @@ use crate::tee::{
     property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
     // tee_svc_cryp::sys_tee_scn_hash_init
     tee_svc_cryp2::sys_tee_scn_hash_init,
-    tee_time::{sys_tee_scn_wait,sys_tee_scn_get_time, sys_tee_scn_set_ta_time},
+    tee_svc_cryp2::sys_tee_scn_hash_update,
+    tee_time::{sys_tee_scn_get_time, sys_tee_scn_set_ta_time, sys_tee_scn_wait},
 };
-
-pub use tee_ree_fs::ree_fs_rpc_read_init as rpc_read_init;
-pub use tee_ree_fs::ree_fs_rpc_write_init as rpc_write_init;
-pub use tee_ree_fs::tee_fs_rpc_read_final as rpc_read_final;
-pub use tee_ree_fs::tee_fs_rpc_write_final as rpc_write_final;
 
 pub type TeeResult<T = ()> = Result<T, u32>;
 
@@ -154,11 +154,17 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
         }
 
         // Sysno::tee_scn_hash_init => sys_tee_scn_hash_init(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _),
-        Sysno::tee_scn_hash_init => sys_tee_scn_hash_init(
-            _uctx.arg0() as _,
-            _uctx.arg1() as _,
-            _uctx.arg2() as _
-        ),
+        Sysno::tee_scn_hash_init => {
+            sys_tee_scn_hash_init(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_hash_update => {
+            sys_tee_scn_hash_update(
+                _uctx.arg0() as _,
+                _uctx.arg1() as _,
+                _uctx.arg2() as _
+            )
+        }
 
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
