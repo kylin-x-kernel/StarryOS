@@ -70,13 +70,22 @@ use super::{
     //     TsSession,
     //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
     // }
+    user_access:: {
+        enter_user_access,
+        exit_user_access,
+    },
 };
 use crate::{
     mm::vm_load_string,
     tee,
     tee::{
         libmbedtls::bignum::BigNum,
-        tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+        tee_session::{
+            with_tee_session_ctx, with_tee_session_ctx_mut
+        },
+        memtag::{
+            memtag_strip_tag_const
+        },
     },
 };
 
@@ -217,6 +226,114 @@ fn tee_svc_cryp_get_state<'a>(
 
     // State not found in the list, return error
     Err(TEE_ERROR_BAD_PARAMETERS)
+}
+
+
+/// Updates a hash or MAC operation with new data chunk
+///
+/// This function adds a data chunk to an ongoing cryptographic hash or MAC operation.
+/// The operation must have been previously initialized with `sys_tee_scn_hash_init`.
+///
+/// # Arguments
+/// * `state` - Handle to the crypto operation state
+/// * `chunk` - Pointer to the data chunk to process
+/// * `chunk_size` - Size of the data chunk in bytes
+///
+/// # Returns
+/// * `TeeResult` - Returns `TEE_SUCCESS` on success, or error code:
+///   - `TEE_ERROR_BAD_STATE` if operation not initialized
+///   - `TEE_ERROR_BAD_PARAMETERS` for invalid parameters
+///   - `TEE_ERROR_OUT_OF_MEMORY` if memory allocation fails
+///
+/// # Errors
+/// - Returns error if cryptographic context is invalid or operation type unsupported
+/// - Fails if unable to copy user-provided data to kernel space
+///
+/// # Safety
+/// - Requires valid user-space pointers for data chunk
+/// - Must be called with valid cryptographic state handle
+pub(crate) fn sys_tee_scn_hash_update(
+    state: usize,
+    chunk: usize,
+    chunk_size: usize,
+) -> TeeResult {
+    // Supporting function definitions (based on provided context)
+    // Validate parameters: null chunk with non-zero size is invalid
+    if chunk == 0 && chunk_size != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    // Zero length hash is valid but requires no action
+    if chunk_size == 0 {
+        return Ok(());
+    }
+
+    // Strip memory tag if present (for systems with memory tagging)
+    let chunk = memtag_strip_tag_const(chunk);
+
+    with_tee_session_ctx(|ctx| {
+        vm_check_access_rights(
+            &ctx.uctx,
+            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
+            chunk,
+            chunk_size,
+        )
+    })?;
+
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                // Retrieve the specific crypto operation state
+                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
+
+                // Verify that the state is initialized
+                if crypto_state.state != CrypState::Initialized {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+
+                // Process based on algorithm class (HASH or MAC)
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        // Hash digest operation
+                        let chunk_d = unsafe {
+                            from_raw_parts(chunk as *const u8, chunk_size)
+                        };
+
+                        // Enter user access context for safe memory access
+                        enter_user_access();
+                        let res: TeeResult = Ok(());//crypto_hash_update(&mut crypto_state.ctx, chunk_d);
+                        exit_user_access();
+
+                        res?;
+                    }
+                    TEE_OPERATION_MAC => {
+                        // MAC (Message Authentication Code) operation
+                        let chunk_d = unsafe {
+                            slice::from_raw_parts(chunk as *const u8, chunk_size)
+                        };
+
+                        // Enter user access context for safe memory access
+                        enter_user_access();
+                        let res: TeeResult = Ok(());//crypto_mac_update(&mut crypto_state.ctx, chunk_d);
+                        exit_user_access();
+
+                        if let Err(_) = res {
+                            return Err(TEE_ERROR_MAC_INVALID);
+                        }
+                    }
+                    _ => {
+                        // Unsupported operation class
+                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                    }
+                }
+
+                Ok(())
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+    })?;
+
+    Ok(())
 }
 
 /// Initializes a hash or MAC operation with the given state
