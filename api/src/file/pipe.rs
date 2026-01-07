@@ -173,11 +173,6 @@ impl FileLike for Pipe {
         }
 
         block_on(poll_io(self, IoEvents::IN, self.nonblocking(), || {
-            let data = self.shared.data.lock();
-            if data.eof {
-                return Ok(0);
-            }
-
             let read = {
                 let cons = self.shared.buffer.lock();
                 let (left, right) = cons.as_slices();
