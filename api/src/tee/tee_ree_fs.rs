@@ -504,7 +504,7 @@ pub fn ree_fs_read_primitive(
     let end_block_num = pos_to_block_num(pos + remain_bytes - 1);
 
     tee_debug!(
-        "ree_fs_read_primitive: start_block_num: {:#?}, end_block_num: {:#?}",
+        "ree_fs_read_primitive: start_block_num: {:?}, end_block_num: {:?}",
         start_block_num,
         end_block_num
     );
