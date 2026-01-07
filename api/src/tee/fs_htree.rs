@@ -106,6 +106,7 @@ pub struct TeeFsHtreeNodeImage {
     pub flags: u16,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TeeFsHtreeType {
     Head,
     Node,
@@ -372,6 +373,13 @@ pub fn rpc_write_node(
     vers: u8,
     head: &TeeFsHtreeNodeImage,
 ) -> TeeResult {
+    tee_debug!(
+        "rpc_write_node: fd: {:?}, node_id: {:?}, vers: {:?}, head: {:?}",
+        fd,
+        node_id,
+        vers,
+        head,
+    );
     let data_ptr: &[u8] = unsafe {
         core::slice::from_raw_parts(
             head as *const TeeFsHtreeNodeImage as *const u8,
@@ -385,7 +393,8 @@ pub fn rpc_write_node(
         node_id - 1,
         vers,
         data_ptr,
-    )?;
+    )
+    .inspect_err(|e| error!("rpc_write_node error! {:X?}", e))?;
     Ok(())
 }
 
@@ -695,6 +704,15 @@ fn htree_sync_node_to_storage(
     ht_data: &TeeFsHtreeData,
     fd: Option<&mut FileVariant>,
 ) -> TeeResult {
+    tee_debug!(
+        "htree_sync_node_to_storage: fd: {:?}, node.id: {:?}, node.dirty: {:?}, \
+         node.block_updated: {:?}",
+        fd,
+        node.id,
+        node.dirty,
+        node.block_updated
+    );
+
     #[allow(unused_assignments)]
     let mut vers: u8 = 0;
     let mut meta: Option<&TeeFsHtreeMeta> = None;
@@ -1396,7 +1414,8 @@ pub fn tee_fs_htree_sync_to_storage(
     // let mut fd = open_file_like("filenamne", FS_OFLAG_DEFAULT, FS_MODE_644)
     //     .map_err(|_| TeeResultCode::ErrorGeneric)?;
 
-    htree_traverse_post_order_mut(ht, &mut htree_sync_node_to_storage, Some(fd))?;
+    htree_traverse_post_order_mut(ht, &mut htree_sync_node_to_storage, Some(fd))
+        .inspect_err(|e| error!("htree_traverse_post_order_mut error! {:X?}", e))?;
 
     update_root(ht)?;
 
@@ -1606,7 +1625,7 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
     })();
 
     if result.is_err() {
-        error!("tee_fs_htree_read_block error! {:?}", result);
+        error!("tee_fs_htree_read_block error! {:X?}", result);
         // tee_fs_htree_close(ht)?;
     }
 

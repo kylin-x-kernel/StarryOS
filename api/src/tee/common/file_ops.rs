@@ -209,6 +209,7 @@ impl FileVariant {
     /// # Returns
     /// * `TeeResult` - the result of the operation
     pub fn remove(path: &str) -> TeeResult {
+        tee_debug!("FileVariant::remove file with path: {}", path);
         with_fs(AT_FDCWD, |fs| fs.remove_file(path))
             .inspect_err(|e| error!("remove file failed: {:?}", e))
             .map_err(|_| TEE_ERROR_GENERIC)?;
@@ -241,6 +242,12 @@ impl TeeFileLike for FileVariant {
     }
 
     fn pread(&mut self, buf: &mut [u8], offset: usize) -> TeeResult<usize> {
+        tee_debug!(
+            "FileVariant::pread = fd: {}, offset: {:X?}, buf_len: {}",
+            self.fd,
+            offset,
+            buf.len(),
+        );
         with_file(self, |file| {
             file.read_at(&mut SealedBufMut::from(buf), offset as _)
                 .inspect_err(|e| error!("read_at from file failed: {:?}", e))
