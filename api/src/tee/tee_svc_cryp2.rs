@@ -273,7 +273,10 @@ pub(crate) fn sys_tee_scn_hash_update(
 
     with_tee_session_ctx(|ctx| {
         vm_check_access_rights(
-            &ctx.uctx,
+            // uctx,
+            unsafe {
+                &*(ctx as *const _ as usize as *const user_mode_ctx)
+            },
             TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
             chunk,
             chunk_size,

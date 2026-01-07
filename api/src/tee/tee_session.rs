@@ -22,9 +22,9 @@ use tee_raw_sys::*;
 use super::{TeeResult, tee_obj::tee_obj, tee_svc_cryp2::TeeCrypState};
 use crate::tee::{
     tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx, uuid::Uuid,
-    user_mode_ctx_struct::{
-        user_mode_ctx
-    },
+    // user_mode_ctx_struct::{
+    //     user_mode_ctx
+    // },
 };
 
 scope_local::scope_local! {
@@ -55,7 +55,7 @@ pub struct tee_session_ctx {
     pub cancel_time: TeeTime,
     // pub cryp_state: Option<&'static mut Vec<TeeCrypState>>,
     pub cryp_state: Option<Vec<TeeCrypState>>,
-    pub uctx: user_mode_ctx,
+    // pub uctx: user_mode_ctx,
 }
 
 #[repr(C)]
@@ -101,7 +101,7 @@ impl Default for tee_session_ctx {
                 millis: 0,
             },
             cryp_state: None,
-            uctx: user_mode_ctx::default(),
+            // uctx: user_mode_ctx::default(),
         }
     }
 }
