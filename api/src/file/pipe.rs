@@ -1,3 +1,4 @@
+// compile_error!("pipe.rs is not supported on no_std targets");
 use alloc::{borrow::Cow, format, sync::Arc};
 use core::{
     mem,
@@ -70,6 +71,9 @@ impl Clone for Pipe {
             if self.read_side {
                 data.reader_cnt += 1;
             } else {
+                if data.writer_cnt == 0 {
+                    data.eof = false;
+                }
                 data.writer_cnt += 1;
             }
         }
@@ -160,8 +164,12 @@ impl FileLike for Pipe {
             return Ok(0);
         }
 
-        if self.shared.data.lock().eof {
-            return Ok(0);
+        // Check if EOF and buffer is empty before blocking
+        {
+            let data = self.shared.data.lock();
+            if data.eof && self.shared.buffer.lock().is_empty() {
+                return Ok(0);
+            }
         }
 
         block_on(poll_io(self, IoEvents::IN, self.nonblocking(), || {
@@ -183,7 +191,8 @@ impl FileLike for Pipe {
             if read > 0 {
                 self.shared.poll_tx.wake();
                 Ok(read)
-            } else if self.closed() {
+            } else if self.shared.data.lock().eof || self.closed() {
+                // EOF: writer closed and buffer is empty
                 Ok(0)
             } else {
                 Err(AxError::WouldBlock)
