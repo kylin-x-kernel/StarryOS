@@ -22,6 +22,7 @@ use super::{
     tee_ree_fs::{REE_FS_OPS, TeeFileOperations, tee_file_handle},
 };
 
+static POBJS_MUTEX: Mutex<()> = Mutex::new(());
 static POBJS_USAGE_MUTEX: Mutex<()> = Mutex::new(());
 // static POBJS: LazyInit<Arc<Mutex<VecDeque<tee_pobj>>>> = LazyInit::new();
 lazy_static! {
@@ -277,6 +278,35 @@ pub fn tee_pobj_get(
     let pobj = Arc::new(RwLock::new(obj));
     pobjs.push_back(pobj.clone());
     return Ok(pobj);
+}
+
+pub fn tee_pobj_create_final(po: &mut tee_pobj) {
+    let _guard = POBJS_MUTEX.lock();
+    po.temporary = false;
+    po.creating = false;
+}
+
+/// Release a tee_pobj
+///
+/// if no reference to the tee_pobj, the tee_pobj will be removed from the collection POBJS.
+///
+/// # Arguments
+/// * `obj` - The tee_pobj
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_pobj_release(obj: Arc<RwLock<tee_pobj>>) -> TeeResult {
+    let _guard = POBJS_MUTEX.lock();
+    let mut obj_guard = obj.write();
+    obj_guard.refcnt -= 1;
+    if obj_guard.refcnt == 0 {
+        // remove the pobj from the collection POBJS
+        // use Arc::ptr_eq to compare the pointer address, find the corresponding Arc
+        let mut pobjs = POBJS.inner.lock();
+        pobjs.retain(|pobj_arc| !Arc::ptr_eq(pobj_arc, &obj));
+        // Arc will be released automatically when it leaves the scope (if the reference count is 0)
+        // Box will also be released, no need to manually call free
+    }
+    Ok(())
 }
 
 #[cfg(feature = "tee_test")]
