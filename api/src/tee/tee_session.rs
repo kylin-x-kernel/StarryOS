@@ -4,7 +4,12 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 use core::{any::Any, default::Default};
 
 use axtask::current;
@@ -184,6 +189,14 @@ where
 {
     let ta_ctx = TEE_TA_CTX.read();
     f(&*ta_ctx)
+}
+
+#[cfg(feature = "tee_test")]
+pub fn tee_session_set_current_uuid(raw_uuid: &TEE_UUID) -> TeeResult {
+    with_tee_ta_ctx_mut(|ta_ctx| {
+        ta_ctx.uuid = Uuid::from(*raw_uuid).to_string();
+        Ok(())
+    })
 }
 
 #[cfg(feature = "tee_test")]
