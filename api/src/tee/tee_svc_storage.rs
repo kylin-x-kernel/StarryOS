@@ -606,6 +606,7 @@ pub fn syscall_storage_obj_create(
         tee_pobj_usage::TEE_POBJ_USAGE_CREATE,
         fops,
     )?;
+    tee_debug!("syscall_storage_obj_create: tee_pobj_get po: {:?}", po);
 
     let data_slice = unsafe { core::slice::from_raw_parts(data as *const u8, len) };
 
@@ -661,6 +662,7 @@ pub fn syscall_storage_obj_create(
             // C: if (res == TEE_ERROR_CORRUPT_OBJECT && po) fops->remove(po);
             if error == TEE_ERROR_CORRUPT_OBJECT {
                 if let Some(ref po_ref) = po {
+                    tee_debug!("CreateInnerResult::ErrBeforeAdd: fops.remove");
                     (fops.remove)(&mut po_ref.write());
                 }
             }
@@ -910,7 +912,31 @@ pub mod tests_tee_svc_storage {
 
     test_fn! {
         using TestResult;
-        fn test_syscall_storage_obj_open() {
+        fn test_syscall_storage_obj_create_type_data() {
+            let storage_id = TEE_STORAGE_PRIVATE as c_ulong;
+            let object_id = "test_object_create";
+            let object_id_len = object_id.len();
+            let flags = TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_ACCESS_WRITE | TEE_DATA_FLAG_OVERWRITE;
+            // TEE_TYPE_DATA has no attributes
+            let attr = TEE_HANDLE_NULL;
+            let data = b"test_data";
+            let len = data.len();
+            let mut obj = 0 as c_uint;
+            let result = syscall_storage_obj_create(storage_id,
+                object_id.as_ptr() as *mut c_void, object_id_len,
+                flags as c_ulong,
+                attr as c_ulong,
+                data.as_ptr() as *mut c_void,
+                len,
+                &mut obj as *mut c_uint);
+            info!("result: {:X?}", result);
+            assert!(result.is_ok());
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_syscall_storage_init() {
             // set current session uuid to all zeros
             tee_session_set_current_uuid(&TEE_UUID {
                 timeLow: 0,
@@ -921,7 +947,12 @@ pub mod tests_tee_svc_storage {
 
             let res = tee_fs_init_key_manager();
             assert!(res.is_ok());
+        }
+    }
 
+    test_fn! {
+        using TestResult;
+        fn test_syscall_storage_obj_open() {
             let storage_id = TEE_STORAGE_PRIVATE as c_ulong;
             let object_id = "test_object";
             let object_id_len = object_id.len();
@@ -947,6 +978,8 @@ pub mod tests_tee_svc_storage {
         test_tee_b2hs_null_termination,
         test_tee_b2hs_short_output_buffer,
         //------------------------
-        test_syscall_storage_obj_open,
+        test_syscall_storage_init,
+        // test_syscall_storage_obj_open,
+        test_syscall_storage_obj_create_type_data,
     }
 }

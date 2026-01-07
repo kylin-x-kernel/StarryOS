@@ -235,6 +235,14 @@ pub fn tee_fs_rpc_write_final(
     data: &[u8],
 ) -> TeeResult<usize> {
     let (offs, _size) = get_offs_size(typ, idx, vers)?;
+    tee_debug!(
+        "tee_fs_rpc_write_final: fd: {:?}, typ: {:?}, idx: {:?}, vers: {:?}, offs: {:?}",
+        fd,
+        typ,
+        idx,
+        vers,
+        offs
+    );
     let size = fd.pwrite(data, offs)?;
     Ok(size)
 }
@@ -338,6 +346,14 @@ pub fn ree_fs_open_primitive(
     hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
     dfh: Option<&TeeFsDirfileFileh>,
 ) -> TeeResult<Box<TeeFsFd>> {
+    tee_debug!(
+        "ree_fs_open_primitive: uuid: {:?}, create: {:?}, hash: {:?}, dfh: {:?}",
+        uuid,
+        create,
+        hash,
+        dfh
+    );
+
     let mut fdp = Box::new(TeeFsFd::default());
     if let Some(uuid_val) = uuid {
         fdp.uuid = *uuid_val;
@@ -350,6 +366,7 @@ pub fn ree_fs_open_primitive(
     };
 
     tee_debug!("ree_fs_open_primitive: fd: {:?}", fd);
+
     let fd = match fd {
         Ok(fd) => fd,
         Err(e) => return Err(e),
@@ -360,6 +377,7 @@ pub fn ree_fs_open_primitive(
     let fs_tree = match tee_fs_htree_open(&mut fdp.fd, create, hash, uuid) {
         Ok(fs_tree) => fs_tree,
         Err(e) => {
+            error!("ree_fs_open_primitive: open htree error: {:X?}", e);
             tee_fs_rpc_close(&fdp.fd)?;
             tee_fs_rpc_remove_dfh(dfh)?;
             // drop(fdp);  no need
@@ -470,11 +488,12 @@ pub fn ree_fs_read_primitive(
     len: &mut usize,
 ) -> TeeResult {
     tee_debug!(
-        "ree_fs_read_primitive: fh: {:?}, pos: {:?}, buf_core: {:?}, buf_user: {:?}, len: {:?}",
-        fh,
+        "ree_fs_read_primitive: fh.fd: {:?}, pos: {:?}, buf_core_len: {:?}, buf_user_len: {:?}, \
+         len: {:?}",
+        fh.fd,
         pos,
-        buf_core,
-        buf_user,
+        buf_core.len(),
+        buf_user.len(),
         len
     );
     let mut remain_bytes = *len;
@@ -682,7 +701,7 @@ impl TeeFsDirfileOperations for ReeDirfOps {
 
     fn read(&self, fh: &mut TeeFsFd, pos: usize, buf: &mut [u8], len: &mut usize) -> TeeResult {
         ree_fs_read_primitive(fh, pos, buf, &mut [], len).inspect_err(|e| {
-            error!("ReeDirfOps::read: error: {:?}", e);
+            error!("ReeDirfOps::read: error: {:X?}", e);
         })
     }
 
@@ -797,15 +816,26 @@ fn set_name(
     po: &tee_pobj,
     overwrite: bool,
 ) -> TeeResult {
+    tee_debug!(
+        "set_name: dirh: {:?}, fdp: {:?}, po: {:?}, overwrite: {}",
+        dirh,
+        fdp,
+        po,
+        overwrite
+    );
     let mut have_old_dfh = false;
 
     let old_dfh = tee_fs_dirfile_find(dirh, &po.uuid, &po.obj_id);
 
-    if !overwrite && old_dfh.is_err() {
+    tee_debug!("set_name: old_dfh: {:X?}", old_dfh);
+
+    // find old dfh, if not overwrite, return error
+    if !overwrite && old_dfh.is_ok() {
         return Err(TEE_ERROR_ACCESS_CONFLICT);
     }
 
-    if old_dfh.is_err() {
+    // if old dfh is found, set have_old_dfh to true
+    if old_dfh.is_ok() {
         have_old_dfh = true;
     }
 
@@ -823,6 +853,7 @@ fn set_name(
     commit_dirh_writes(dirh)?;
 
     if have_old_dfh {
+        tee_debug!("set_name: remove old_dfh: {:?}", old_dfh);
         tee_fs_rpc_remove_dfh(Some(&old_dfh))?;
     }
 
@@ -879,13 +910,17 @@ fn ree_fs_create(
             ree_fs_write_primitive(fdp_val, pos, data_core, data_user, data_size)?;
         }
 
+        tee_debug!("ree_fs_create: sync to storage");
         tee_fs_htree_sync_to_storage(
             &mut fdp_val.ht,
             &mut fdp_val.fd,
             Some(&mut fdp_val.dfh.hash),
         )?;
 
-        set_name(dirh, fdp_val, po, overwrite)?;
+        tee_debug!("ree_fs_create: set name");
+        set_name(dirh, fdp_val, po, overwrite).inspect_err(|e| {
+            error!("ree_fs_create: set name failed: {:X?}", e);
+        })?;
 
         // 成功时取出 fdp，使用 take() 避免移动后无法在 map_err 中使用
         Ok(fdp.take().ok_or(TEE_ERROR_GENERIC)?)
@@ -1019,6 +1054,8 @@ pub fn ree_fs_rename(old: &mut tee_pobj, new: &tee_pobj, overwrite: bool) -> Tee
 }
 
 pub fn ree_fs_remove(po: &tee_pobj) -> TeeResult {
+    tee_debug!("ree_fs_remove: po: {:?}", po);
+
     let _guard = REE_FS_MUTEX.lock();
     let dirh_ptr = get_dirh()?;
     let dirh = unsafe {

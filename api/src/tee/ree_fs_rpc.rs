@@ -97,6 +97,7 @@ pub fn tee_fs_rpc_close(_fd: &FileVariant) -> TeeResult {
 pub fn tee_fs_rpc_remove_dfh(dfh: Option<&TeeFsDirfileFileh>) -> TeeResult {
     let f_name = create_filename_from_dfh(dfh)?;
 
+    tee_debug!("tee_fs_rpc_remove_dfh: f_name: {}", f_name);
     // Remove the file
     FileVariant::remove(&f_name).map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
 
