@@ -70,13 +70,22 @@ use super::{
     //     TsSession,
     //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
     // }
+    user_access:: {
+        enter_user_access,
+        exit_user_access,
+    },
 };
 use crate::{
     mm::vm_load_string,
     tee,
     tee::{
         libmbedtls::bignum::BigNum,
-        tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+        tee_session::{
+            with_tee_session_ctx, with_tee_session_ctx_mut
+        },
+        memtag::{
+            memtag_strip_tag_const
+        },
     },
 };
 
