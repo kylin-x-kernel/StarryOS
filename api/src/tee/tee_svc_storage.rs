@@ -4,13 +4,15 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::{
     ffi::{c_uint, c_ulong, c_void},
     mem::{size_of, size_of_val},
+    ptr,
 };
 
 use bytemuck::{Pod, Zeroable, bytes_of, bytes_of_mut};
+use spin::RwLock;
 use tee_raw_sys::*;
 
 use super::{
@@ -18,10 +20,15 @@ use super::{
     tee_fs_key_manager::tee_fs_init_key_manager,
     tee_misc::{tee_b2hs, tee_b2hs_hsbuf_size},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
-    tee_pobj::{tee_pobj_get, tee_pobj_usage, with_pobj_usage_lock},
-    tee_ree_fs::tee_svc_storage_file_ops,
-    tee_session::with_tee_ta_ctx,
-    tee_svc_cryp::{tee_obj_attr_from_binary, tee_obj_set_type},
+    tee_pobj::{
+        tee_pobj, tee_pobj_create_final, tee_pobj_get, tee_pobj_release, tee_pobj_usage,
+        with_pobj_usage_lock,
+    },
+    tee_ree_fs::{TeeFileOperations, tee_svc_storage_file_ops},
+    tee_session::{tee_session_set_current_uuid, with_tee_ta_ctx},
+    tee_svc_cryp::{
+        tee_obj_attr_copy_from, tee_obj_attr_from_binary, tee_obj_attr_to_binary, tee_obj_set_type,
+    },
     user_access::{bb_memdup_user_private, copy_to_user_struct},
     uuid::Uuid,
 };
@@ -102,7 +109,7 @@ pub fn tee_svc_storage_create_filename_dfh(
 
 fn remove_corrupt_obj(o: &mut tee_obj) -> TeeResult {
     // remove the corrupt object from the session
-    let pobj = Arc::get_mut(&mut o.pobj).ok_or(TEE_ERROR_BAD_STATE)?;
+    let pobj = o.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
 
     let fops = pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
     (fops.remove)(&mut pobj.write());
@@ -116,7 +123,7 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
 
     // 先获取 fops，然后立即释放读锁，避免与后续的写锁冲突
     let fops = {
-        let guard = o.pobj.read();
+        let guard = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.read();
         guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
     }; // guard 在这里被释放，读锁被释放
 
@@ -125,7 +132,7 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
     {
         tee_debug!("try to get write lock");
         // 现在可以安全地获取写锁，因为读锁已经释放
-        let mut pobj_guard = o.pobj.write();
+        let mut pobj_guard = o.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?.write();
         tee_debug!("get write lock");
         // open the file, store the file handle in tee_obj.fh
         o.fh = (fops.open)(&mut *pobj_guard, Some(&mut size)).inspect_err(|e| {
@@ -196,7 +203,11 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
     o.info.dataSize = size - size_of_val(&head) - head.attr_size as usize;
     o.info.objectSize = head.objectSize as u32;
     // 需要再次获取写锁来修改 obj_info_usage
-    o.pobj.write().obj_info_usage = head.objectUsage as u32;
+    o.pobj
+        .as_ref()
+        .ok_or(TEE_ERROR_BAD_STATE)?
+        .write()
+        .obj_info_usage = head.objectUsage as u32;
     o.info.objectType = head.objectType as u32;
     o.have_attrs = head.have_attrs as u32;
 
@@ -244,9 +255,9 @@ pub fn syscall_storage_obj_open(
         unsafe { core::slice::from_raw_parts(object_id as *const u8, object_id_len as usize) };
     let oid_bbuf = bb_memdup_user_private(object_id_slice)?;
 
-    // let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
-    // let uuid = Uuid::parse_str(&uuid)?;
-    let uuid = Uuid::new_raw(0, 0, 0, [0; 8]);
+    let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
+    let uuid = Uuid::parse_str(&uuid)?;
+    // let uuid = Uuid::new_raw(0, 0, 0, [0; 8]);
 
     tee_debug!("syscall_storage_obj_open: step 1 : tee_pobj_get");
     let po = tee_pobj_get(
@@ -263,7 +274,7 @@ pub fn syscall_storage_obj_open(
     tee_debug!("syscall_storage_obj_open: step 2 : tee_obj_add");
     // set handleFlags
     o.info.handleFlags = TEE_HANDLE_FLAG_PERSISTENT | TEE_HANDLE_FLAG_INITIALIZED | flags as u32;
-    o.pobj = po.clone();
+    o.pobj = Some(po.clone());
     let tee_obj_id: u32 = tee_obj_add(o)? as u32;
 
     let mut o_arc = tee_obj_get(tee_obj_id as tee_obj_id_type)?;
@@ -290,13 +301,430 @@ pub fn syscall_storage_obj_open(
     match obj_open {
         Err(err) => {
             if err != TEE_ERROR_CORRUPT_OBJECT {
-                tee_obj_close(&mut o_arc.lock());
+                tee_obj_close(tee_obj_id)?;
             }
         }
         _ => {}
     }
 
     Ok(())
+}
+
+fn tee_svc_storage_init_file(
+    o: &mut tee_obj,
+    overwrite: bool,
+    attr_o: Option<&mut tee_obj>,
+    src_is_dst: bool,
+    data: &[u8],
+) -> TeeResult {
+    let fops = {
+        let guard = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.read();
+        guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+    };
+
+    let mut attr_size = 0;
+    let mut attr: Box<[u8]> = Vec::<u8>::new().into_boxed_slice();
+    if let Some(attr_o) = attr_o {
+        if !src_is_dst {
+            tee_obj_set_type(o, attr_o.info.objectType, attr_o.info.maxObjectSize as _)?;
+
+            tee_obj_attr_copy_from(o, attr_o)?;
+            o.have_attrs = attr_o.have_attrs;
+            o.pobj
+                .as_ref()
+                .ok_or(TEE_ERROR_BAD_STATE)?
+                .write()
+                .obj_info_usage = attr_o.info.objectUsage;
+            o.info.objectSize = attr_o.info.objectSize;
+        }
+        tee_obj_attr_to_binary(o, &mut [], &mut attr_size)?;
+        if attr_size > 0 {
+            attr = Vec::<u8>::with_capacity(attr_size).into_boxed_slice();
+            tee_obj_attr_to_binary(o, &mut attr, &mut attr_size)?;
+        }
+    } else {
+        tee_obj_set_type(o, TEE_TYPE_DATA, 0)?;
+    }
+
+    o.ds_pos = size_of::<tee_svc_storage_head>() + attr_size;
+
+    // write head
+    let mut head = tee_svc_storage_head::default();
+    head.attr_size = attr_size as u32;
+    head.objectSize = o.info.objectSize;
+    head.maxObjectSize = o.info.maxObjectSize;
+    head.objectType = o.info.objectType;
+    head.have_attrs = o.have_attrs;
+    let mut pobj_guard = o.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?.write();
+    head.objectUsage = pobj_guard.obj_info_usage;
+    o.fh = (fops.create)(
+        &mut pobj_guard,
+        overwrite,
+        bytemuck::bytes_of(&head),
+        &attr,
+        &[],
+        data,
+        data.len(),
+    )
+    .inspect_err(|e| {
+        o.ds_pos = 0;
+        error!("create failed: {:X?}", e);
+    })?;
+    o.info.dataSize = data.len();
+
+    Ok(())
+}
+
+/// inner result for syscall_storage_obj_create_inner
+enum CreateInnerResult {
+    /// 成功：转换已有对象为持久化对象（第一分支）
+    ConvertedExisting,
+    /// 成功：创建了新的持久化对象，返回 object id
+    CreatedNew(u32),
+    /// 失败：在 tee_obj_add 之前失败，需要清理 o.fh 和 po
+    ErrBeforeAdd {
+        error: u32,
+        po: Option<Arc<RwLock<tee_pobj>>>,
+        o: Option<tee_obj>,
+    },
+    /// 失败：在 tee_obj_add 之后失败（oclose 路径），需要调用 tee_obj_close
+    ErrAfterAdd { error: u32, o_id: u32 },
+}
+
+/// inner context for syscall_storage_obj_create_inner
+struct CreateInnerCtx<'a> {
+    fops: &'a TeeFileOperations,
+    po: Option<Arc<RwLock<tee_pobj>>>,
+}
+
+/// inner function: execute the core logic, return the result or the resources to clean up
+///
+/// # Arguments
+/// * `ctx` - the inner context
+/// * `flags` - the flags
+/// * `attr` - the attribute
+/// * `data` - the data
+/// * `obj_is_null` - whether the object is null
+/// # Returns
+/// * `CreateInnerResult` - the result of the operation
+fn syscall_storage_obj_create_inner(
+    ctx: &mut CreateInnerCtx,
+    flags: c_ulong,
+    attr: c_ulong,
+    data: &[u8],
+    obj_is_null: bool,
+) -> CreateInnerResult {
+    // === 获取 attr_o ===
+    let attr_o = if attr != TEE_HANDLE_NULL as _ {
+        match tee_obj_get(attr as _) {
+            Ok(o) => {
+                let guard = o.lock();
+                if guard.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
+                    return CreateInnerResult::ErrBeforeAdd {
+                        error: TEE_ERROR_BAD_PARAMETERS,
+                        po: ctx.po.take(),
+                        o: None,
+                    };
+                }
+                drop(guard);
+                Some(o)
+            }
+            Err(e) => {
+                return CreateInnerResult::ErrBeforeAdd {
+                    error: e,
+                    po: ctx.po.take(),
+                    o: None,
+                };
+            }
+        }
+    } else {
+        None
+    };
+
+    // === C: if (!obj && attr_o && !PERSISTENT) - 转换已有对象 ===
+    if obj_is_null
+        && attr_o.is_some()
+        && (attr_o.as_ref().unwrap().lock().info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT == 0)
+    {
+        // convert temporary object to persistent object
+        // 1. obj == null means caller does not need to return a new handle(cause handle exists)
+        // 2. attr_o != null means attributes object is provided(attr != TEE_HANDLE_NULL)
+        // 3. TEE_HANDLE_FLAG_PERSISTENT == 0 means attributes object is not a persistent object(is a temporary object)
+
+        let attr_o = attr_o.unwrap();
+        let mut a = attr_o.lock();
+
+        let saved_flags = a.info.handleFlags;
+        a.info.handleFlags =
+            TEE_HANDLE_FLAG_PERSISTENT | TEE_HANDLE_FLAG_INITIALIZED | flags as u32;
+
+        // 转移 po 所有权给 attr_o
+        let po_for_attr = ctx.po.take().unwrap();
+
+        po_for_attr.write().obj_info_usage = a.info.objectUsage;
+        a.pobj = Some(po_for_attr);
+
+        if let Err(e) = tee_svc_storage_init_file(
+            &mut a,
+            (flags & TEE_DATA_FLAG_OVERWRITE as u64) != 0,
+            Some(&mut tee_obj::default()),
+            true,
+            data,
+        ) {
+            // 恢复状态
+            let po_back = a.pobj.take();
+            a.info.handleFlags = saved_flags;
+            return CreateInnerResult::ErrBeforeAdd {
+                error: e,
+                po: po_back,
+                o: None,
+            };
+        }
+
+        a.info.objectUsage = 0;
+        return CreateInnerResult::ConvertedExisting;
+    }
+
+    // === 创建新 persistent object ===
+    let mut o = tee_obj::default();
+    o.info.handleFlags = TEE_HANDLE_FLAG_PERSISTENT | TEE_HANDLE_FLAG_INITIALIZED | flags as u32;
+
+    // 转移 po 所有权给 o
+    let po_for_o = ctx.po.take().unwrap();
+    o.pobj = Some(po_for_o.clone());
+
+    // C: tee_svc_storage_init_file
+    let init_result = if let Some(attr_o) = attr_o {
+        let mut a = attr_o.lock();
+        tee_svc_storage_init_file(
+            &mut o,
+            (flags & TEE_DATA_FLAG_OVERWRITE as u64) != 0,
+            Some(&mut a),
+            false,
+            data,
+        )
+    } else {
+        tee_svc_storage_init_file(
+            &mut o,
+            (flags & TEE_DATA_FLAG_OVERWRITE as u64) != 0,
+            None,
+            false,
+            data,
+        )
+    };
+
+    if let Err(e) = init_result {
+        // 失败时，po 所有权在 o.pobj 中，需要取出来返回
+        let po_back = o.pobj.take();
+        return CreateInnerResult::ErrBeforeAdd {
+            error: e,
+            po: po_back,
+            o: Some(o),
+        };
+    }
+
+    o.info.objectUsage = 0;
+
+    // C: tee_obj_add(utc, o);
+    let o_id = match tee_obj_add(o) {
+        Ok(id) => id as u32,
+        Err(e) => {
+            // tee_obj_add 失败比较特殊，o 的所有权已经被 move 进去了
+            // 这种情况下 o 不会被添加到表中，但我们也无法拿回来
+            // 实际上 tee_obj_add 不太可能失败（只是 slab insert）
+            return CreateInnerResult::ErrBeforeAdd {
+                error: e,
+                po: Some(po_for_o),
+                o: None, // o 已经被 move 了
+            };
+        }
+    };
+
+    // 成功添加到全局表，返回 o_id
+    CreateInnerResult::CreatedNew(o_id)
+}
+
+/// create a new persistent object
+///
+/// # Arguments
+/// * `storage_id` - the storage id
+/// * `object_id` - the object id
+/// * `object_id_len` - the length of the object id
+/// * `flags` - the flags
+/// * `attr` - the attribute
+/// * `data` - the data
+/// * `len` - the length of the data
+/// * `obj` - the object
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_obj_create(
+    storage_id: c_ulong,
+    object_id: *mut c_void,
+    object_id_len: usize,
+    flags: c_ulong,
+    attr: c_ulong,
+    data: *mut c_void,
+    len: usize,
+    obj: *mut c_uint,
+) -> TeeResult {
+    const VALID_FLAGS: c_ulong = (TEE_DATA_FLAG_ACCESS_READ
+        | TEE_DATA_FLAG_ACCESS_WRITE
+        | TEE_DATA_FLAG_ACCESS_WRITE_META
+        | TEE_DATA_FLAG_SHARE_READ
+        | TEE_DATA_FLAG_SHARE_WRITE
+        | TEE_DATA_FLAG_OVERWRITE) as _;
+
+    // === 参数校验（这些错误不需要资源清理）===
+    if flags & !VALID_FLAGS != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    let fops = tee_svc_storage_file_ops(storage_id as _).map_err(|_| TEE_ERROR_ITEM_NOT_FOUND)?;
+
+    if object_id_len > TEE_OBJECT_ID_MAX_LEN as usize {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    // Check presence of optional buffer
+    if len != 0 && data.is_null() {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    let object_id_slice =
+        unsafe { core::slice::from_raw_parts(object_id as *const u8, object_id_len) };
+    let oid_bbuf = bb_memdup_user_private(object_id_slice)?;
+
+    let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
+    let uuid = Uuid::parse_str(&uuid)?;
+
+    // === tee_pobj_get - need resource cleanup from here ===
+    let po = tee_pobj_get(
+        uuid.as_raw_ref(),
+        &oid_bbuf,
+        object_id_len as u32,
+        flags as u32,
+        tee_pobj_usage::TEE_POBJ_USAGE_CREATE,
+        fops,
+    )?;
+
+    let data_slice = unsafe { core::slice::from_raw_parts(data as *const u8, len) };
+
+    // === call inner function ===
+    let mut inner_ctx = CreateInnerCtx {
+        fops,
+        po: Some(po.clone()),
+    };
+
+    let result =
+        syscall_storage_obj_create_inner(&mut inner_ctx, flags, attr, data_slice, obj.is_null());
+
+    // === 根据结果处理 ===
+    match result {
+        CreateInnerResult::ConvertedExisting => {
+            // 第一分支成功，po 所有权已转移给 attr_o
+            Ok(())
+        }
+
+        CreateInnerResult::CreatedNew(o_id) => {
+            // 第二分支成功，继续处理
+            if !obj.is_null() {
+                // C: copy_kaddr_to_uref(obj, o); if (res) goto oclose;
+                if let Err(e) = unsafe { copy_to_user_struct(&mut *obj, &o_id) } {
+                    // oclose 路径：C 逻辑中 oclose 不进行错误码转换
+                    let _ = tee_obj_close(o_id);
+                    return Err(e);
+                }
+            }
+
+            // C: tee_pobj_create_final(o->pobj);
+            tee_pobj_create_final(&mut po.write());
+
+            // C: if (!obj) tee_obj_close(utc, o);
+            if obj.is_null() {
+                tee_obj_close(o_id)?;
+            }
+
+            Ok(())
+        }
+
+        CreateInnerResult::ErrBeforeAdd { error, po, o } => {
+            // err: 路径
+            let error = convert_error(error);
+
+            // C: if (o) { fops->close(&o->fh); tee_obj_free(o); }
+            if let Some(mut o) = o {
+                let mut fh = Some(core::mem::take(&mut o.fh));
+                (fops.close)(&mut fh);
+                // o 会在这里 drop
+            }
+
+            // C: if (res == TEE_ERROR_CORRUPT_OBJECT && po) fops->remove(po);
+            if error == TEE_ERROR_CORRUPT_OBJECT {
+                if let Some(ref po_ref) = po {
+                    (fops.remove)(&mut po_ref.write());
+                }
+            }
+
+            // C: if (po) tee_pobj_release(po);
+            if let Some(po) = po {
+                let _ = tee_pobj_release(po);
+            }
+
+            Err(error)
+        }
+
+        CreateInnerResult::ErrAfterAdd { error, o_id } => {
+            // oclose: 路径
+            let _ = tee_obj_close(o_id);
+            Err(convert_error(error))
+        }
+    }
+}
+
+/// 错误码转换：对应 C 的 err: 标签开头的转换逻辑
+fn convert_error(mut e: u32) -> u32 {
+    // C: if (res == TEE_ERROR_NO_DATA || res == TEE_ERROR_BAD_FORMAT)
+    //     res = TEE_ERROR_CORRUPT_OBJECT;
+    if e == TEE_ERROR_NO_DATA || e == TEE_ERROR_BAD_FORMAT {
+        e = TEE_ERROR_CORRUPT_OBJECT;
+    }
+    e
+}
+
+/// delete a persistent object
+///
+/// # Arguments
+/// * `obj_id` - the object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_obj_del(obj_id: c_ulong) -> TeeResult {
+    let o = tee_obj_get(obj_id)?;
+    let o_guard = o.lock();
+
+    if (o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE_META == 0) {
+        return Err(TEE_ERROR_ACCESS_CONFLICT);
+    }
+
+    // 检查 pobj 是否存在且 obj_id 不为空
+    let pobj_arc = o_guard.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?;
+    {
+        let pobj_guard = pobj_arc.read();
+        if pobj_guard.obj_id.is_empty() {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+    }
+
+    let fops = {
+        let pobj_guard = pobj_arc.read();
+        pobj_guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+    };
+
+    let mut pobj_guard = pobj_arc.write();
+    let res = (fops.remove)(&mut pobj_guard);
+
+    let _ = tee_obj_close(obj_id as u32);
+
+    res
 }
 
 #[cfg(feature = "tee_test")]
@@ -483,6 +911,14 @@ pub mod tests_tee_svc_storage {
     test_fn! {
         using TestResult;
         fn test_syscall_storage_obj_open() {
+            // set current session uuid to all zeros
+            tee_session_set_current_uuid(&TEE_UUID {
+                timeLow: 0,
+                timeMid: 0,
+                timeHiAndVersion: 0,
+                clockSeqAndNode: [0; 8],
+            });
+
             let res = tee_fs_init_key_manager();
             assert!(res.is_ok());
 

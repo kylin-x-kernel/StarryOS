@@ -23,7 +23,7 @@ use tee_raw_sys::{libc_compat::size_t, *};
 use super::{
     TeeResult,
     libmbedtls::bignum::BigNum,
-    tee_pobj::tee_pobj,
+    tee_pobj::{tee_pobj, tee_pobj_release},
     tee_ree_fs::tee_file_handle,
     tee_session::{tee_session_ctx, with_tee_session_ctx, with_tee_session_ctx_mut},
     tee_svc_cryp::{TeeCryptObj, TeeCryptObjAttr},
@@ -47,7 +47,7 @@ pub struct tee_obj {
     // void *attr;
     pub attr: Vec<TeeCryptObj>,
     pub ds_pos: size_t,
-    pub pobj: Arc<RwLock<tee_pobj>>,
+    pub pobj: Option<Arc<RwLock<tee_pobj>>>,
     /// file handle for the pobject
     pub fh: Box<tee_file_handle>,
 }
@@ -69,7 +69,7 @@ impl default::Default for tee_obj {
             have_attrs: 0,
             attr: Vec::new(),
             ds_pos: 0,
-            pobj: Arc::new(RwLock::new(tee_pobj::default())),
+            pobj: None,
             fh: Box::new(tee_file_handle::default()),
         }
     }
@@ -100,24 +100,51 @@ pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<Mutex<tee_obj>>> {
     })
 }
 
-pub fn tee_obj_delete(obj: &mut tee_obj) {
+/// delete the tee_obj from the session objects table
+///
+/// # Arguments
+/// * `obj_id` - the id of the tee_obj
+pub fn tee_obj_delete(obj_id: u32) -> TeeResult<Arc<Mutex<tee_obj>>> {
     // remove from session objects
-    with_tee_session_ctx_mut(|ctx| {
-        ctx.objects.remove(obj.info.objectId as _);
-        Ok(())
-    });
+    with_tee_session_ctx_mut(|ctx| -> TeeResult<Arc<Mutex<tee_obj>>> {
+        let obj = ctx
+            .objects
+            .try_remove(obj_id as _)
+            .ok_or(TEE_ERROR_ITEM_NOT_FOUND)?;
+        Ok(obj)
+    })
 }
 
-pub fn tee_obj_close(obj: &mut tee_obj) {
-    tee_obj_delete(obj);
+/// close the tee_obj
+///
+/// 1. delete the tee_obj from the session objects table
+/// 2. if the tee_obj is persistent, close the file handle and
+/// 3. release the tee_pobj
+/// 4. free the tee_obj memory
+///
+/// # Arguments
+/// * `obj_id` - the id of the tee_obj
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_obj_close(obj_id: u32) -> TeeResult {
+    let obj = tee_obj_delete(obj_id)?;
 
-    if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        // TODO: implement fops close
-        // obj.pobj.fops.close(&obj.fh);
-        // tee_pobj_release(obj.pobj);
+    let mut obj_guard = obj.lock();
+    if obj_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        // borrow checker will ensure the pobj is not used after the scope ends
+        let (fops, pobj_clone) = {
+            let pobj = obj_guard.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?;
+            let fops = pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
+            let pobj_clone = Arc::clone(pobj);
+            (fops, pobj_clone)
+        };
+
+        // now we can safely mutably borrow obj_guard.fh
+        (fops.close)(&mut Some(core::mem::take(&mut obj_guard.fh)));
+        tee_pobj_release(pobj_clone)?;
     }
 
-    // tee_obj_free(obj);
+    Ok(())
 }
 
 #[cfg(feature = "tee_test")]
