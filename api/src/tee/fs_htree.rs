@@ -1555,7 +1555,7 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
     block: &mut [u8; BLOCK_SIZE],
 ) -> TeeResult {
     info!(
-        "tee_fs_htree_read_block: ht: {:#?},  fd: {:#?}, block_num: {:#?}, block: {:#X?}",
+        "tee_fs_htree_read_block: ht: {:?},  fd: {:?}, block_num: {:?}, block: {:X?}",
         ht, fd, block_num, block
     );
     // first get the node and extract the necessary information, then release the node borrow

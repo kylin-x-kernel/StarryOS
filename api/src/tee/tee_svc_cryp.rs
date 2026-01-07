@@ -1124,7 +1124,7 @@ pub fn tee_obj_set_type(
     obj.info.objectType = obj_type;
     obj.info.maxObjectSize = max_key_size as u32;
     if obj.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        let pobj = Arc::get_mut(&mut obj.pobj).ok_or(TEE_ERROR_BAD_STATE)?;
+        let pobj = obj.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
         pobj.write().obj_info_usage = TEE_USAGE_DEFAULT;
     } else {
         obj.info.objectUsage = TEE_USAGE_DEFAULT;
@@ -1583,7 +1583,9 @@ pub fn tee_obj_attr_to_binary(
         attr.to_binary(data, &mut offs)?;
     }
 
-    if offs != data.len() {
+    *data_len = offs;
+
+    if (!data.is_empty() && offs > data.len()) {
         return Err(TEE_ERROR_SHORT_BUFFER);
     }
 
@@ -1741,8 +1743,10 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -
     o_info.obj_size = o.info.objectSize;
     o_info.max_obj_size = o.info.maxObjectSize;
     if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        with_pobj_usage_lock(o.pobj.read().flags, || {
-            o_info.obj_usage = o.pobj.read().obj_info_usage;
+        let pobj = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?;
+
+        with_pobj_usage_lock(pobj.read().flags, || {
+            o_info.obj_usage = pobj.read().obj_info_usage;
         });
     } else {
         o_info.obj_usage = o.info.objectUsage;
@@ -1775,8 +1779,9 @@ pub fn syscall_cryp_obj_get_attr(
     );
     if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
         if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-            with_pobj_usage_lock(o.pobj.read().flags, || {
-                obj_usage = o.pobj.read().obj_info_usage;
+            let pobj = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.read();
+            with_pobj_usage_lock(pobj.flags, || {
+                obj_usage = pobj.obj_info_usage;
             });
         } else {
             obj_usage = o.info.objectUsage;
@@ -2114,8 +2119,9 @@ pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeR
     dst_o.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
     dst_o.info.objectSize = src_o.info.objectSize;
     if src_o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
-        with_pobj_usage_lock(src_o.pobj.read().flags, || {
-            dst_o.info.objectUsage = src_o.pobj.read().obj_info_usage;
+        let pobj = src_o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.read();
+        with_pobj_usage_lock(pobj.flags, || {
+            dst_o.info.objectUsage = pobj.obj_info_usage;
         });
     } else {
         dst_o.info.objectUsage = src_o.info.objectUsage;
