@@ -1,4 +1,3 @@
-// compile_error!("pipe.rs is not supported on no_std targets");
 use alloc::{borrow::Cow, format, sync::Arc};
 use core::{
     mem,
