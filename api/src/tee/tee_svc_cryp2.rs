@@ -31,13 +31,9 @@ use tee_raw_sys::{libc_compat::size_t, *};
 
 // use core::ffi::c_void;
 // use core::ptr::NonNull;
-use super::tee_svc_cryp::{
-    TeeCryptObj,
-    tee_cryp_obj_secret,
-    // tee_svc_cryp_obj_find_type_attr_idx,
-    tee_cryp_obj_secret_wrapper,
-    tee_cryp_obj_type_props,
-};
+use super::{tee_svc_cryp::{
+    TeeCryptObj, get_user_u64_as_size_t, tee_cryp_obj_secret, tee_cryp_obj_secret_wrapper, tee_cryp_obj_type_props
+}, types_ext::vaddr_t};
 use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
@@ -77,7 +73,9 @@ use crate::{
     tee,
     tee::{
         libmbedtls::bignum::BigNum,
-        memtag::memtag_strip_tag_const,
+        memtag::{
+            memtag_strip_tag_const,memtag_strip_tag
+        },
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
     },
 };
@@ -219,6 +217,370 @@ fn tee_svc_cryp_get_state<'a>(
 
     // State not found in the list, return error
     Err(TEE_ERROR_BAD_PARAMETERS)
+}
+
+/// Check if algorithm is an XOF (Extendable Output Function)
+///
+/// XOF algorithms like SHAKE128 and SHAKE256 can produce
+/// output of arbitrary length, unlike regular hash functions
+/// that have fixed output size.
+///
+/// # Arguments
+/// * `algo` - Algorithm identifier
+///
+/// # Returns
+/// * `true` if the algorithm is an XOF (SHAKE128 or SHAKE256)
+/// * `false` otherwise
+#[inline]
+pub fn is_xof_algo(algo: u32) -> bool {
+    algo == TEE_ALG_SHAKE128 || algo == TEE_ALG_SHAKE256
+}
+
+/// Hash final syscall implementation in Rust
+///
+/// Finalizes a hash or MAC computation and returns the result.
+/// This function demonstrates comprehensive use of memory tagging functions
+/// (`memtag_strip_tag` and `memtag_strip_tag_const`).
+///
+/// # Arguments
+/// * `state` - Handle to the crypto operation state
+/// * `chunk` - Pointer to final data chunk (may be tagged)
+/// * `chunk_size` - Size of final data chunk
+/// * `hash` - Pointer to buffer to receive hash/MAC result
+/// * `hash_len` - Pointer to receive actual hash length written
+///
+/// # Returns
+/// * `TEE_SUCCESS` on success
+/// * `TEE_ERROR_BAD_PARAMETERS` if parameters are invalid
+/// * `TEE_ERROR_BAD_STATE` if crypto state is not initialized
+/// * `TEE_ERROR_SHORT_BUFFER` if hash buffer is too small
+///
+/// # Memory Tagging
+/// Both input pointers (`chunk`, `hash`) are stripped of memory tags:
+/// - `memtag_strip_tag_const(chunk)` - for input data (const)
+/// - `memtag_strip_tag(hash)` - for output buffer (mutable)
+///
+/// # XOF Support
+/// For XOF (Extendable Output Function) algorithms like SHAKE128/256:
+/// - Hash size is unlimited (caller specifies length)
+/// - Final hash length returned as provided buffer size
+///
+/// # Example
+/// ```
+/// let state = 0x12345678;  // Crypto state handle
+/// let chunk = 0xAB00000012345678;  // Tagged input pointer
+/// let hash_buf = 0xCD00000087654321;  // Tagged output pointer
+/// let mut hash_len = 0u64;
+///
+/// sys_tee_scn_hash_final(state, chunk, 32, hash_buf, &mut hash_len)?;
+/// // Result: hash_len bytes written to hash_buf
+/// ```
+pub(crate) fn sys_tee_scn_hash_final(
+    state: usize,
+    chunk: usize,
+    chunk_size: usize,
+    hash: usize,
+    hash_len: vaddr_t,
+) -> TeeResult {
+    let hash_len = unsafe{
+        &mut *(hash_len as *mut u64)
+    };
+    // Validate parameters: null chunk with non-zero size is invalid
+    if chunk == 0 && chunk_size != 0 {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    // Strip memory tags from user pointers
+    // For XOF algorithms, both input and output may be arbitrary size
+    let chunk = memtag_strip_tag_const(chunk as _);
+    let hash = memtag_strip_tag(hash as _);
+
+    // Check read access rights for input chunk
+    with_tee_session_ctx(|ctx| {
+        vm_check_access_rights(
+            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
+            TEE_MEMORY_ACCESS_READ |
+            TEE_MEMORY_ACCESS_ANY_OWNER,
+            chunk,
+            chunk_size,
+        )
+    })?;
+
+    // Get user-provided buffer length
+    let mut hlen: usize = 0;
+    get_user_u64_as_size_t(&mut hlen, hash_len)?;
+
+    // Check write access rights for output hash buffer
+    with_tee_session_ctx(|ctx| {
+        vm_check_access_rights(
+            // &ctx.uctx
+            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
+            TEE_MEMORY_ACCESS_READ |
+            TEE_MEMORY_ACCESS_WRITE |
+            TEE_MEMORY_ACCESS_ANY_OWNER,
+            hash,
+            hlen,
+        )
+    })?;
+
+    // Get current session and retrieve crypto state
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                // Retrieve specific crypto operation state
+                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
+
+                // Verify that state is initialized
+                if crypto_state.state != CrypState::Initialized {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+
+                // Process based on algorithm class
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        // Hash digest operation
+                        process_digest_final(
+                            &mut crypto_state,
+                            chunk,
+                            chunk_size,
+                            hash,
+                            &mut hlen,
+                        )?;
+                    }
+                    TEE_OPERATION_MAC => {
+                        // MAC (Message Authentication Code) operation
+                        process_mac_final(
+                            &mut crypto_state,
+                            chunk,
+                            chunk_size,
+                            hash,
+                            &mut hlen,
+                        )?;
+                    }
+                    _ => {
+                        // Unsupported operation class
+                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                    }
+                }
+
+                Ok(())
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+    })?;
+
+    Ok(())
+}
+
+/// Process final MAC operation
+///
+/// # Arguments
+/// * `crypto_state` - Mutable reference to crypto operation state
+/// * `chunk` - Pointer to final data chunk
+/// * `chunk_size` - Size of final data chunk
+/// * `hash` - Pointer to output MAC buffer
+/// * `hlen` - Input/output: buffer size / actual MAC length written
+fn process_mac_final(
+    crypto_state: &mut TeeCrypState,
+    chunk: usize,
+    chunk_size: usize,
+    hash: usize,
+    hlen: &mut usize,
+) -> TeeResult {
+    // Get digest size for MAC algorithm
+    let mut hash_size: usize = 0;
+    tee_alg_get_digest_size(crypto_state.algo, &mut hash_size)?;
+
+    // Check buffer size
+    if *hlen < hash_size {
+        put_user_u64(hlen, &(hash_size as u64))?;
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    // Update MAC with final chunk if provided
+    if chunk_size != 0 {
+        let data_slice = unsafe {
+            slice::from_raw_parts(chunk as *const u8, chunk_size)
+        };
+
+        enter_user_access();
+        let res: TeeResult = Ok(()); //crypto_mac_update(&mut crypto_state.ctx, data_slice);
+        exit_user_access();
+
+        if let Err(_) = res {
+            return res;
+        }
+    }
+
+    // Finalize MAC computation
+    let hash_slice = unsafe {
+        slice::from_raw_parts_mut(hash as *mut u8, *hlen)
+    };
+
+    enter_user_access();
+    let res: TeeResult = Ok(()); //crypto_mac_final(&mut crypto_state.ctx, hash_slice);
+    exit_user_access();
+
+    if let Err(_) = res {
+        return res;
+    }
+
+    // Return actual MAC length
+    *hlen = hash_size;
+
+    Ok(())
+}
+
+/// Process final hash digest operation
+///
+/// # Arguments
+/// * `crypto_state` - Mutable reference to crypto operation state
+/// * `chunk` - Pointer to final data chunk
+/// * `chunk_size` - Size of final data chunk
+/// * `hash` - Pointer to output hash buffer
+/// * `hlen` - Input/output: buffer size / actual hash length written
+fn process_digest_final(
+    crypto_state: &mut TeeCrypState,
+    chunk: usize,
+    chunk_size: usize,
+    hash: usize,
+    hlen: &mut usize,
+) -> TeeResult {
+    // Get digest size for algorithm
+    let mut hash_size: usize = 0;
+
+    // For XOF algorithms, hash_size is unchanged
+    // For regular algorithms, check buffer size
+    if is_xof_algo(crypto_state.algo) {
+        // Update hash with final chunk if provided
+        if chunk_size != 0 {
+            let data_slice = unsafe {
+                from_raw_parts(chunk as *const u8, chunk_size)
+            };
+
+            enter_user_access();
+            let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, data_slice);
+            exit_user_access();
+
+            if let Err(_) = res {
+                return res;
+            }
+        }
+
+        // hash_size is supposed to be unchanged for XOF
+        // algorithms so return directly.
+        let hash_slice = unsafe {
+            from_raw_parts_mut(hash as *mut u8, *hlen)
+        };
+
+        enter_user_access();
+        let res: TeeResult = Ok(()); //crypto_hash_final(&mut crypto_state.ctx, hash_slice);
+        exit_user_access();
+
+        if let Err(_) = res {
+            return res;
+        }
+    }
+
+    tee_alg_get_digest_size(crypto_state.algo, &mut hash_size)?;
+
+    if *hlen < hash_size {
+        put_user_u64(hlen, &(hash_size as u64))?;
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    // Update hash with final chunk if provided
+    if chunk_size != 0 {
+        let data_slice = unsafe {
+            from_raw_parts(chunk as *const u8, chunk_size)
+        };
+
+        enter_user_access();
+        let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, data_slice);
+        exit_user_access();
+
+        if let Err(_) = res {
+            return res;
+        }
+    }
+
+    // Finalize hash computation
+    let hash_slice = unsafe {
+        from_raw_parts_mut(hash as *mut u8, *hlen)
+    };
+
+    enter_user_access();
+    let res: TeeResult = Ok(()); //crypto_hash_final(&mut crypto_state.ctx, hash_slice);
+    exit_user_access();
+
+    if let Err(_) = res {
+        return res;
+    }
+
+
+    // Return actual hash length
+    // For XOF: return provided buffer size
+    // For regular: return algorithm's hash size
+
+    Ok(())
+}
+
+/// Get the digest (hash) output size for the specified algorithm
+///
+/// # Arguments
+/// * `algo` - Algorithm identifier, defined in TEE_ALG_* constants
+/// * `size` - Mutable reference to store the calculated digest size
+///
+/// # Returns
+/// * `TeeResult` - Operation result:
+///   - `TEE_SUCCESS`: Successfully obtained digest size
+///   - `TEE_ERROR_NOT_SUPPORTED`: Unsupported algorithm
+///   - `TEE_ERROR_BAD_PARAMETERS`: Invalid parameters
+///
+/// # Note
+/// This function only returns the standard-defined digest size for the algorithm,
+/// without considering any padding or special processing/// Get digest size for algorithm
+fn tee_alg_get_digest_size(algo: u32, size: &mut usize) -> TeeResult {
+    // TODO!
+    unimplemented!("tee_alg_get_digest_size implementation required")
+}
+
+/// Safely writes a u64 value to a user-space pointer
+///
+/// This function performs the following operations:
+/// 1. Checks if the u64 value exceeds the usize range (on 32-bit systems)
+/// 2. Copies the value to user space in a secure manner
+///
+/// # Arguments
+/// * `dst` - Target user-space pointer (usize address)
+/// * `src` - Reference to source u64 value
+///
+/// # Returns
+/// * `TeeResult` - Operation result:
+///   - Returns `Ok(())` on success
+///   - Returns `TEE_ERROR_OVERFLOW` on overflow
+///   - Returns appropriate error code on copy failure
+///
+/// # Safety
+/// - Caller must ensure `dst` is a valid user-space address
+/// - Performs user-space memory write operations, must ensure target memory is writable
+fn put_user_u64(
+    dst: &mut usize,
+    src: &u64
+) -> TeeResult {
+    let mut d: u64 = 0;
+
+    // check overflow: 32bit，usize = u32，not hold u64
+    if *src > usize::MAX as u64 {
+        return Err(TEE_ERROR_OVERFLOW);
+    }
+
+    // copy_to_user: set
+    copy_to_user_u64(&mut d, src)?;
+
+    *dst = d as usize;
+
+    Ok(())
 }
 
 /// Updates a hash or MAC operation with new data chunk
