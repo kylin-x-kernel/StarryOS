@@ -176,6 +176,11 @@ percpu = { git = "https://github.com/arceos-org/percpu", rev = "89c8a54"}
 
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
+kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main"}
+
+[patch."https://github.com/arceos-org/axcpu.git"]
+axcpu = { git = "https://github.com/kylin-x-kernel/axcpu", branch = "dev"}
+
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
 all-features = true
