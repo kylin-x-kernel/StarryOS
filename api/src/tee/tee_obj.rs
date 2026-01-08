@@ -42,7 +42,7 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 #[derive(Debug)]
 pub struct tee_obj {
     pub info: TEE_ObjectInfo,
-    busy: bool,          // true if used by an operation
+    pub busy: bool,      // true if used by an operation
     pub have_attrs: u32, // bitfield identifying set properties
     // void *attr;
     pub attr: Vec<TeeCryptObj>,

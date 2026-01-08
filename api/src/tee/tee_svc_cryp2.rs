@@ -60,32 +60,25 @@ use super::{
         bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
         copy_to_user_struct, copy_to_user_u64,
     },
+    // ts_manager:: {
+    //     TsSession,
+    //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
+    // }
+    user_access::{enter_user_access, exit_user_access},
     user_mode_ctx_struct::user_mode_ctx,
     user_ta::{
         user_ta_ctx, // to_user_ta_ctx
     },
     utils::{bit, bit32},
     vm::vm_check_access_rights,
-    // ts_manager:: {
-    //     TsSession,
-    //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
-    // }
-    user_access:: {
-        enter_user_access,
-        exit_user_access,
-    },
 };
 use crate::{
     mm::vm_load_string,
     tee,
     tee::{
         libmbedtls::bignum::BigNum,
-        tee_session::{
-            with_tee_session_ctx, with_tee_session_ctx_mut
-        },
-        memtag::{
-            memtag_strip_tag_const
-        },
+        memtag::memtag_strip_tag_const,
+        tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
     },
 };
 
@@ -228,7 +221,6 @@ fn tee_svc_cryp_get_state<'a>(
     Err(TEE_ERROR_BAD_PARAMETERS)
 }
 
-
 /// Updates a hash or MAC operation with new data chunk
 ///
 /// This function adds a data chunk to an ongoing cryptographic hash or MAC operation.
@@ -252,11 +244,7 @@ fn tee_svc_cryp_get_state<'a>(
 /// # Safety
 /// - Requires valid user-space pointers for data chunk
 /// - Must be called with valid cryptographic state handle
-pub(crate) fn sys_tee_scn_hash_update(
-    state: usize,
-    chunk: usize,
-    chunk_size: usize,
-) -> TeeResult {
+pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: usize) -> TeeResult {
     // Supporting function definitions (based on provided context)
     // Validate parameters: null chunk with non-zero size is invalid
     if chunk == 0 && chunk_size != 0 {
@@ -274,9 +262,7 @@ pub(crate) fn sys_tee_scn_hash_update(
     with_tee_session_ctx(|ctx| {
         vm_check_access_rights(
             // uctx,
-            unsafe {
-                &*(ctx as *const _ as usize as *const user_mode_ctx)
-            },
+            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
             TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
             chunk,
             chunk_size,
@@ -298,26 +284,23 @@ pub(crate) fn sys_tee_scn_hash_update(
                 match tee_alg_get_class(crypto_state.algo) {
                     TEE_OPERATION_DIGEST => {
                         // Hash digest operation
-                        let chunk_d = unsafe {
-                            from_raw_parts(chunk as *const u8, chunk_size)
-                        };
+                        let chunk_d = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
 
                         // Enter user access context for safe memory access
                         enter_user_access();
-                        let res: TeeResult = Ok(());//crypto_hash_update(&mut crypto_state.ctx, chunk_d);
+                        let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, chunk_d);
                         exit_user_access();
 
                         res?;
                     }
                     TEE_OPERATION_MAC => {
                         // MAC (Message Authentication Code) operation
-                        let chunk_d = unsafe {
-                            slice::from_raw_parts(chunk as *const u8, chunk_size)
-                        };
+                        let chunk_d =
+                            unsafe { slice::from_raw_parts(chunk as *const u8, chunk_size) };
 
                         // Enter user access context for safe memory access
                         enter_user_access();
-                        let res: TeeResult = Ok(());//crypto_mac_update(&mut crypto_state.ctx, chunk_d);
+                        let res: TeeResult = Ok(()); //crypto_mac_update(&mut crypto_state.ctx, chunk_d);
                         exit_user_access();
 
                         if let Err(_) = res {

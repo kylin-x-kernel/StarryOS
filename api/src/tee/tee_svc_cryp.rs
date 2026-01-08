@@ -39,7 +39,7 @@ use super::{
     },
     libutee::{tee_api_objects::TEE_USAGE_DEFAULT, utee_defines::tee_u32_to_big_endian},
     memtag::memtag_strip_tag_vaddr,
-    tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
+    tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
     user_access::{
         bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
@@ -1142,6 +1142,21 @@ pub(crate) fn syscall_cryp_obj_alloc(
     tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
     let obj_id = tee_obj_add(obj)?;
     Ok(obj_id)
+}
+
+pub fn syscall_cryp_obj_close(obj_id: c_ulong) -> TeeResult {
+    {
+        let o = tee_obj_get(obj_id as tee_obj_id_type)?;
+        let o_guard = o.lock();
+
+        // If it's busy it's used by an operation, a client should never have
+        // this handle.
+        if o_guard.busy {
+            return Err(TEE_ERROR_ITEM_NOT_FOUND);
+        }
+    }
+
+    tee_obj_close(obj_id as u32)
 }
 
 fn tee_svc_cryp_obj_find_type_attr_idx(

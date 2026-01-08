@@ -7,7 +7,8 @@
 use crate::tee::{TeeResult, user_mode_ctx_struct::user_mode_ctx};
 
 pub fn vm_check_access_rights(
-    _uctx: &/*mut*/ user_mode_ctx,
+    _uctx: & // mut
+    user_mode_ctx,
     _flags: u32,
     uaddr: usize,
     len: usize,

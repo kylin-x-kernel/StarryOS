@@ -159,11 +159,7 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
         }
 
         Sysno::tee_scn_hash_update => {
-            sys_tee_scn_hash_update(
-                _uctx.arg0() as _,
-                _uctx.arg1() as _,
-                _uctx.arg2() as _
-            )
+            sys_tee_scn_hash_update(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
         }
 
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
