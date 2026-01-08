@@ -316,12 +316,8 @@ pub fn tee_fs_dirfile_find(
             continue;
         }
 
-        // C: assert(test_file(dirh, dent.file_number));
         debug_assert!(test_file(dirh, dent.file_number as usize));
 
-        // C: if (!memcmp(&dent.uuid, uuid, sizeof(dent.uuid)) &&
-        //     !memcmp(&dent.oid, oid, oidlen))
-        //     break;
         if &dent.uuid == uuid && &dent.oid[..oidlen] == oid {
             break;
         }

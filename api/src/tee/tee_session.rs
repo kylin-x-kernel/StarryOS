@@ -20,9 +20,7 @@ use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
 use super::{TeeResult, tee_obj::tee_obj, tee_svc_cryp2::TeeCrypState};
-use crate::tee::{
-    tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx, uuid::Uuid,
-};
+use crate::tee::{tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx, uuid::Uuid};
 
 scope_local::scope_local! {
     /// The tee ta context.
