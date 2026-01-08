@@ -725,6 +725,12 @@ pub fn syscall_storage_obj_read(
     len: usize,
     count: *mut u64,
 ) -> TeeResult {
+    tee_debug!(
+        "syscall_storage_obj_read: obj: {:X?}, data_len: {:X?}, count: {:X?}",
+        obj,
+        len,
+        count
+    );
     let o = tee_obj_get(obj)?;
 
     let (fops, pos_tmp) = {
@@ -766,6 +772,11 @@ pub fn syscall_storage_obj_read(
     let mut bytes = len;
     let mut o_guard = o.lock();
     let data_slice = unsafe { core::slice::from_raw_parts_mut(data as *mut u8, len) };
+    tee_debug!(
+        "syscall_storage_obj_read: bytes: {:X?} pos: 0x{:X?}",
+        bytes,
+        pos_tmp
+    );
     (fops.read)(&mut o_guard.fh, pos_tmp, &mut [], data_slice, &mut bytes).inspect_err(|e| {
         if *e == TEE_ERROR_CORRUPT_OBJECT {
             error!("Object corrupt");
@@ -983,6 +994,13 @@ pub mod tests_tee_svc_storage {
                 &mut obj as *mut c_uint);
             tee_debug!("result: {:X?}", result);
             assert!(result.is_ok());
+
+            // // step 2 : read the object
+            // let mut data = vec![0u8; data.len()];
+            // let mut count = 0 as u64;
+            // let mut result = syscall_storage_obj_read(obj as c_ulong, data.as_ptr() as *mut c_void, data.len(), &mut count);
+            // assert!(result.is_ok());
+            // // assert_eq!(str::from_utf8(&data[..len]).unwrap(), "test_data");
 
             // step 2 : close the object
             let obj_id = obj as c_ulong;

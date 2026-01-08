@@ -243,7 +243,7 @@ impl TeeFileLike for FileVariant {
 
     fn pread(&mut self, buf: &mut [u8], offset: usize) -> TeeResult<usize> {
         tee_debug!(
-            "FileVariant::pread = fd: {}, offset: {:X?}, buf_len: {}",
+            "FileVariant::pread = fd: {}, offset: 0x{:X?}, buf_len: 0x{:X?}",
             self.fd,
             offset,
             buf.len(),
