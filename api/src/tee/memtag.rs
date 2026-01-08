@@ -34,6 +34,16 @@ pub fn memtag_strip_tag_vaddr(addr: *const c_void) -> vaddr_t {
     addr as vaddr_t
 }
 
+// Strip memory tag from constant pointer
+// for tagged memory architectures
+// arg: addr: vaddr_t
+// return: vaddr_t
+#[inline]
+pub(crate) fn memtag_strip_tag(addr: vaddr_t) -> vaddr_t {
+    // In real implementation, this would strip architecture-specific memory tags
+    memtag_strip_tag_vaddr_1(addr)
+}
+
 // Strip memory tag from pointer
 // (for tagged memory architectures)
 // arg: addr: vaddr_t

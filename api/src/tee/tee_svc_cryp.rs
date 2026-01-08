@@ -1067,7 +1067,7 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 7] = [
     ),
 ];
 
-fn get_user_u64_as_size_t(dst: &mut usize, src: &u64) -> TeeResult {
+pub(crate) fn get_user_u64_as_size_t(dst: &mut usize, src: &u64) -> TeeResult {
     let mut d: u64 = 0;
 
     // copy_from_user: 读取用户态数据
