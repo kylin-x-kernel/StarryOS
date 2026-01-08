@@ -28,19 +28,19 @@ pub fn tee_test_unit() {
     run_tests!(
         runner,
         [
-            // TEST_TEE_POBJ,
-            // TEST_TEE_OBJ,
-            // TEST_TEE_SVC_CRYP,
+            TEST_TEE_POBJ,
+            TEST_TEE_OBJ,
+            TEST_TEE_SVC_CRYP,
             TEST_TEE_SVC_STORAGE,
-            // TEST_USER_ACCESS,
-            // TEST_TEE_BIGNUM,
-            // TEST_TEE_SESSION,
-            // TEST_FILE_OPS,
-            // TEST_TEE_FS_DIRFILE,
-            // TEST_TEE_UTILS,
-            // TEST_TEE_MISC,
-            // TEST_TEE_REE_FS,
-            // TEST_FS_HTREE,
+            TEST_USER_ACCESS,
+            TEST_TEE_BIGNUM,
+            TEST_TEE_SESSION,
+            TEST_FILE_OPS,
+            TEST_TEE_FS_DIRFILE,
+            TEST_TEE_UTILS,
+            TEST_TEE_MISC,
+            TEST_TEE_REE_FS,
+            TEST_FS_HTREE,
         ]
     );
 }

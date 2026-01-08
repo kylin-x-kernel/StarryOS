@@ -180,7 +180,6 @@ pub(crate) fn exit_user_access() {
     // In OP-TEE, this handles returning from user context
 }
 
-
 #[cfg(feature = "tee_test")]
 pub mod tests_user_access {
     //-------- test framework import --------

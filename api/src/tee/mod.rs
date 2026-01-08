@@ -66,10 +66,6 @@ use log::*;
 use syscalls::Sysno;
 pub use tee_api_defines_extensions::*;
 use tee_raw_sys::{TEE_ERROR_NOT_SUPPORTED, TeeTime};
-pub use tee_ree_fs::{
-    ree_fs_rpc_read_init as rpc_read_init, ree_fs_rpc_write_init as rpc_write_init,
-    tee_fs_rpc_read_final as rpc_read_final, tee_fs_rpc_write_final as rpc_write_final,
-};
 use tee_return::sys_tee_scn_return;
 #[cfg(feature = "tee_test")]
 use test::test_framework::{TestDescriptor, TestRunner};

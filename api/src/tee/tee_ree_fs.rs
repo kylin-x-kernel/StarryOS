@@ -260,11 +260,11 @@ pub fn ree_fs_rpc_write_init() -> TeeResult {
 }
 
 #[derive(Debug, Default)]
-pub struct TeeFsHtreeStorage;
+pub struct ReeFsHtreeStorage;
 
-impl TeeFsHtreeStorage {
+impl ReeFsHtreeStorage {
     pub fn new() -> Self {
-        TeeFsHtreeStorage
+        ReeFsHtreeStorage
     }
 }
 
@@ -286,7 +286,7 @@ pub trait TeeFsHtreeStorageOps {
 
     fn rpc_write_final(
         &self,
-        fd: &mut FileVariant,
+        fd: &FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
@@ -294,13 +294,13 @@ pub trait TeeFsHtreeStorageOps {
     ) -> TeeResult<usize>;
 }
 
-impl TeeFsHtreeStorageOps for TeeFsHtreeStorage {
+impl TeeFsHtreeStorageOps for ReeFsHtreeStorage {
     fn block_size(&self) -> usize {
         BLOCK_SIZE
     }
 
     fn rpc_read_init(&self) -> TeeResult {
-        crate::tee::rpc_read_init()
+        ree_fs_rpc_read_init()
     }
 
     fn rpc_read_final(
@@ -311,22 +311,22 @@ impl TeeFsHtreeStorageOps for TeeFsHtreeStorage {
         vers: u8,
         data: &mut [u8],
     ) -> TeeResult<usize> {
-        crate::tee::rpc_read_final(fd, typ, idx, vers, data)
+        tee_fs_rpc_read_final(fd, typ, idx, vers, data)
     }
 
     fn rpc_write_init(&self) -> TeeResult {
-        crate::tee::rpc_write_init()
+        ree_fs_rpc_write_init()
     }
 
     fn rpc_write_final(
         &self,
-        fd: &mut FileVariant,
+        fd: &FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
         data: &[u8],
     ) -> TeeResult<usize> {
-        crate::tee::rpc_write_final(fd, typ, idx, vers, data)
+        tee_fs_rpc_write_final(fd, typ, idx, vers, data)
     }
 }
 
@@ -429,7 +429,7 @@ fn out_of_place_write(
         if current_start_block_num * BLOCK_SIZE < roundup_u(meta_length as usize, BLOCK_SIZE) {
             tee_fs_htree_read_block(
                 &mut fdp.ht,
-                &TeeFsHtreeStorage::new(),
+                &ReeFsHtreeStorage::new(),
                 &mut fdp.fd,
                 current_start_block_num,
                 &mut *block,
@@ -458,7 +458,7 @@ fn out_of_place_write(
         // 写入块
         tee_fs_htree_write_block(
             &mut fdp.ht,
-            &TeeFsHtreeStorage::new(),
+            &ReeFsHtreeStorage::new(),
             &mut fdp.fd,
             current_start_block_num,
             &mut *block,
@@ -545,7 +545,7 @@ pub fn ree_fs_read_primitive(
         // 读取数据块
         tee_fs_htree_read_block(
             &mut fh.ht,
-            &TeeFsHtreeStorage::new(),
+            &ReeFsHtreeStorage::new(),
             &mut fh.fd,
             start_block_num,
             &mut *block,
