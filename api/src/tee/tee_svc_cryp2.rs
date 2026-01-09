@@ -77,6 +77,7 @@ use crate::{
             memtag_strip_tag_const,memtag_strip_tag
         },
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256
     },
 };
 
@@ -218,24 +219,6 @@ fn tee_svc_cryp_get_state<'a>(
     // State not found in the list, return error
     Err(TEE_ERROR_BAD_PARAMETERS)
 }
-
-// SHA3 224
-pub(crate) const TEE_ALG_SHA3_224: u32 = 0x50000008;
-
-// SHA3 256
-pub(crate) const TEE_ALG_SHA3_256: u32 = 0x50000009;
-
-// SHA3 384
-pub(crate) const TEE_ALG_SHA3_384: u32 = 0x5000000A;
-
-// SHA3 512
-pub(crate) const TEE_ALG_SHA3_512: u32 = 0x5000000B;
-
-// SHAKE128
-pub(crate) const TEE_ALG_SHAKE128: u32 = 0x50000101;
-
-// SHAKE256
-pub(crate) const TEE_ALG_SHAKE256: u32 = 0x50000102;
 
 /// Check if algorithm is an XOF (Extendable Output Function)
 ///
