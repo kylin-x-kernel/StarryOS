@@ -38,7 +38,9 @@ use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{
-        CryptoHashCtx, CryptoMacCtx, crypto_hash_init, crypto_mac_init, ecc_keypair, ecc_public_key,
+        CryptoHashCtx, CryptoMacCtx,
+        crypto_hash_init, crypto_mac_init, crypto_mac_update, crypto_mac_final, crypto_hash_update, crypto_hash_final,
+        ecc_keypair, ecc_public_key,
     },
     crypto::{sm3_hash::SM3HashCtx, sm3_hmac::SM3HmacCtx},
     libmbedtls::bignum::{
@@ -405,7 +407,11 @@ fn process_mac_final(
         };
 
         enter_user_access();
-        let res: TeeResult = Ok(()); //crypto_mac_update(&mut crypto_state.ctx, data_slice);
+        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+            crypto_mac_update(ctx, data_slice)
+        } else {
+            Err(TEE_ERROR_BAD_STATE)
+        };
         exit_user_access();
 
         if let Err(_) = res {
@@ -419,7 +425,11 @@ fn process_mac_final(
     };
 
     enter_user_access();
-    let res: TeeResult = Ok(()); //crypto_mac_final(&mut crypto_state.ctx, hash_slice);
+    let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+        crypto_mac_final(ctx, hash_slice)
+    } else {
+        Err(TEE_ERROR_BAD_STATE)
+    };
     exit_user_access();
 
     if let Err(_) = res {
@@ -460,7 +470,11 @@ fn process_digest_final(
             };
 
             enter_user_access();
-            let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, data_slice);
+            let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+                crypto_hash_update(ctx, data_slice)
+            } else {
+                Err(TEE_ERROR_BAD_STATE)
+            };
             exit_user_access();
 
             if let Err(_) = res {
@@ -475,7 +489,11 @@ fn process_digest_final(
         };
 
         enter_user_access();
-        let res: TeeResult = Ok(()); //crypto_hash_final(&mut crypto_state.ctx, hash_slice);
+        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+            crypto_hash_final(ctx, hash_slice)
+        } else {
+            Err(TEE_ERROR_BAD_STATE)
+        };
         exit_user_access();
 
         if let Err(_) = res {
@@ -497,7 +515,11 @@ fn process_digest_final(
         };
 
         enter_user_access();
-        let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, data_slice);
+        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+            crypto_hash_update(ctx, data_slice)
+        } else {
+            Err(TEE_ERROR_BAD_STATE)
+        };
         exit_user_access();
 
         if let Err(_) = res {
@@ -511,7 +533,11 @@ fn process_digest_final(
     };
 
     enter_user_access();
-    let res: TeeResult = Ok(()); //crypto_hash_final(&mut crypto_state.ctx, hash_slice);
+    let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+        crypto_hash_final(ctx, hash_slice)
+    } else {
+        Err(TEE_ERROR_BAD_STATE)
+    };
     exit_user_access();
 
     if let Err(_) = res {
@@ -651,7 +677,11 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
 
                         // Enter user access context for safe memory access
                         enter_user_access();
-                        let res: TeeResult = Ok(()); //crypto_hash_update(&mut crypto_state.ctx, chunk_d);
+                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+                            crypto_hash_update(ctx, chunk_d)
+                        } else {
+                            Err(TEE_ERROR_BAD_STATE)
+                        };
                         exit_user_access();
 
                         res?;
@@ -663,7 +693,11 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
 
                         // Enter user access context for safe memory access
                         enter_user_access();
-                        let res: TeeResult = Ok(()); //crypto_mac_update(&mut crypto_state.ctx, chunk_d);
+                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+                            crypto_mac_update(ctx, chunk_d)
+                        } else {
+                            Err(TEE_ERROR_BAD_STATE)
+                        };
                         exit_user_access();
 
                         if let Err(_) = res {
