@@ -27,4 +27,7 @@
 [submodule "local_crates/axcpu"]
 	path = local_crates/axcpu
 	url = https://github.com/kylin-x-kernel/axcpu
+[submodule "page_table_multiarch"]
+	path = local_crates/page_table_multiarch
+	url = https://github.com/kylin-x-kernel/page_table_multiarch.git
 	branch = dev
