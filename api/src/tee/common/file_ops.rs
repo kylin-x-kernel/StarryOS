@@ -140,7 +140,7 @@ pub trait TeeFileLike {
     /// * `Err(TEE_ERROR_GENERIC)` - error
     fn close(&mut self) -> TeeResult<()>;
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct FileVariant {
     pub fd: isize,
 }
