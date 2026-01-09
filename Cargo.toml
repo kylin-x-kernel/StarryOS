@@ -165,6 +165,9 @@ optional = true
 features = ["irq", "fp-simd", "smp", "rtc"]
 
 [patch.crates-io]
+
+axbacktrace = { path = "local_crates/axbacktrace" }
+
 axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
 axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
