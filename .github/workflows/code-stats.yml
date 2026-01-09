@@ -56,6 +56,7 @@ jobs:
           master|https://gitee.com/openkylin/rust-libutee|rust-libutee
           master|https://gitee.com/openkylin/microkylin_manager|microkylin_manager
           main|https://github.com/kylin-x-kernel/meta-starry.git|meta-starry
+          main|https://github.com/kylin-x-kernel/aarch64-pmuv3.git|aarch64-pmuv3
           EOF
           
           # 添加更多仓库示例：
