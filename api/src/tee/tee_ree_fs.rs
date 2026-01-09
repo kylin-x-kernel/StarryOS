@@ -62,6 +62,48 @@ pub struct TeeFsFd {
     pub uuid: TEE_UUID,
 }
 
+// auxiliary struct for TeeFsFd
+// In upstream version, tee_fs_htree has member:
+//   - stor:  tee_fs_htree_storage for file ops
+//   - stor_aux: sturct data as parameter for file ops
+// as such code: `res = ht->stor->rpc_read_init(ht->stor_aux, &op, type, idx, vers, &p);`
+// In such case, the stor_aux is struct tee_fs_fd, as code in `ree_fs_rpc_read_init`:
+// `struct tee_fs_fd *fdp = aux;`
+// So we should implement impl TeeFsHtreeStorageOps for TeeFsFd.
+// But TeeFsFd has members as TeeFsHtree, it is so complex to implement TeeFsHtreeStorageOps because of
+// the life management is too complex.
+//
+// As we saw in the code, such as `rpc_write`:
+// `res = ht->stor->rpc_write_init(ht->stor_aux, &op, type, idx, vers, &p);`
+// We put parameter `struct tee_fs_htree *ht,` for `rpc_write`, but the real usage is `ht->stor` and `ht->stor_aux`
+// and the stor_aux used in stor is just the `fd`, the file handle.
+//
+// the FileVariant is a wrapper of the file descriptor, it is actually a index number, the using of fd is guaranteed by the fd table
+// with lock, so we can use it copy from other data.
+//
+// So we use TeeFsFdAux(with only member: fd: FileVariant) to store the file descriptor and the auxiliary struct data.
+#[derive(Debug, Default)]
+pub struct TeeFsFdAux {
+    pub fd: FileVariant,
+}
+
+impl TeeFsFdAux {
+    pub fn new() -> Self {
+        Self {
+            fd: FileVariant::default(),
+        }
+    }
+}
+pub trait TeeFsHasHd {
+    fn get_hd(&self) -> FileVariant;
+}
+
+impl TeeFsHasHd for TeeFsFdAux {
+    fn get_hd(&self) -> FileVariant {
+        self.fd
+    }
+}
+
 #[repr(C)]
 pub struct TeeFsDir {
     pub dirh: *mut TeeFsDirfileDirh,
@@ -211,8 +253,13 @@ pub fn tee_fs_rpc_read_final(
     vers: u8,
     data: &mut [u8],
 ) -> TeeResult<usize> {
-    let (offs, _size) = get_offs_size(typ, idx, vers)?;
-    let size = fd.pread(data, offs)?;
+    let (offs, sz) = get_offs_size(typ, idx, vers)?;
+
+    // alloc data with sz
+    let mut data_alloc = vec![0; sz];
+    let size = fd.pread(&mut data_alloc, offs)?;
+
+    data.copy_from_slice(&data_alloc[..data.len()]);
     Ok(size)
 }
 
@@ -234,7 +281,13 @@ pub fn tee_fs_rpc_write_final(
     vers: u8,
     data: &[u8],
 ) -> TeeResult<usize> {
-    let (offs, _size) = get_offs_size(typ, idx, vers)?;
+    let (offs, sz) = get_offs_size(typ, idx, vers)?;
+    // alloc data with sz
+    let mut data_alloc = vec![0; sz];
+
+    debug_assert!(data.len() <= sz);
+    data_alloc[..data.len()].copy_from_slice(data);
+
     tee_debug!(
         "tee_fs_rpc_write_final: fd: {:?}, typ: {:?}, idx: {:?}, vers: {:?}, offs: {:?}",
         fd,
@@ -243,7 +296,7 @@ pub fn tee_fs_rpc_write_final(
         vers,
         offs
     );
-    let size = fd.pwrite(data, offs)?;
+    let size = fd.pwrite(&data_alloc, offs)?;
     Ok(size)
 }
 
@@ -257,15 +310,6 @@ pub fn ree_fs_rpc_read_init() -> TeeResult {
 /// no need to do anything in starryos, because we use file operations to write data
 pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
-}
-
-#[derive(Debug, Default)]
-pub struct ReeFsHtreeStorage;
-
-impl ReeFsHtreeStorage {
-    pub fn new() -> Self {
-        ReeFsHtreeStorage
-    }
 }
 
 pub trait TeeFsHtreeStorageOps {
@@ -294,7 +338,7 @@ pub trait TeeFsHtreeStorageOps {
     ) -> TeeResult<usize>;
 }
 
-impl TeeFsHtreeStorageOps for ReeFsHtreeStorage {
+impl TeeFsHtreeStorageOps for TeeFsFdAux {
     fn block_size(&self) -> usize {
         BLOCK_SIZE
     }
@@ -374,7 +418,8 @@ pub fn ree_fs_open_primitive(
 
     fdp.fd = Box::new(fd);
 
-    let fs_tree = match tee_fs_htree_open(&mut fdp.fd, create, hash, uuid) {
+    let mut fd_aux = TeeFsFdAux { fd: *fdp.fd };
+    let fs_tree = match tee_fs_htree_open(Box::new(fd_aux), create, hash, uuid) {
         Ok(fs_tree) => fs_tree,
         Err(e) => {
             error!("ree_fs_open_primitive: open htree error: {:X?}", e);
@@ -429,7 +474,7 @@ fn out_of_place_write(
         if current_start_block_num * BLOCK_SIZE < roundup_u(meta_length as usize, BLOCK_SIZE) {
             tee_fs_htree_read_block(
                 &mut fdp.ht,
-                &ReeFsHtreeStorage::new(),
+                &TeeFsFdAux::new(),
                 &mut fdp.fd,
                 current_start_block_num,
                 &mut *block,
@@ -458,7 +503,7 @@ fn out_of_place_write(
         // 写入块
         tee_fs_htree_write_block(
             &mut fdp.ht,
-            &ReeFsHtreeStorage::new(),
+            &TeeFsFdAux::new(),
             &mut fdp.fd,
             current_start_block_num,
             &mut *block,
@@ -545,7 +590,7 @@ pub fn ree_fs_read_primitive(
         // 读取数据块
         tee_fs_htree_read_block(
             &mut fh.ht,
-            &ReeFsHtreeStorage::new(),
+            &TeeFsFdAux::new(),
             &mut fh.fd,
             start_block_num,
             &mut *block,

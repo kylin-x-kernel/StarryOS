@@ -995,12 +995,12 @@ pub mod tests_tee_svc_storage {
             tee_debug!("result: {:X?}", result);
             assert!(result.is_ok());
 
-            // // step 2 : read the object
-            // let mut data = vec![0u8; data.len()];
-            // let mut count = 0 as u64;
-            // let mut result = syscall_storage_obj_read(obj as c_ulong, data.as_ptr() as *mut c_void, data.len(), &mut count);
-            // assert!(result.is_ok());
-            // // assert_eq!(str::from_utf8(&data[..len]).unwrap(), "test_data");
+            // step 2 : read the object
+            let mut data = vec![0u8; data.len()];
+            let mut count = 0 as u64;
+            let mut result = syscall_storage_obj_read(obj as c_ulong, data.as_ptr() as *mut c_void, data.len(), &mut count);
+            assert!(result.is_ok());
+            // assert_eq!(str::from_utf8(&data[..len]).unwrap(), "test_data");
 
             // step 2 : close the object
             let obj_id = obj as c_ulong;
