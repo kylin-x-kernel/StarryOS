@@ -863,7 +863,7 @@ fn authenc_init_core<M: Operation>(
     let cipher_k = cipher.set_key_iv(fek, iv).map_err(|_| TEE_ERROR_GENERIC)?;
 
     let mut ad: Vec<u8> = Vec::with_capacity(aad_len);
-    if ni_is_some {
+    if !ni_is_some {
         // When ni is None (not using node IV), AAD includes root.hash and head.counter
         if let Some(hash) = root_hash {
             ad.extend_from_slice(hash);
