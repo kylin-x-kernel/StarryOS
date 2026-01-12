@@ -15,6 +15,7 @@ pub fn tee_test_unit() {
         common::file_ops::tests_file_ops::TEST_FILE_OPS,
         fs_dirfile::tests_tee_fs_dirfile::TEST_TEE_FS_DIRFILE,
         fs_htree::tests_fs_htree::TEST_FS_HTREE,
+        fs_htree_tests::tests_fs_htree_tests::TEST_FS_HTREE_TESTS,
         libmbedtls::bignum::tests_tee_bignum::TEST_TEE_BIGNUM,
         tee_misc::tests_tee_misc::TEST_TEE_MISC, tee_obj::tests_tee_obj::TEST_TEE_OBJ,
         tee_pobj::tests_tee_pobj::TEST_TEE_POBJ, tee_ree_fs::tests_tee_ree_fs::TEST_TEE_REE_FS,
@@ -41,6 +42,7 @@ pub fn tee_test_unit() {
             TEST_TEE_MISC,
             TEST_TEE_REE_FS,
             TEST_FS_HTREE,
+            TEST_FS_HTREE_TESTS,
         ]
     );
 }
