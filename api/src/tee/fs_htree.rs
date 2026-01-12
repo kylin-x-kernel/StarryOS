@@ -10,6 +10,7 @@ use core::{fmt, fmt::Debug, ptr::NonNull};
 use bytemuck::{Pod, Zeroable};
 use mbedtls::{
     cipher::{Authenticated, Cipher, CipherData, Decryption, Encryption, Fresh, Operation, raw},
+    error::HiError::PemAllocFailed,
     hash::Md,
 };
 use memoffset::offset_of;
@@ -29,7 +30,7 @@ use crate::tee::{
         crypto_hash_alloc_ctx, crypto_hash_final, crypto_hash_init, crypto_hash_update,
     },
     tee_fs_key_manager::{TEE_FS_KM_FEK_SIZE, tee_fs_fek_crypt},
-    tee_ree_fs::{BLOCK_SIZE, TeeFsFdAux, TeeFsHasHd, TeeFsHtreeStorageOps, crypto_rng_read},
+    tee_ree_fs::{BLOCK_SIZE, TeeFsFdAux, TeeFsHtreeStorageOps, crypto_rng_read},
     utee_defines::TEE_ALG,
 };
 
@@ -84,7 +85,7 @@ pub struct TeeFsHtreeImeta {
 
 pub const TEE_FS_HTREE_IMETA_SIZE: usize = core::mem::size_of::<TeeFsHtreeImeta>();
 #[repr(C)]
-#[derive(Copy, Clone, Default, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
 pub struct TeeFsHtreeImage {
     pub iv: [u8; TEE_FS_HTREE_IV_SIZE],
     pub tag: [u8; TEE_FS_HTREE_TAG_SIZE],
@@ -93,13 +94,40 @@ pub struct TeeFsHtreeImage {
     pub counter: u32,
 }
 
+impl Debug for TeeFsHtreeImage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TeeFsHtreeImage {{ iv: {:?}, tag: {:?}, enc_fek: {:?}, imeta: {:?}, counter: {:?} }}",
+            hex::encode(self.iv),
+            hex::encode(self.tag),
+            hex::encode(self.enc_fek),
+            hex::encode(self.imeta),
+            self.counter
+        )
+    }
+}
+
 #[repr(C)]
-#[derive(Copy, Clone, Default, Debug, Pod, Zeroable)] // Derive Clone for easy copying if needed
+#[derive(Copy, Clone, Default, Pod, Zeroable)] // Derive Clone for easy copying if needed
 pub struct TeeFsHtreeNodeImage {
     pub hash: [u8; TEE_FS_HTREE_HASH_SIZE],
     pub iv: [u8; TEE_FS_HTREE_IV_SIZE],
     pub tag: [u8; TEE_FS_HTREE_TAG_SIZE],
     pub flags: u16,
+}
+
+impl Debug for TeeFsHtreeNodeImage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TeeFsHtreeNodeImage {{ hash: {:?}, iv: {:?}, tag: {:?}, flags: {:X?} }}",
+            hex::encode(self.hash),
+            hex::encode(self.iv),
+            hex::encode(self.tag),
+            self.flags
+        )
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -208,7 +236,7 @@ impl SubtreeExt for Subtree {
 pub struct TeeFsHtree {
     pub root: HtreeNode,
     pub data: TeeFsHtreeData,
-    pub storage: Box<dyn TeeFsHtreeStorage>,
+    pub storage: Box<dyn TeeFsHtreeStorageOps>,
 }
 
 impl Default for TeeFsHtree {
@@ -231,10 +259,6 @@ impl Debug for TeeFsHtree {
     }
 }
 
-pub trait TeeFsHtreeStorage: TeeFsHtreeStorageOps + TeeFsHasHd {}
-
-impl<T> TeeFsHtreeStorage for T where T: TeeFsHtreeStorageOps + TeeFsHasHd {}
-
 /// read the data from the storage
 ///
 /// # Arguments
@@ -247,7 +271,7 @@ impl<T> TeeFsHtreeStorage for T where T: TeeFsHtreeStorageOps + TeeFsHasHd {}
 /// * `TeeResult` - the result of the operation
 pub fn rpc_read(
     // fd: &mut FileVariant,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     typ: TeeFsHtreeType,
     idx: usize,
     vers: u8,
@@ -261,7 +285,7 @@ pub fn rpc_read(
     // rpc_read_init()?;
     storage.rpc_read_init()?;
 
-    let result = storage.rpc_read_final(&mut storage.get_hd(), typ, idx, vers, data)?;
+    let result = storage.rpc_read_final(typ, idx, vers, data)?;
     if result != dlen {
         return Err(TEE_ERROR_SHORT_BUFFER);
     }
@@ -278,7 +302,7 @@ pub fn rpc_read(
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn rpc_read_head(
-    storage: &mut dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     // ht: &mut TeeFsHtree,
     vers: u8,
     head: &mut TeeFsHtreeImage,
@@ -306,7 +330,7 @@ pub fn rpc_read_node(
     // fd: &mut FileVariant,
     // ht: &mut TeeFsHtree,
     // storage: &dyn TeeFsHtreeStorageOps,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     node_id: usize,
     vers: u8,
     head: &mut TeeFsHtreeNodeImage,
@@ -333,7 +357,7 @@ pub fn rpc_read_node(
 /// * `TeeResult` - the result of the operation
 pub fn rpc_write(
     // fd: &FileVariant,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     typ: TeeFsHtreeType,
     idx: usize,
     vers: u8,
@@ -346,7 +370,11 @@ pub fn rpc_write(
 
     storage.rpc_write_init()?;
 
-    let _ = storage.rpc_write_final(&mut storage.get_hd(), typ, idx, vers, data)?;
+    let _ = storage
+        .rpc_write_final(typ, idx, vers, data)
+        .inspect_err(|e| {
+            error!("rpc_write_final: error: {:X?}", e);
+        })?;
 
     Ok(())
 }
@@ -362,7 +390,7 @@ pub fn rpc_write(
 pub fn rpc_write_head(
     // fd: &FileVariant,
     // ht: &mut TeeFsHtree,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     vers: u8,
     head: &TeeFsHtreeImage,
 ) -> TeeResult {
@@ -388,14 +416,13 @@ pub fn rpc_write_head(
 pub fn rpc_write_node(
     // fd: &FileVariant,
     // ht: &mut TeeFsHtree,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     node_id: usize,
     vers: u8,
     head: &TeeFsHtreeNodeImage,
 ) -> TeeResult {
     tee_debug!(
-        "rpc_write_node: fd: {:?}, node_id: {:?}, vers: {:?}, head: {:?}",
-        storage.get_hd(),
+        "rpc_write_node: node_id: {:?}, vers: {:?}, head: {:?}",
         node_id,
         vers,
         head,
@@ -422,8 +449,8 @@ pub fn rpc_write_node(
 pub fn calc_node(
     mut node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
-    _storage: &dyn TeeFsHtreeStorage,
-    _fd: Option<&mut FileVariant>,
+    _storage: &dyn TeeFsHtreeStorageOps,
+    // _fd: Option<&mut FileVariant>,
 ) -> TeeResult {
     let mut digest = [0u8; TEE_FS_HTREE_HASH_SIZE];
 
@@ -463,8 +490,15 @@ pub fn calc_node_hash_with_ctx(
     let flags_offset = offset_of!(TeeFsHtreeNodeImage, flags);
     let flags_size = core::mem::size_of_val(&node.node.flags);
 
+    tee_debug!(
+        "calc_node_hash_with_ctx: node.node: {:?}, meta: {:?}",
+        node.node,
+        meta
+    );
+
     crypto_hash_init(&mut md)?;
     crypto_hash_update(&mut md, &all_bytes[iv_offset..flags_offset + flags_size])?;
+
     if let Some(meta) = meta {
         crypto_hash_update(&mut md, bytemuck::bytes_of(meta))?;
     }
@@ -499,6 +533,7 @@ pub fn calc_node_hash_with_type(
     let md = crypto_hash_alloc_ctx(t)?;
     calc_node_hash_with_ctx(md, node, meta, digest)?;
 
+    tee_debug!("hash with {} {}", node.id, hex::encode(digest));
     Ok(())
 }
 
@@ -563,25 +598,24 @@ pub fn post_order_traverse<F>(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
     visitor: &mut F,
-    mut fd: Option<&mut FileVariant>,
 ) -> TeeResult
 where
-    F: FnMut(&HtreeNode, &TeeFsHtreeData, Option<&mut FileVariant>) -> TeeResult,
+    F: FnMut(&HtreeNode, &TeeFsHtreeData) -> TeeResult,
 {
     // 对 fd 做借用变换
 
     // Traverse left subtree
     if let Some(left_child_arc) = node.left.get_ref() {
-        post_order_traverse(left_child_arc, ht_data, visitor, fd.as_deref_mut())?;
+        post_order_traverse(left_child_arc, ht_data, visitor)?;
     }
 
     // Traverse right subtree
     if let Some(right_child_arc) = node.right.get_ref() {
-        post_order_traverse(right_child_arc, ht_data, visitor, fd.as_deref_mut())?;
+        post_order_traverse(right_child_arc, ht_data, visitor)?;
     }
 
     // Visit the current node
-    let _ = visitor(node, ht_data, fd.as_deref_mut());
+    let _ = visitor(node, ht_data);
 
     Ok(())
 }
@@ -598,36 +632,29 @@ where
 pub fn post_order_traverse_mut<F>(
     node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
-    storage: &dyn TeeFsHtreeStorage,
+    storage: &dyn TeeFsHtreeStorageOps,
     visitor: &mut F,
-    mut fd: Option<&mut FileVariant>,
 ) -> TeeResult
 where
     F: FnMut(
         &mut HtreeNode,
         &TeeFsHtreeData,
-        &dyn TeeFsHtreeStorage,
-        Option<&mut FileVariant>,
+        &dyn TeeFsHtreeStorageOps,
+        // Option<&mut FileVariant>,
     ) -> TeeResult, // visitor 现在接收 RefMut<HtreeNode>
 {
     // 遍历左子树
     if let Some(left_child_arc) = node.left.get_mut() {
-        post_order_traverse_mut(left_child_arc, ht_data, storage, visitor, fd.as_deref_mut())?;
+        post_order_traverse_mut(left_child_arc, ht_data, storage, visitor)?;
     }
 
     // 遍历右子树
     if let Some(right_child_arc) = node.right.get_mut() {
-        post_order_traverse_mut(
-            right_child_arc,
-            ht_data,
-            storage,
-            visitor,
-            fd.as_deref_mut(),
-        )?;
+        post_order_traverse_mut(right_child_arc, ht_data, storage, visitor)?;
     }
     // `try_borrow_mut()` 会返回 Err，这里使用 `ok()` 忽略错误，
     // TODO 实际应用中你可能需要更健壮的错误处理。
-    visitor(node, ht_data, storage, fd.as_deref_mut())?; // 将 RefMut<HtreeNode> 传递给 visitor
+    visitor(node, ht_data, storage)?; // 将 RefMut<HtreeNode> 传递给 visitor
 
     Ok(())
 }
@@ -643,7 +670,7 @@ where
 pub fn free_node(
     _node: &HtreeNode,
     _ht_data: &TeeFsHtreeData,
-    _fd: Option<&mut FileVariant>,
+    // _fd: Option<&mut FileVariant>,
 ) -> TeeResult {
     Ok(())
 }
@@ -659,7 +686,7 @@ pub fn free_node(
 pub fn verify_node(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
-    _fd: Option<&mut FileVariant>,
+    // _fd: Option<&mut FileVariant>,
 ) -> TeeResult {
     let mut digest = [0u8; TEE_FS_HTREE_HASH_SIZE];
 
@@ -698,7 +725,7 @@ pub fn verify_node(
 pub fn print_node_hash(
     node: &HtreeNode,
     ht_data: &TeeFsHtreeData,
-    _fd: Option<&mut FileVariant>,
+    // _fd: Option<&mut FileVariant>,
 ) -> TeeResult {
     let mut digest = [0u8; TEE_FS_HTREE_HASH_SIZE];
 
@@ -728,13 +755,12 @@ pub fn print_node_hash(
 fn htree_sync_node_to_storage(
     mut node: &mut HtreeNode,
     ht_data: &TeeFsHtreeData,
-    storage: &dyn TeeFsHtreeStorage,
-    fd: Option<&mut FileVariant>,
+    storage: &dyn TeeFsHtreeStorageOps,
+    // fd: Option<&mut FileVariant>,
 ) -> TeeResult {
     tee_debug!(
-        "htree_sync_node_to_storage: fd: {:?}, node.id: {:?}, node.dirty: {:?}, \
-         node.block_updated: {:?}",
-        fd,
+        "htree_sync_node_to_storage: node.id: {:?}, node.dirty: {:?}, node.block_updated: {:?}",
+        // fd,
         node.id,
         node.dirty,
         node.block_updated
@@ -751,9 +777,9 @@ fn htree_sync_node_to_storage(
     if !node.dirty {
         return Ok(());
     }
-    if fd.is_none() {
-        return Err(TEE_ERROR_BAD_PARAMETERS);
-    }
+    // if fd.is_none() {
+    //     return Err(TEE_ERROR_BAD_PARAMETERS);
+    // }
 
     if let Some(parent_ptr) = node.parent {
         // parent 是 NonNull<HtreeNode>，可以直接解引用访问父节点
@@ -838,6 +864,7 @@ fn authenc_init_core<M: Operation>(
 
     let mut ad: Vec<u8> = Vec::with_capacity(aad_len);
     if ni_is_some {
+        // When ni is None (not using node IV), AAD includes root.hash and head.counter
         if let Some(hash) = root_hash {
             ad.extend_from_slice(hash);
         }
@@ -869,11 +896,14 @@ pub fn authenc_init<M: Operation>(
     _payload_len: usize,
     root_hash: Option<&[u8; TEE_FS_HTREE_HASH_SIZE]>,
 ) -> TeeResult<Cipher<M, Authenticated, CipherData>> {
-    // if ni is some and root_hash is none, use ht.root.node.hash
-    let hash = if ni.is_some() && root_hash.is_none() {
-        Some(&ht.root.node.hash)
+    // When ni is Some (block encryption/decryption), root_hash should not be used
+    // When ni is None, root_hash should be provided or use ht.root.node.hash
+    let hash = if ni.is_some() {
+        // When using node IV, don't use root_hash (will be ignored in authenc_init_core anyway)
+        None
     } else {
-        root_hash
+        // When not using node IV, use provided root_hash or ht.root.node.hash
+        root_hash.or(Some(&ht.root.node.hash))
     };
 
     let (iv, ni_is_some) = if let Some(ni) = ni {
@@ -912,6 +942,14 @@ fn authenc_init_decrypt(
         (&head.iv, false)
     };
 
+    tee_debug!(
+        "authenc_init_decrypt: fek: {:?}, head: {:?}, iv: {:?}, ni_is_some: {:?}, root_hash: {:?}",
+        hex::encode(fek),
+        head,
+        hex::encode(iv),
+        ni_is_some,
+        root_hash.map(|hash| hex::encode(hash)),
+    );
     authenc_init_core(fek, head, iv, ni_is_some, root_hash)
 }
 
@@ -940,6 +978,14 @@ fn authenc_init_encrypt(
         return Err(TEE_ERROR_GENERIC);
     };
 
+    tee_debug!(
+        "authenc_init_encrypt: fek: {:?}, head: {:?}, iv: {:?}, ni_is_some: {:?}, root_hash: {:?}",
+        hex::encode(fek),
+        head,
+        hex::encode(iv),
+        ni_is_some,
+        root_hash.map(|hash| hex::encode(hash)),
+    );
     authenc_init_core(fek, head, iv, ni_is_some, root_hash)
 }
 
@@ -958,6 +1004,12 @@ pub fn authenc_decrypt_final(
     crypt: &[u8],
     plain: &mut [u8],
 ) -> TeeResult {
+    tee_debug!(
+        "authenc_decrypt_final: tag: {:X?}, crypt: {:X?}, plain: {:X?}",
+        hex::encode(tag),
+        hex::encode(crypt),
+        hex::encode(&plain),
+    );
     let mut plain_with_add_block = vec![0u8; crypt.len() + cipher.block_size()];
 
     let (len1, cipher_d) = cipher
@@ -1013,6 +1065,12 @@ pub fn authenc_encrypt_final(
 
     crypt.copy_from_slice(&crypt_with_add_block.as_slice()[..plain.len()]);
 
+    tee_debug!(
+        "authenc_encrypt_final: tag: {:X?}, crypt: {:X?}, plain: {:X?}",
+        hex::encode(tag),
+        hex::encode(crypt),
+        hex::encode(plain),
+    );
     Ok(())
 }
 
@@ -1055,15 +1113,11 @@ pub fn update_root(ht: &mut TeeFsHtree) -> TeeResult {
 /// * `fd` - the file descriptor
 /// # Returns
 /// * `TeeResult` - the result of the operation
-fn htree_traverse_post_order<F>(
-    ht: &TeeFsHtree,
-    visitor: &mut F,
-    fd: Option<&mut FileVariant>,
-) -> TeeResult
+fn htree_traverse_post_order<F>(ht: &TeeFsHtree, visitor: &mut F) -> TeeResult
 where
-    F: FnMut(&HtreeNode, &TeeFsHtreeData, Option<&mut FileVariant>) -> TeeResult,
+    F: FnMut(&HtreeNode, &TeeFsHtreeData) -> TeeResult,
 {
-    post_order_traverse(&ht.root, &ht.data, visitor, fd)?;
+    post_order_traverse(&ht.root, &ht.data, visitor)?;
 
     Ok(())
 }
@@ -1073,24 +1127,14 @@ where
 /// # Arguments
 /// * `ht` - the tree
 /// * `visitor` - the visitor function
-/// * `fd` - the file descriptor
 /// # Returns
 /// * `TeeResult` - the result of the operation
-fn htree_traverse_post_order_mut<F>(
-    ht: &mut TeeFsHtree,
-    visitor: &mut F,
-    fd: Option<&mut FileVariant>,
-) -> TeeResult
+fn htree_traverse_post_order_mut<F>(ht: &mut TeeFsHtree, visitor: &mut F) -> TeeResult
 where
-    F: FnMut(
-        &mut HtreeNode,
-        &TeeFsHtreeData,
-        &dyn TeeFsHtreeStorage,
-        Option<&mut FileVariant>,
-    ) -> TeeResult,
+    F: FnMut(&mut HtreeNode, &TeeFsHtreeData, &dyn TeeFsHtreeStorageOps) -> TeeResult,
 {
     let storage = ht.storage.as_ref();
-    post_order_traverse_mut(&mut ht.root, &ht.data, storage, visitor, fd)?;
+    post_order_traverse_mut(&mut ht.root, &ht.data, storage, visitor)?;
 
     Ok(())
 }
@@ -1102,7 +1146,7 @@ where
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn verify_tree(ht: &TeeFsHtree) -> TeeResult {
-    htree_traverse_post_order(ht, &mut verify_node, None)?;
+    htree_traverse_post_order(ht, &mut verify_node)?;
     Ok(())
 }
 
@@ -1113,7 +1157,7 @@ pub fn verify_tree(ht: &TeeFsHtree) -> TeeResult {
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn calc_tree(ht: &mut TeeFsHtree) -> TeeResult {
-    htree_traverse_post_order_mut(ht, &mut calc_node, None)?;
+    htree_traverse_post_order_mut(ht, &mut calc_node)?;
     Ok(())
 }
 
@@ -1124,7 +1168,7 @@ pub fn calc_tree(ht: &mut TeeFsHtree) -> TeeResult {
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn print_tree_hash(ht: &TeeFsHtree) -> TeeResult {
-    htree_traverse_post_order(ht, &mut print_node_hash, None)?;
+    htree_traverse_post_order(ht, &mut print_node_hash)?;
 
     Ok(())
 }
@@ -1318,7 +1362,7 @@ pub fn init_head_from_data(
     hash: Option<&[u8]>,
 ) -> TeeResult {
     let storage = ht.storage.as_mut();
-    let mut fd = storage.get_hd();
+    // let mut fd = storage.get_hd();
     if let Some(target_hash) = hash {
         for idx in 0.. {
             let node_ref = &mut ht.root.node; // mutable access in scope
@@ -1358,7 +1402,7 @@ pub fn init_head_from_data(
 /// * `ht` - the tree
 /// # Returns
 /// * `TeeResult` - the result of the operation
-pub fn init_tree_from_data(fd: &mut FileVariant, ht: &mut TeeFsHtree) -> TeeResult {
+pub fn init_tree_from_data(ht: &mut TeeFsHtree) -> TeeResult {
     let mut node_image = TeeFsHtreeNodeImage::default();
     let mut node_id = 2;
 
@@ -1436,7 +1480,7 @@ pub fn verify_root(ht: &mut TeeFsHtree) -> TeeResult {
 /// * `TeeResult` - the result of the operation
 pub fn tee_fs_htree_sync_to_storage(
     ht: &mut TeeFsHtree,
-    fd: &mut FileVariant,
+    // fd: &mut FileVariant,
     mut hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
 ) -> TeeResult {
     // if ht.is_none() {
@@ -1455,7 +1499,7 @@ pub fn tee_fs_htree_sync_to_storage(
     // let mut fd = open_file_like("filenamne", FS_OFLAG_DEFAULT, FS_MODE_644)
     //     .map_err(|_| TeeResultCode::ErrorGeneric)?;
 
-    htree_traverse_post_order_mut(ht, &mut htree_sync_node_to_storage, Some(fd))
+    htree_traverse_post_order_mut(ht, &mut htree_sync_node_to_storage)
         .inspect_err(|e| error!("htree_traverse_post_order_mut error! {:X?}", e))?;
 
     update_root(ht)?;
@@ -1485,14 +1529,13 @@ pub fn tee_fs_htree_sync_to_storage(
 /// * `TeeResult<Box<TeeFsHtree>>` - the tree
 pub fn tee_fs_htree_open(
     // fd: &mut FileVariant,
-    storage: Box<dyn TeeFsHtreeStorage>,
+    storage: Box<dyn TeeFsHtreeStorageOps>,
     create: bool,
     hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
     uuid: Option<&TEE_UUID>,
 ) -> TeeResult<Box<TeeFsHtree>> {
     tee_debug!(
-        "tee_fs_htree_open: fd: {:?}, create: {:?}, hash: {:?}, uuid: {:?}",
-        storage.get_hd(),
+        "tee_fs_htree_open: create: {:?}, hash: {:?}, uuid: {:?}",
         create,
         hash,
         uuid
@@ -1502,7 +1545,6 @@ pub fn tee_fs_htree_open(
         ht.data.uuid = *uuid_val;
     }
 
-    let mut fd = storage.get_hd();
     ht.storage = storage;
 
     let init_result = (|| {
@@ -1519,13 +1561,13 @@ pub fn tee_fs_htree_open(
             )?;
             init_root_node(&mut ht)?;
             ht.data.dirty = true;
-            tee_fs_htree_sync_to_storage(&mut ht, &mut fd, hash)?;
+            tee_fs_htree_sync_to_storage(&mut ht, hash)?;
             let storage = ht.storage.as_ref();
             rpc_write_head(storage, 0, &mut dummy_head)?;
         } else {
             init_head_from_data(&mut ht, hash.as_ref().map(|s| &s[..]))?;
             verify_root(&mut ht)?;
-            init_tree_from_data(&mut fd, &mut ht)?;
+            init_tree_from_data(&mut ht)?;
             verify_tree(&ht)?;
         }
 
@@ -1608,19 +1650,24 @@ fn get_block_node(
 /// * `block` - the block
 /// # Returns
 /// * `TeeResult` - the result of the operation
-pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
+pub fn tee_fs_htree_read_block(
     ht: &mut TeeFsHtree,
-    storage: &S,
-    fd: &mut FileVariant,
+    // fd: &mut FileVariant,
     block_num: usize,
-    block: &mut [u8; BLOCK_SIZE],
+    block: &mut [u8],
 ) -> TeeResult {
+    let block_size = {
+        let storage = ht.storage.as_ref();
+        storage.block_size()
+    };
     tee_debug!(
-        "tee_fs_htree_read_block: ht: {:?},  fd: {:?}, block_num: {:?}, block: {:X?}",
+        "tee_fs_htree_read_block: ht: {:?},  block_num: {:?}, block_len: 0x{:X?}, block_size: \
+         0x{:X?}",
         ht,
-        fd,
+        // fd,
         block_num,
-        block
+        block.len(),
+        block_size
     );
     // first get the node and extract the necessary information, then release the node borrow
     let (block_vers, ni_iv, ni_tag) = {
@@ -1639,32 +1686,45 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
     // before calling authenc_init, get the root hash first
     let root_hash = ht.root.node.hash;
 
+    tee_debug!(
+        "tee_fs_htree_read_block: block_vers: {:?}, ni_iv: {:X?}, ni_tag: {:X?}, root_hash: {:X?}",
+        block_vers,
+        hex::encode(ni_iv),
+        hex::encode(ni_tag),
+        hex::encode(root_hash)
+    );
+
     // now the node borrow is released, can safely borrow the other parts of ht
     let result = (|| {
         // allocate buffer, length is one BLOCK
-        let mut enc_block = vec![0u8; storage.block_size()];
+        let mut enc_block = vec![0u8; block_size];
 
+        let storage = ht.storage.as_ref();
         storage.rpc_read_init()?;
 
-        let len = storage.rpc_read_final(
-            fd,
-            TeeFsHtreeType::Block,
-            block_num,
-            block_vers,
-            &mut enc_block,
-        )?;
+        let len =
+            storage.rpc_read_final(TeeFsHtreeType::Block, block_num, block_vers, &mut enc_block)?;
 
-        if len != storage.block_size() {
+        if len != block_size {
+            error!(
+                "tee_fs_htree_read_block: len: {:X?} != block_size: {:X?}",
+                len, block_size
+            );
             return Err(TEE_ERROR_CORRUPT_OBJECT);
         }
 
         // use authenc_init_decrypt, directly pass ni_iv without constructing temporary struct
         let cipher =
             authenc_init_decrypt(&ht.data.fek, &ht.data.head, Some(&ni_iv), Some(&root_hash))
+                .inspect_err(|e| {
+                    error!("authenc_init_decrypt: error: {:X?}", e);
+                })
                 .map_err(|_| TEE_ERROR_CORRUPT_OBJECT)?;
 
         // same as C version: res = authenc_decrypt_final(ctx, node->node.tag, enc_block, ht->stor->block_size, block);
-        authenc_decrypt_final(cipher, &ni_tag, &enc_block, block)?;
+        authenc_decrypt_final(cipher, &ni_tag, &enc_block, block).inspect_err(|e| {
+            error!("authenc_decrypt_final: error: {:X?}", e);
+        })?;
 
         Ok(())
     })();
@@ -1687,12 +1747,12 @@ pub fn tee_fs_htree_read_block<S: TeeFsHtreeStorageOps>(
 /// * `block` - the block
 /// # Returns
 /// * `TeeResult` - the result of the operation
-pub fn tee_fs_htree_write_block<S: TeeFsHtreeStorageOps>(
+pub fn tee_fs_htree_write_block(
     ht: &mut TeeFsHtree,
-    storage: &S,
-    fd: &mut FileVariant,
+    // storage: &dyn TeeFsHtreeStorageOps,
+    // fd: &mut FileVariant,
     block_num: usize,
-    block: &[u8; BLOCK_SIZE],
+    block: &[u8],
 ) -> TeeResult {
     // before calling authenc_init, get the root hash first
     let root_hash = ht.root.node.hash;
@@ -1700,6 +1760,15 @@ pub fn tee_fs_htree_write_block<S: TeeFsHtreeStorageOps>(
     // extract fek and head before getting node to avoid borrow conflicts
     let fek = ht.data.fek;
     let head = ht.data.head;
+
+    // 在获取 node 之前先获取 block_size 和初始化写入操作，避免借用冲突
+    let (block_size, write_init_result) = {
+        let storage = ht.storage.as_ref();
+        let block_size = storage.block_size();
+        let write_init_result = storage.rpc_write_init();
+        (block_size, write_init_result)
+    };
+    write_init_result?;
 
     let result = (|| {
         // get node once for all operations
@@ -1718,11 +1787,8 @@ pub fn tee_fs_htree_write_block<S: TeeFsHtreeStorageOps>(
             }
         };
 
-        // allocate encryption buffer
-        let mut enc_block = vec![0u8; storage.block_size()];
-
-        // initialize write operation
-        storage.rpc_write_init()?;
+        // allocate encryption buffer (使用之前获取的 block_size)
+        let mut enc_block = vec![0u8; block_size];
 
         // use authenc_init_encrypt, directly use extracted fek and head (immutable) since ni_iv is Some
         // authenc_init_encrypt will generate random IV for node.node.iv
@@ -1738,7 +1804,14 @@ pub fn tee_fs_htree_write_block<S: TeeFsHtreeStorageOps>(
 
         // node borrow will be released when going out of scope
         // write encrypted data
-        storage.rpc_write_final(fd, TeeFsHtreeType::Block, block_num, block_vers, &enc_block)?;
+        {
+            let storage = ht.storage.as_ref();
+            storage
+                .rpc_write_final(TeeFsHtreeType::Block, block_num, block_vers, &enc_block)
+                .inspect_err(|e| {
+                    error!("rpc_write_final: error: {:X?}", e);
+                })?;
+        }
 
         // mark tree as dirty
         ht.data.dirty = true;
@@ -2024,11 +2097,11 @@ mod tests_htree_basic {
 
             // 先计算节点哈希
             let storage = ht.storage.as_ref();
-            let calc_result = calc_node(&mut node, &ht.data, storage, None);
+            let calc_result = calc_node(&mut node, &ht.data, storage);
             assert!(calc_result.is_ok());
 
             // 再验证节点
-            let verify_result = verify_node(&node, &ht.data, None);
+            let verify_result = verify_node(&node, &ht.data);
             assert!(verify_result.is_ok());
         }
     }
@@ -2040,7 +2113,7 @@ mod tests_htree_basic {
             let node = HtreeNode::new(1, TeeFsHtreeNodeImage::default());
 
             // 不计算直接验证（应该失败）
-            assert!(verify_node(&node, &ht.data, None).is_err());
+            assert!(verify_node(&node, &ht.data).is_err());
         }
     }
 
@@ -2056,11 +2129,11 @@ mod tests_htree_basic {
 
             // 先计算子节点哈希
             let storage = ht.storage.as_ref();
-            let calc_result = calc_node(&mut child, &ht.data, storage, None);
+            let calc_result = calc_node(&mut child, &ht.data, storage);
             assert!(calc_result.is_ok());
 
             // 再验证子节点
-            let verify_result = verify_node(&child, &ht.data, None);
+            let verify_result = verify_node(&child, &ht.data);
             assert!(verify_result.is_ok());
         }
     }

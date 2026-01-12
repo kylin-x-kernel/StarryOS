@@ -90,7 +90,7 @@ pub trait TeeFileLike {
     /// # Returns
     /// * `Ok(usize)` - number of bytes read
     /// * `Err(TEE_ERROR_GENERIC)` - error
-    fn pread(&mut self, buf: &mut [u8], offset: usize) -> TeeResult<usize>;
+    fn pread(&self, buf: &mut [u8], offset: usize) -> TeeResult<usize>;
 
     /// write data to file
     ///
@@ -241,7 +241,7 @@ impl TeeFileLike for FileVariant {
         })
     }
 
-    fn pread(&mut self, buf: &mut [u8], offset: usize) -> TeeResult<usize> {
+    fn pread(&self, buf: &mut [u8], offset: usize) -> TeeResult<usize> {
         tee_debug!(
             "FileVariant::pread = fd: {}, offset: 0x{:X?}, buf_len: 0x{:X?}",
             self.fd,
