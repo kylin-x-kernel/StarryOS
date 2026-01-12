@@ -94,15 +94,6 @@ impl TeeFsFdAux {
         }
     }
 }
-pub trait TeeFsHasHd {
-    fn get_hd(&self) -> FileVariant;
-}
-
-impl TeeFsHasHd for TeeFsFdAux {
-    fn get_hd(&self) -> FileVariant {
-        self.fd
-    }
-}
 
 #[repr(C)]
 pub struct TeeFsDir {
@@ -247,17 +238,34 @@ pub fn get_offs_size(typ: TeeFsHtreeType, idx: usize, vers: u8) -> TeeResult<(us
 /// # Returns
 /// * `Ok(usize)` - number of bytes read
 pub fn tee_fs_rpc_read_final(
-    fd: &mut FileVariant,
+    fd: &FileVariant,
     typ: TeeFsHtreeType,
     idx: usize,
     vers: u8,
     data: &mut [u8],
 ) -> TeeResult<usize> {
+    tee_debug!(
+        "tee_fs_rpc_read_final: fd: {:?}, typ: {:?}, idx: {:?}, vers: {:?}, data_len: {:X?}",
+        fd,
+        typ,
+        idx,
+        vers,
+        data.len()
+    );
     let (offs, sz) = get_offs_size(typ, idx, vers)?;
 
     // alloc data with sz
     let mut data_alloc = vec![0; sz];
     let size = fd.pread(&mut data_alloc, offs)?;
+
+    if (size != data.len()) {
+        error!(
+            "tee_fs_rpc_read_final: size: {} != data.len(): {}",
+            size,
+            data.len()
+        );
+        return Err(TEE_ERROR_CORRUPT_OBJECT);
+    }
 
     data.copy_from_slice(&data_alloc[..data.len()]);
     Ok(size)
@@ -319,7 +327,7 @@ pub trait TeeFsHtreeStorageOps {
 
     fn rpc_read_final(
         &self,
-        fd: &mut FileVariant,
+        // fd: &mut FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
@@ -330,7 +338,7 @@ pub trait TeeFsHtreeStorageOps {
 
     fn rpc_write_final(
         &self,
-        fd: &FileVariant,
+        // fd: &FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
@@ -349,13 +357,15 @@ impl TeeFsHtreeStorageOps for TeeFsFdAux {
 
     fn rpc_read_final(
         &self,
-        fd: &mut FileVariant,
+        // fd: &mut FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
         data: &mut [u8],
     ) -> TeeResult<usize> {
-        tee_fs_rpc_read_final(fd, typ, idx, vers, data)
+        tee_fs_rpc_read_final(&self.fd, typ, idx, vers, data).inspect_err(|e| {
+            error!("rpc_read_final: error: {:X?}", e);
+        })
     }
 
     fn rpc_write_init(&self) -> TeeResult {
@@ -364,13 +374,13 @@ impl TeeFsHtreeStorageOps for TeeFsFdAux {
 
     fn rpc_write_final(
         &self,
-        fd: &FileVariant,
+        // fd: &FileVariant,
         typ: TeeFsHtreeType,
         idx: usize,
         vers: u8,
         data: &[u8],
     ) -> TeeResult<usize> {
-        tee_fs_rpc_write_final(fd, typ, idx, vers, data)
+        tee_fs_rpc_write_final(&self.fd, typ, idx, vers, data)
     }
 }
 
@@ -472,13 +482,7 @@ fn out_of_place_write(
 
         // 如果块在现有文件范围内，先读取
         if current_start_block_num * BLOCK_SIZE < roundup_u(meta_length as usize, BLOCK_SIZE) {
-            tee_fs_htree_read_block(
-                &mut fdp.ht,
-                &TeeFsFdAux::new(),
-                &mut fdp.fd,
-                current_start_block_num,
-                &mut *block,
-            )?;
+            tee_fs_htree_read_block(&mut fdp.ht, current_start_block_num, &mut *block)?;
         } else {
             // 新块，初始化为0
             block.fill(0);
@@ -503,8 +507,7 @@ fn out_of_place_write(
         // 写入块
         tee_fs_htree_write_block(
             &mut fdp.ht,
-            &TeeFsFdAux::new(),
-            &mut fdp.fd,
+            // &mut fdp.fd,
             current_start_block_num,
             &mut *block,
         )?;
@@ -588,13 +591,7 @@ pub fn ree_fs_read_primitive(
         }
 
         // 读取数据块
-        tee_fs_htree_read_block(
-            &mut fh.ht,
-            &TeeFsFdAux::new(),
-            &mut fh.fd,
-            start_block_num,
-            &mut *block,
-        )?;
+        tee_fs_htree_read_block(&mut fh.ht, start_block_num, &mut *block)?;
 
         // 复制数据到目标缓冲区
         if !buf_core.is_empty() {
@@ -679,7 +676,7 @@ pub fn ree_dirf_commit_writes(
     fh: &mut TeeFsFd,
     hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
 ) -> TeeResult {
-    tee_fs_htree_sync_to_storage(&mut fh.ht, &mut fh.fd, Some(&mut fh.dfh.hash))?;
+    tee_fs_htree_sync_to_storage(&mut fh.ht, Some(&mut fh.dfh.hash))?;
 
     if let Some(h) = hash {
         h.copy_from_slice(&fh.dfh.hash);
@@ -956,11 +953,7 @@ fn ree_fs_create(
         }
 
         tee_debug!("ree_fs_create: sync to storage");
-        tee_fs_htree_sync_to_storage(
-            &mut fdp_val.ht,
-            &mut fdp_val.fd,
-            Some(&mut fdp_val.dfh.hash),
-        )?;
+        tee_fs_htree_sync_to_storage(&mut fdp_val.ht, Some(&mut fdp_val.dfh.hash))?;
 
         tee_debug!("ree_fs_create: set name");
         set_name(dirh, fdp_val, po, overwrite).inspect_err(|e| {
@@ -1021,7 +1014,7 @@ pub fn ree_fs_write(
 
     let ret = (|| -> TeeResult {
         ree_fs_write_primitive(fh, pos, buf_core, buf_user, len)?;
-        tee_fs_htree_sync_to_storage(&mut fh.ht, &mut fh.fd, Some(&mut fh.dfh.hash))?;
+        tee_fs_htree_sync_to_storage(&mut fh.ht, Some(&mut fh.dfh.hash))?;
 
         tee_fs_dirfile_update_hash(dirh, &mut fh.dfh)?;
         commit_dirh_writes(dirh)?;
@@ -1044,7 +1037,7 @@ pub fn ree_fs_truncate(fh: &mut TeeFsFd, len: usize) -> TeeResult {
     let ret = (|| -> TeeResult {
         ree_fs_ftruncate_internal(fh, len)?;
 
-        tee_fs_htree_sync_to_storage(&mut fh.ht, &mut fh.fd, Some(&mut fh.dfh.hash))?;
+        tee_fs_htree_sync_to_storage(&mut fh.ht, Some(&mut fh.dfh.hash))?;
 
         tee_fs_dirfile_update_hash(dirh, &mut fh.dfh)?;
         commit_dirh_writes(dirh)?;

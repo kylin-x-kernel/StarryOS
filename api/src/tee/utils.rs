@@ -19,35 +19,11 @@ pub const fn bit(nr: u32) -> u32 {
     bit32(nr)
 }
 
-// the number of non-signed 32-bit integers left
-
-// # parameter
-// The 32 bit unsigned integer of the shift operation
-//  * shift' -left shift number
-
-//  # return value
-// The 32 bit unsigned integer after
-// shift
-
-//  note
-// This is an inline function for optimizing performance
 #[inline]
 pub(crate) fn shift_u32(v: u32, shift: u32) -> u32 {
     v << shift
 }
 
-// the number of non-signed 64-bit integers left
-
-// # parameter
-// The 64 bit unsigned integer of the shift operation
-//  * shift' -left shift number
-
-//  # return value
-// The 64 bit unsigned integer after
-// shift
-
-//  note
-// This is an inline function for optimizing performance
 #[inline]
 pub(crate) fn shift_u64(v: u64, shift: u32) -> u64 {
     v << shift

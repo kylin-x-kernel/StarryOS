@@ -220,11 +220,21 @@ pub fn crypto_hash_init(_md: &mut Md) -> TeeResult {
 }
 
 pub fn crypto_hash_update(md: &mut Md, data: &[u8]) -> TeeResult {
+    tee_debug!(
+        "crypto_hash_update: data length: {:?}, data: {:X?}",
+        data.len(),
+        hex::encode(&data)
+    );
     md.update(data).map_err(|_| TEE_ERROR_BAD_STATE)?;
     Ok(())
 }
 
 pub fn crypto_hash_final(md: Md, digest: &mut [u8]) -> TeeResult {
+    tee_debug!(
+        "crypto_hash_final: digest length: {:?}, digest: {:X?}",
+        digest.len(),
+        hex::encode(&digest)
+    );
     md.finish(digest).map_err(|_| TEE_ERROR_BAD_STATE)?;
     Ok(())
 }
