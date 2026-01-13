@@ -5,19 +5,19 @@
 // This file has been created by KylinSoft on 2025.
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{mem::size_of, slice};
+use core::{any::Any, fmt, fmt::Debug, mem::size_of, slice};
 
 use spin::Mutex;
 use static_assertions::const_assert;
-use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_TIME_NOT_SET, TEE_UUID};
+use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_SECURITY, TEE_ERROR_TIME_NOT_SET, TEE_UUID};
 
 use super::{
     TeeResult,
     common::file_ops::FileVariant,
     fs_htree::{
         TEE_FS_HTREE_HASH_SIZE, TeeFsHtree, TeeFsHtreeImage, TeeFsHtreeNodeImage, TeeFsHtreeType,
-        print_tree_hash, tee_fs_htree_open, tee_fs_htree_read_block, tee_fs_htree_sync_to_storage,
-        tee_fs_htree_write_block,
+        print_tree_hash, tee_fs_htree_close, tee_fs_htree_open, tee_fs_htree_read_block,
+        tee_fs_htree_sync_to_storage, tee_fs_htree_write_block,
     },
     tee_fs_key_manager::tee_fs_init_key_manager,
     tee_ree_fs::TeeFsHtreeStorageOps,
@@ -89,8 +89,31 @@ pub struct test_htree_storage_inner {
     pub block: Vec<u8>,
 }
 
+impl Debug for test_htree_storage_inner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "test_htree_storage_inner: data.len(): {:X?}, data_len: {:X?}, data_alloced: {:X?}, \
+             block.len(): {:X?}",
+            self.data.len(),
+            self.data_len,
+            self.data_alloced,
+            self.block.len()
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct test_htree_storage {
     inner: Mutex<test_htree_storage_inner>,
+}
+
+impl Clone for test_htree_storage {
+    fn clone(&self) -> Self {
+        test_htree_storage {
+            inner: Mutex::new(self.inner.lock().clone()),
+        }
+    }
 }
 
 impl TeeFsHtreeStorageOps for test_htree_storage {
@@ -109,7 +132,7 @@ impl TeeFsHtreeStorageOps for test_htree_storage {
         vers: u8,
         data: &mut [u8],
     ) -> TeeResult<usize> {
-        warn!(
+        tee_debug!(
             "rpc_read_final: typ: {:?}, idx: {:?}, vers: {:?}, data_len: {:X?}",
             typ,
             idx,
@@ -154,7 +177,7 @@ impl TeeFsHtreeStorageOps for test_htree_storage {
         vers: u8,
         data: &[u8],
     ) -> TeeResult<usize> {
-        warn!(
+        tee_debug!(
             "rpc_write_final: typ: {:?}, idx: {:?}, vers: {:?}, data_len: {:X?}",
             typ,
             idx,
@@ -185,11 +208,16 @@ impl TeeFsHtreeStorageOps for test_htree_storage {
         inner.data[offs..end].copy_from_slice(&src_block[..sz]);
 
         if end > inner.data_len {
+            tee_debug!("!!!!!!set inner.data_len to {:X?}", end);
             inner.data_len = end;
         }
 
         // TODO: is this necessary?
         Ok(data.len())
+    }
+
+    fn clone_box(&self) -> Box<dyn TeeFsHtreeStorageOps> {
+        Box::new(self.clone())
     }
 }
 
@@ -284,6 +312,8 @@ fn htree_test_rewrite(
     let storage = Box::new(test_htree_storage {
         inner: Mutex::new(aux_inner.clone()),
     });
+
+    tee_debug!("storage: {:?}", *storage);
     let mut ht = tee_fs_htree_open(storage, true, Some(&mut hash), Some(&TEE_UUID::default()))?;
 
     // Intialize all blocks and verify that they read back as
@@ -323,6 +353,88 @@ fn htree_test_rewrite(
 
     do_range(read_block, &mut ht, 0, num_blocks, salt as u8)?;
 
+    info!("------ Close and reopen the hash-tree ------");
+    let storage = ht.storage.clone_box();
+    tee_fs_htree_close(ht);
+    tee_debug!("storage: {:?}", storage.as_ref());
+    let mut ht = tee_fs_htree_open(storage, false, Some(&mut hash), Some(&TEE_UUID::default()))
+        .inspect_err(|e| {
+            error!("tee_fs_htree_open: error: {:X?}", e);
+        })?;
+
+    info!("------ Verify that all blocks are read as expected. ------");
+    do_range(read_block, &mut ht, 0, num_blocks, salt as u8)?;
+
+    info!("------ Rewrite a few blocks and verify that all blocks are read as expected. ------");
+    do_range_backwards(
+        write_block,
+        &mut ht,
+        w_unsync_begin,
+        w_unsync_num,
+        (salt + 1) as u8,
+    )?;
+    do_range(read_block, &mut ht, 0, w_unsync_begin, salt as u8)?;
+    do_range(
+        read_block,
+        &mut ht,
+        w_unsync_begin,
+        w_unsync_num,
+        (salt + 1) as u8,
+    )?;
+    do_range(
+        read_block,
+        &mut ht,
+        w_unsync_begin + w_unsync_num,
+        num_blocks - (w_unsync_begin + w_unsync_num),
+        salt as u8,
+    )?;
+
+    info!(
+        "------ Rewrite the blocks from above again with another salt and verify that they are \
+         read back as expected. ------"
+    );
+    do_range(
+        write_block,
+        &mut ht,
+        w_unsync_begin,
+        w_unsync_num,
+        (salt + 2) as u8,
+    )?;
+    do_range(read_block, &mut ht, 0, w_unsync_begin, salt as u8)?;
+    do_range(
+        read_block,
+        &mut ht,
+        w_unsync_begin,
+        w_unsync_num,
+        (salt + 2) as u8,
+    )?;
+    do_range(
+        read_block,
+        &mut ht,
+        w_unsync_begin + w_unsync_num,
+        num_blocks - (w_unsync_begin + w_unsync_num),
+        salt as u8,
+    )?;
+
+    info!(
+        "------ Skip tee_fs_htree_sync_to_storage() and call tee_fs_htree_close() directly to \
+         undo the changes since last call to tee_fs_htree_sync_to_storage(). Reopen the hash-tree \
+         and verify that recent changes indeed was discarded. ------"
+    );
+    let storage = ht.storage.clone_box();
+    tee_fs_htree_close(ht);
+    let mut ht = tee_fs_htree_open(storage, false, Some(&mut hash), Some(&TEE_UUID::default()))?;
+    do_range(read_block, &mut ht, 0, num_blocks, salt as u8)?;
+
+    info!(
+        "------ Close, reopen and verify that all blocks are read as expected again but this time \
+         based on the counter value in struct tee_fs_htree_image. ------"
+    );
+    let storage = ht.storage.clone_box();
+    tee_fs_htree_close(ht);
+    let mut ht = tee_fs_htree_open(storage, false, None, Some(&TEE_UUID::default()))?;
+    do_range(read_block, &mut ht, 0, num_blocks, salt as u8)?;
+
     Ok(())
 }
 
@@ -337,6 +449,191 @@ fn aux_alloc(num_blocks: usize) -> TeeResult<test_htree_storage> {
         }),
     };
     Ok(aux)
+}
+
+fn test_corrupt_type(
+    uuid: &TEE_UUID,
+    hash: &mut [u8; TEE_FS_HTREE_HASH_SIZE],
+    num_blocks: usize,
+    aux: &mut test_htree_storage,
+    typ: TeeFsHtreeType,
+    idx: usize,
+) -> TeeResult {
+    let mut offs: usize = 0;
+    let mut size: usize = 0;
+    let mut size0: usize = 0;
+
+    (offs, size0) = test_get_offs_size(typ, idx, 0)?;
+
+    tee_debug!(
+        "test_corrupt_type: typ: {:?}, idx: {:?}, offs: {:X?}, size0: {:X?}",
+        typ,
+        idx,
+        offs,
+        size0
+    );
+
+    let mut n: usize = 0;
+    let res = (|| -> TeeResult {
+        let mut result: TeeResult = Ok(());
+
+        let result = loop {
+            let mut aux2 = aux.clone();
+            {
+                let aux_inner = aux.inner.lock();
+                let mut aux2_inner = aux2.inner.lock();
+
+                // aux2_inner.data[..aux_inner.data_len]
+                //     .copy_from_slice(&aux_inner.data[..aux_inner.data_len]);
+
+                (offs, size) = test_get_offs_size(typ, idx, 0)?;
+                tee_debug!(
+                    "change aux2_inner in index {:X?} with idx: {:X?}, n: {:X?}",
+                    offs + n,
+                    idx,
+                    n
+                );
+                aux2_inner.data[offs + n] += 1;
+                (offs, size) = test_get_offs_size(typ, idx, 1)?;
+                tee_debug!(
+                    "change aux2_inner in index {:X?} with idx: {:X?}, n: {:X?}",
+                    offs + n,
+                    idx,
+                    n
+                );
+                aux2_inner.data[offs + n] += 1;
+            }
+
+            // Errors in head or node is detected by
+            // tee_fs_htree_open() errors in block is detected when
+            // actually read by do_range(read_block)
+            let result = tee_fs_htree_open(Box::new(aux2), false, Some(hash), Some(uuid));
+            tee_debug!("tee_fs_htree_open: result: {:?}", result);
+            if result.is_ok() {
+                let mut ht = result.unwrap();
+                let result = do_range(read_block, &mut ht, 0, num_blocks, 1);
+                // do_range(read_block,) is supposed to detect the
+                // error. If TEE_ERROR_TIME_NOT_SET is returned
+                // read_block() was acutally able to get some data,
+                // but the data was incorrect.
+                //
+                // If res == TEE_SUCCESS or
+                //    res == TEE_ERROR_TIME_NOT_SET
+                // there's some problem with the htree
+                // implementation.
+                if result.is_err() && result.unwrap_err() == TEE_ERROR_TIME_NOT_SET {
+                    error!("error: data silently corrupted");
+                    return Err(TEE_ERROR_TIME_NOT_SET);
+                }
+                if result.is_ok() {
+                    break Ok(());
+                }
+
+                tee_fs_htree_close(ht)?;
+            }
+            // We've tested the last byte, let's get out of here
+            if n == size0 - 1 {
+                break Err(TEE_ERROR_GENERIC);
+            }
+
+            // Increase n exponentionally after 1 to skip some testing
+            if n != 0 {
+                n += n;
+            } else {
+                n = 1;
+            }
+
+            if n >= size0 {
+                n = size0 - 1;
+            }
+        };
+
+        result
+    })();
+
+    if res.is_err() {
+        if res.unwrap_err() == TEE_ERROR_TIME_NOT_SET {
+            return Err(TEE_ERROR_TIME_NOT_SET);
+        }
+        return Ok(());
+    } else {
+        error!("error: data corruption undetected");
+        return Err(TEE_ERROR_SECURITY);
+    }
+}
+
+fn test_corrupt(num_blocks: usize) -> TeeResult {
+    let mut aux = aux_alloc(num_blocks)?;
+    let mut hash = [0u8; TEE_FS_HTREE_HASH_SIZE];
+    let uuid = TEE_UUID::default();
+
+    {
+        let mut aux_inner = aux.inner.lock();
+        aux_inner.data_len = 0;
+        let alloced = aux_inner.data_alloced;
+        aux_inner.data[..alloced].fill(0xce);
+    }
+
+    // Write the object and close it
+    tee_debug!("--- Write the object and close it ---");
+    let mut ht = tee_fs_htree_open(Box::new(aux), true, Some(&mut hash), Some(&uuid))?;
+    do_range(write_block, &mut ht, 0, num_blocks, 1)?;
+    tee_fs_htree_sync_to_storage(&mut ht, Some(&mut hash))?;
+
+    let mut aux = ht.storage.clone_box();
+    tee_fs_htree_close(ht)?;
+
+    // Verify that the object can be read correctly
+    tee_debug!("--- Verify that the object can be read correctly ---");
+    let mut ht = tee_fs_htree_open(aux, false, Some(&mut hash), Some(&uuid))?;
+    tee_debug!("tee_fs_htree_open: ht: {:?}", &ht);
+    do_range(read_block, &mut ht, 0, num_blocks, 1)?;
+    let aux = ht.storage.clone_box();
+    tee_fs_htree_close(ht)?;
+
+    // Downcast Box<dyn TeeFsHtreeStorageOps> to Box<test_htree_storage>
+    // We know in test context, storage is always test_htree_storage
+    // First convert to Box<dyn Any>, then downcast
+    tee_debug!("--- test_corrupt with Head ---");
+    let aux_any: Box<dyn core::any::Any> = aux;
+    let aux_box: Box<test_htree_storage> = aux_any.downcast().map_err(|_| TEE_ERROR_GENERIC)?;
+    let mut aux = *aux_box;
+    test_corrupt_type(
+        &uuid,
+        &mut hash,
+        num_blocks,
+        &mut aux,
+        TeeFsHtreeType::Head,
+        0,
+    )?;
+
+    tee_debug!("--- test_corrupt with Node ---");
+    for n in 0..num_blocks {
+        tee_debug!("--- test in loop with num_blocks : {} ---", n);
+        test_corrupt_type(
+            &uuid,
+            &mut hash,
+            num_blocks,
+            &mut aux,
+            TeeFsHtreeType::Node,
+            n,
+        )?;
+    }
+
+    tee_debug!("--- test_corrupt with Block ---");
+    for n in 0..num_blocks {
+        tee_debug!("--- test in loop with num_blocks : {} ---", n);
+        test_corrupt_type(
+            &uuid,
+            &mut hash,
+            num_blocks,
+            &mut aux,
+            TeeFsHtreeType::Block,
+            n,
+        )?;
+    }
+
+    Ok(())
 }
 
 fn test_write_read(num_blocks: usize) -> TeeResult {
@@ -380,6 +677,9 @@ pub mod tests_fs_htree_tests {
             assert!(res.is_ok());
 
             let result = test_write_read(10);
+            assert!(result.is_ok());
+
+            let result = test_corrupt(5);
             assert!(result.is_ok());
         }
     }

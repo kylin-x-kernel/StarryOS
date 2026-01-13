@@ -13,7 +13,9 @@ use alloc::{
     vec::Vec,
 };
 use core::{
+    any::Any,
     ffi::c_uint,
+    fmt::Debug,
     ptr,
     sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
 };
@@ -320,7 +322,7 @@ pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
 }
 
-pub trait TeeFsHtreeStorageOps {
+pub trait TeeFsHtreeStorageOps: Debug + Any {
     fn block_size(&self) -> usize;
 
     fn rpc_read_init(&self) -> TeeResult;
@@ -344,6 +346,10 @@ pub trait TeeFsHtreeStorageOps {
         vers: u8,
         data: &[u8],
     ) -> TeeResult<usize>;
+
+    fn clone_box(&self) -> Box<dyn TeeFsHtreeStorageOps> {
+        unimplemented!()
+    }
 }
 
 impl TeeFsHtreeStorageOps for TeeFsFdAux {

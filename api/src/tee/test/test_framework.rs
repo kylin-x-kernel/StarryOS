@@ -6,7 +6,10 @@
 extern crate alloc;
 
 use alloc::format;
-use core::fmt::Write;
+use core::{
+    fmt::Write,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use super::test_framework_basic::TestResult;
 // 测试结果枚举
@@ -49,6 +52,8 @@ impl TestStats {
         }
     }
 }
+
+pub static TEST_FAILED_FLAG: AtomicBool = AtomicBool::new(false);
 
 // 测试用例trait
 pub trait Testable {
@@ -206,6 +211,11 @@ impl TestRunner {
 
         // 打印最终统计信息
         self.print_final_stats();
+
+        // set global flag if any test failed
+        if self.stats.failed > 0 {
+            TEST_FAILED_FLAG.store(true, Ordering::Relaxed);
+        }
     }
 
     pub fn print_final_stats(&mut self) {
@@ -219,9 +229,9 @@ impl TestRunner {
         self.print_message(self.output.as_str());
 
         if self.stats.failed > 0 {
-            self.print_error("  >>> Some tests FAILED!");
+            self.print_error("  >>> This tests FAILED!");
         } else {
-            self.print_message("  >>> All tests PASSED!");
+            self.print_message("  >>> This tests PASSED!");
         }
     }
 
@@ -372,4 +382,8 @@ macro_rules! run_tests {
     ($runner:expr, $test:expr) => {
         $runner.run_tests_descriptors(stringify!($test), $test);
     };
+}
+
+pub fn tests_failed() -> bool {
+    TEST_FAILED_FLAG.load(Ordering::Relaxed)
 }
