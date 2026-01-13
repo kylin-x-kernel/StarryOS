@@ -87,7 +87,7 @@ pub fn tee_obj_add(mut obj: tee_obj) -> TeeResult<tee_obj_id_type> {
         // 创建 Arc 并插入
         let arc_obj = Arc::new(Mutex::new(obj));
         let inserted_id = vacant.insert(arc_obj);
-        info!("tee_obj_add: id: {}", id);
+        tee_debug!("tee_obj_add: id: {}", id);
 
         Ok(id as tee_obj_id_type)
     })

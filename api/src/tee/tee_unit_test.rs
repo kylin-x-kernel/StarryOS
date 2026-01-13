@@ -6,7 +6,7 @@
 
 use crate::{
     assert, assert_eq, assert_ne, run_tests,
-    tee::{TestDescriptor, TestRunner},
+    tee::{TestDescriptor, TestRunner, test::test_framework::tests_failed},
     test_fn, tests, tests_name,
 };
 
@@ -45,4 +45,10 @@ pub fn tee_test_unit() {
             TEST_FS_HTREE_TESTS,
         ]
     );
+
+    if tests_failed() {
+        error!("!!! SOME TESTS FAILED, NEED TO BE FIXED !!!");
+    } else {
+        info!("!!! ALL TESTS PASSED !!!");
+    }
 }

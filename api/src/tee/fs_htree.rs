@@ -109,12 +109,40 @@ impl Debug for TeeFsHtreeImage {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)] // Derive Clone for easy copying if needed
+#[derive(Copy, Clone, Default)] // Derive Clone for easy copying if needed
 pub struct TeeFsHtreeNodeImage {
     pub hash: [u8; TEE_FS_HTREE_HASH_SIZE],
     pub iv: [u8; TEE_FS_HTREE_IV_SIZE],
     pub tag: [u8; TEE_FS_HTREE_TAG_SIZE],
     pub flags: u16,
+}
+
+static_assertions::const_assert!(core::mem::size_of::<TeeFsHtreeNodeImage>() == 66);
+
+impl TeeFsHtreeNodeImage {
+    /// Returns the on-disk byte representation of this node image.
+    ///
+    /// # Safety invariants
+    /// - `Self` is `#[repr(C)]` with a stable layout
+    /// - All bytes are fully initialized
+    /// - This type represents an on-disk / wire image
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            core::slice::from_raw_parts(
+                self as *const Self as *const u8,
+                core::mem::size_of::<Self>(),
+            )
+        }
+    }
+
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self as *mut Self as *mut u8,
+                core::mem::size_of::<Self>(),
+            )
+        }
+    }
 }
 
 impl Debug for TeeFsHtreeNodeImage {
@@ -125,7 +153,7 @@ impl Debug for TeeFsHtreeNodeImage {
             hex::encode(self.hash),
             hex::encode(self.iv),
             hex::encode(self.tag),
-            self.flags
+            self.flags,
         )
     }
 }
@@ -335,12 +363,8 @@ pub fn rpc_read_node(
     vers: u8,
     head: &mut TeeFsHtreeNodeImage,
 ) -> TeeResult {
-    let data_ptr: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            head as *mut TeeFsHtreeNodeImage as *mut u8,
-            size_of::<TeeFsHtreeNodeImage>(),
-        )
-    };
+    tee_debug!("rpc_read_node: node_id: {:X?}, vers: {:X?}", node_id, vers);
+    let data_ptr: &mut [u8] = head.as_bytes_mut();
     rpc_read(storage, TeeFsHtreeType::Node, node_id - 1, vers, data_ptr)?;
     Ok(())
 }
@@ -427,12 +451,7 @@ pub fn rpc_write_node(
         vers,
         head,
     );
-    let data_ptr: &[u8] = unsafe {
-        core::slice::from_raw_parts(
-            head as *const TeeFsHtreeNodeImage as *const u8,
-            size_of::<TeeFsHtreeNodeImage>(),
-        )
-    };
+    let data_ptr: &[u8] = head.as_bytes();
     rpc_write(storage, TeeFsHtreeType::Node, node_id - 1, vers, data_ptr)
         .inspect_err(|e| error!("rpc_write_node error! {:X?}", e))?;
     Ok(())
@@ -485,10 +504,20 @@ pub fn calc_node_hash_with_ctx(
     meta: Option<&TeeFsHtreeMeta>,
     digest: &mut [u8; TEE_FS_HTREE_HASH_SIZE],
 ) -> TeeResult {
-    let all_bytes = bytemuck::bytes_of(&node.node);
+    // let all_bytes = bytemuck::bytes_of(&node.node);
+    let all_bytes: &[u8] = node.node.as_bytes();
+    debug_assert!(66 == all_bytes.len());
     let iv_offset = offset_of!(TeeFsHtreeNodeImage, iv);
     let flags_offset = offset_of!(TeeFsHtreeNodeImage, flags);
-    let flags_size = core::mem::size_of_val(&node.node.flags);
+    let flags_size = core::mem::size_of::<u16>();
+
+    tee_debug!(
+        "all_bytes.len(): {:X?}, iv_offset: {:X?}, flags_offset: {:X?}, flags_size: {:X?}",
+        all_bytes.len(),
+        iv_offset,
+        flags_offset,
+        flags_size
+    );
 
     tee_debug!(
         "calc_node_hash_with_ctx: node.node: {:?}, meta: {:?}",
@@ -615,7 +644,7 @@ where
     }
 
     // Visit the current node
-    let _ = visitor(node, ht_data);
+    visitor(node, ht_data)?;
 
     Ok(())
 }
@@ -701,13 +730,14 @@ pub fn verify_node(
         )?;
     }
 
-    debug!(
+    tee_debug!(
         "check hash {} with {}",
         hex::encode(node.node.hash),
         hex::encode(digest)
     );
 
     if node.node.hash.ct_eq(&digest).unwrap_u8() == 0 {
+        tee_debug!("verify_node: hash not equal");
         return Err(TEE_ERROR_CORRUPT_OBJECT);
     }
 
@@ -740,7 +770,7 @@ pub fn print_node_hash(
         )?;
     }
 
-    info!("hash with {} {}", node.id, hex::encode(digest));
+    tee_debug!("hash with {} {}", node.id, hex::encode(digest));
     Ok(())
 }
 
@@ -1367,8 +1397,15 @@ pub fn init_head_from_data(
         for idx in 0.. {
             let node_ref = &mut ht.root.node; // mutable access in scope
             rpc_read_node(storage, 1, idx, node_ref)?;
+            tee_debug!(
+                "rpc_read_node: root node hash: {:X?}, target_hash: {:X?}",
+                hex::encode(node_ref.hash),
+                hex::encode(target_hash)
+            );
             if node_ref.hash == target_hash {
-                let _head = rpc_read_head(storage, idx, &mut ht.data.head)?;
+                let _head = rpc_read_head(storage, idx, &mut ht.data.head).inspect_err(|e| {
+                    error!("rpc_read_head error! {:X?}", e);
+                })?;
                 break;
             }
 
@@ -1560,15 +1597,25 @@ pub fn tee_fs_htree_open(
                 Some(&mut ht.data.head.enc_fek),
             )?;
             init_root_node(&mut ht)?;
+            tee_debug!("init_root_node to get: ht: {:?}", &ht);
             ht.data.dirty = true;
             tee_fs_htree_sync_to_storage(&mut ht, hash)?;
             let storage = ht.storage.as_ref();
             rpc_write_head(storage, 0, &mut dummy_head)?;
         } else {
-            init_head_from_data(&mut ht, hash.as_ref().map(|s| &s[..]))?;
-            verify_root(&mut ht)?;
-            init_tree_from_data(&mut ht)?;
-            verify_tree(&ht)?;
+            init_head_from_data(&mut ht, hash.as_ref().map(|s| &s[..])).inspect_err(|e| {
+                error!("init_head_from_data error! {:X?}", e);
+            })?;
+            verify_root(&mut ht).inspect_err(|e| {
+                error!("verify_root error! {:X?}", e);
+            })?;
+            init_tree_from_data(&mut ht).inspect_err(|e| {
+                error!("init_tree_from_data error! {:X?}", e);
+            })?;
+            tee_debug!("verify_tree");
+            verify_tree(&ht).inspect_err(|e| {
+                error!("verify_tree error! {:X?}", e);
+            })?;
         }
 
         Ok(())
@@ -1754,6 +1801,11 @@ pub fn tee_fs_htree_write_block(
     block_num: usize,
     block: &[u8],
 ) -> TeeResult {
+    tee_debug!(
+        "tee_fs_htree_write_block-> block_num: {:?}, block.len: {:?}",
+        block_num,
+        block.len()
+    );
     // before calling authenc_init, get the root hash first
     let root_hash = ht.root.node.hash;
 
@@ -1949,11 +2001,11 @@ mod tests_htree_basic {
                 flags: 0x1234,
             };
 
-            let all_bytes = bytemuck::bytes_of(&node);
-
+            // let all_bytes = bytemuck::bytes_of(&node);
+            let all_bytes: &[u8] = node.as_bytes();
             let iv_offset = offset_of!(TeeFsHtreeNodeImage, iv);
             let flags_offset = offset_of!(TeeFsHtreeNodeImage, flags);
-            let flags_size = core::mem::size_of_val(&node.flags);
+            let flags_size = core::mem::size_of::<u16>();
 
             let relevant = &all_bytes[iv_offset..flags_offset + flags_size];
 
