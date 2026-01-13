@@ -751,6 +751,7 @@ pub fn syscall_storage_obj_read(
             .ok_or(TEE_ERROR_OVERFLOW)?;
 
         // data = memtag_strip_tag(data);
+        tee_debug!("syscall_storage_obj_read: ds_pos: {:X?}", o_guard.ds_pos);
 
         let pos_tmp = o_guard
             .ds_pos
@@ -773,9 +774,9 @@ pub fn syscall_storage_obj_read(
     let mut o_guard = o.lock();
     let data_slice = unsafe { core::slice::from_raw_parts_mut(data as *mut u8, len) };
     tee_debug!(
-        "syscall_storage_obj_read: bytes: {:X?} pos: 0x{:X?}",
+        "syscall_storage_obj_read: bytes: {:X?} dataPosition: 0x{:X?}",
         bytes,
-        pos_tmp
+        o_guard.info.dataPosition
     );
     (fops.read)(&mut o_guard.fh, pos_tmp, &mut [], data_slice, &mut bytes).inspect_err(|e| {
         if *e == TEE_ERROR_CORRUPT_OBJECT {
@@ -787,6 +788,115 @@ pub fn syscall_storage_obj_read(
 
     let u_count = bytes as u64;
     copy_to_user_struct(unsafe { &mut *count }, &u_count);
+
+    Ok(())
+}
+
+/// write data to the object
+///
+/// # Arguments
+/// * `obj` - the object id
+/// * `data` - the data to write
+/// * `len` - the length of the data
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_obj_write(obj: c_ulong, data: *mut c_void, len: usize) -> TeeResult {
+    tee_debug!(
+        "syscall_storage_obj_write: obj: {:X?}, data_len: {:X?}",
+        obj,
+        len
+    );
+    let o = tee_obj_get(obj)?;
+    let (fops, pos_tmp) = {
+        let o_guard = o.lock();
+        if (o_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT == 0) {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+        if (o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE == 0) {
+            return Err(TEE_ERROR_ACCESS_CONFLICT);
+        }
+
+        let pos_tmp = o_guard
+            .info
+            .dataPosition
+            .checked_add(len)
+            .ok_or(TEE_ERROR_OVERFLOW)?;
+
+        let pos_tmp = o_guard
+            .ds_pos
+            .checked_add(o_guard.info.dataPosition)
+            .ok_or(TEE_ERROR_OVERFLOW)?;
+
+        (
+            o_guard
+                .pobj
+                .as_ref()
+                .ok_or(TEE_ERROR_BAD_STATE)?
+                .read()
+                .fops
+                .ok_or(TEE_ERROR_BAD_STATE)?,
+            pos_tmp,
+        )
+    };
+
+    let mut o_guard = o.lock();
+
+    tee_debug!(
+        "syscall_storage_obj_write: dataPosition: {:X?}",
+        o_guard.info.dataPosition
+    );
+    let data_slice = unsafe { core::slice::from_raw_parts(data as *const u8, len) };
+    (fops.write)(&mut o_guard.fh, pos_tmp, &[], data_slice, len).inspect_err(|e| {
+        error!("syscall_storage_obj_write: write failed: {:X?}", e);
+    })?;
+    o_guard.info.dataPosition += len;
+    if o_guard.info.dataPosition > o_guard.info.dataSize {
+        o_guard.info.dataSize = o_guard.info.dataPosition;
+    }
+    Ok(())
+}
+
+/// seek to the offset in the object
+///
+/// # Arguments
+/// * `obj` - the object id
+/// * `offset` - the offset to seek
+/// * `whence` - the whence to seek
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_obj_seek(obj: c_ulong, offset: i32, whence: c_ulong) -> TeeResult {
+    let o = tee_obj_get(obj)?;
+    let o_guard = o.lock();
+    if o_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT == 0 {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+    let mut new_pos: i64 = match whence as u32 {
+        TEE_DATA_SEEK_SET => offset as i64,
+        TEE_DATA_SEEK_CUR => (o_guard.info.dataPosition as i64)
+            .checked_add(offset as i64)
+            .ok_or(TEE_ERROR_OVERFLOW)?,
+        TEE_DATA_SEEK_END => (o_guard.info.dataSize as i64)
+            .checked_add(offset as i64)
+            .ok_or(TEE_ERROR_OVERFLOW)?,
+        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+    };
+    drop(o_guard);
+
+    tee_debug!("syscall_storage_obj_seek: new_pos: {:X?}", new_pos);
+    if new_pos < 0 {
+        new_pos = 0;
+    }
+
+    if new_pos > TEE_DATA_MAX_POSITION as i64 {
+        return Err(TEE_ERROR_OVERFLOW);
+    }
+
+    let mut o_guard = o.lock();
+    o_guard.info.dataPosition = new_pos as usize;
+    tee_debug!(
+        "syscall_storage_obj_seek: new_pos: {:X?}",
+        o_guard.info.dataPosition
+    );
 
     Ok(())
 }
@@ -996,11 +1106,33 @@ pub mod tests_tee_svc_storage {
             assert!(result.is_ok());
 
             // step 2 : read the object
-            let mut data = vec![0u8; data.len()];
+            let mut data_read = vec![0u8; data.len()];
             let mut count = 0 as u64;
-            let mut result = syscall_storage_obj_read(obj as c_ulong, data.as_ptr() as *mut c_void, data.len(), &mut count);
+            let mut result = syscall_storage_obj_read(obj as c_ulong, data_read.as_ptr() as *mut c_void, data_read.len(), &mut count);
             assert!(result.is_ok());
+            tee_debug!("data: {:?}, count: 0x{:X?}", data_read, count);
+            assert_eq!(data_read, b"test_data");
+            assert_eq!(count, data.len() as u64);
             // assert_eq!(str::from_utf8(&data[..len]).unwrap(), "test_data");
+
+            // step 3 : syscall_storage_obj_write
+            let data_write = b"TEST_DATA";
+            let len = data_write.len();
+            let result = syscall_storage_obj_write(obj as c_ulong, data_write.as_ptr() as *mut c_void, len);
+            assert!(result.is_ok());
+
+            // step 4 : seek
+            let result = syscall_storage_obj_seek(obj as c_ulong, -(data_write.len() as i32), TEE_DATA_SEEK_CUR as c_ulong);
+            assert!(result.is_ok());
+
+            // step 5 : read
+            let mut data_read = vec![0u8; data_write.len()];
+            let mut count = 0 as u64;
+            let mut result = syscall_storage_obj_read(obj as c_ulong, data_read.as_ptr() as *mut c_void, data_read.len(), &mut count);
+            assert!(result.is_ok());
+            tee_debug!("data: {:?}, count: 0x{:X?}", data_read, count);
+            assert_eq!(data_read, b"TEST_DATA");
+            assert_eq!(count, data_write.len() as u64);
 
             // step 2 : close the object
             let obj_id = obj as c_ulong;
