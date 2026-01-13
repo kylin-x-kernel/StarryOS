@@ -4,6 +4,8 @@
 //
 // This file has been created by KylinSoft on 2025.
 
+use alloc::{format, string::String};
+
 #[inline]
 pub const fn bit32(nr: u32) -> u32 {
     1u32 << nr
@@ -56,6 +58,13 @@ pub fn roundup_u<
     size: T,
 ) -> T {
     (v + (size - T::from(1))) & !(size - T::from(1))
+}
+
+pub fn slice_fmt(data: &[u8]) -> String {
+    let len = data.len();
+    let show_len = len.min(16);
+
+    format!("len: 0x{:X}, ", len,) + "data: " + &hex::encode_upper(&data[..show_len]) + "..."
 }
 
 #[cfg(feature = "tee_test")]

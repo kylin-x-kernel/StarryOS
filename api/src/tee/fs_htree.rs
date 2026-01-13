@@ -32,6 +32,7 @@ use crate::tee::{
     tee_fs_key_manager::{TEE_FS_KM_FEK_SIZE, tee_fs_fek_crypt},
     tee_ree_fs::{BLOCK_SIZE, TeeFsFdAux, TeeFsHtreeStorageOps, crypto_rng_read},
     utee_defines::TEE_ALG,
+    utils::slice_fmt,
 };
 
 pub const TEE_FS_HTREE_IV_SIZE: usize = 16;
@@ -1035,10 +1036,10 @@ pub fn authenc_decrypt_final(
     plain: &mut [u8],
 ) -> TeeResult {
     tee_debug!(
-        "authenc_decrypt_final: tag: {:X?}, crypt: {:X?}, plain: {:X?}",
-        hex::encode(tag),
-        hex::encode(crypt),
-        hex::encode(&plain),
+        "authenc_decrypt_final: tag: {:?}, crypt: {:?}, plain: {:?}",
+        slice_fmt(tag),
+        slice_fmt(crypt),
+        slice_fmt(plain),
     );
     let mut plain_with_add_block = vec![0u8; crypt.len() + cipher.block_size()];
 
@@ -1096,10 +1097,10 @@ pub fn authenc_encrypt_final(
     crypt.copy_from_slice(&crypt_with_add_block.as_slice()[..plain.len()]);
 
     tee_debug!(
-        "authenc_encrypt_final: tag: {:X?}, crypt: {:X?}, plain: {:X?}",
-        hex::encode(tag),
-        hex::encode(crypt),
-        hex::encode(plain),
+        "authenc_encrypt_final: tag: {:?}, crypt: {:?}, plain: {:?}",
+        slice_fmt(&tag),
+        slice_fmt(&crypt),
+        slice_fmt(&plain),
     );
     Ok(())
 }
