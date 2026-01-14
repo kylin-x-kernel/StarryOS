@@ -769,6 +769,8 @@ impl TeeFsDirfileOperations for ReeDirfOps {
 /// tee_file_operations is the operations of the tee_pobj
 #[derive(Debug)]
 pub struct TeeFileOperations {
+    pub name: &'static str,
+
     pub open: fn(po: &mut tee_pobj, size: Option<&mut usize>) -> TeeResult<Box<TeeFsFd>>,
 
     pub create: fn(
@@ -1130,6 +1132,7 @@ fn ree_fs_echo() -> String {
 
 // global file_ops for REE FS, in starryos REE is  starryos self
 pub static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
+    name: "REE_FS_OPS",
     open: ree_fs_open,
     create: ree_fs_create,
     close: ree_fs_close,
