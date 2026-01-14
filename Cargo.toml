@@ -91,6 +91,7 @@ repository.workspace = true
 
 [features]
 default = []
+tee = ["starry-api/tee"]
 qemu = [
     "axfeat/display",
     "axfeat/input",
@@ -177,6 +178,8 @@ percpu = { git = "https://github.com/arceos-org/percpu", rev = "89c8a54"}
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
 kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main"}
+syscalls = { path = "local_crates/syscalls" }
+tee_raw_sys = { path = "local_crates/tee_raw_sys" }
 
 [patch."https://github.com/arceos-org/axcpu.git"]
 axcpu = { git = "https://github.com/kylin-x-kernel/axcpu", branch = "dev"}
