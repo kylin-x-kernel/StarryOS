@@ -11,7 +11,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::{default, ptr};
+use core::{default, fmt, fmt::Debug, ptr};
 
 use lazy_static::lazy_static;
 use spin::{Mutex, RwLock};
@@ -20,6 +20,7 @@ use tee_raw_sys::*;
 use super::{
     TeeResult,
     tee_ree_fs::{REE_FS_OPS, TeeFileOperations, tee_file_handle},
+    uuid::Uuid,
 };
 
 static POBJS_MUTEX: Mutex<()> = Mutex::new(());
@@ -30,7 +31,6 @@ lazy_static! {
 }
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct tee_pobj {
     pub refcnt: u32,
     pub uuid: TEE_UUID,
@@ -41,6 +41,28 @@ pub struct tee_pobj {
     pub temporary: bool, // can be changed while creating == true
     pub creating: bool,  // can only be changed with mutex held
     pub fops: Option<&'static TeeFileOperations>, // Filesystem handling this object
+}
+
+impl Debug for tee_pobj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let obj_id = String::from_utf8_lossy(&self.obj_id[..self.obj_id_len as usize]);
+        let uuid: Uuid = self.uuid.into();
+
+        write!(
+            f,
+            "tee_pobj{{refcnt: {:?}, uuid: {}, obj_id: {:?}, obj_id_len: {:?}, flags: {:#010X?}, \
+             obj_info_usage: {:010X?}, temporary: {:?}, creating: {:?}, fops: {:?}}}",
+            self.refcnt,
+            uuid,
+            obj_id,
+            self.obj_id_len,
+            self.flags,
+            self.obj_info_usage,
+            self.temporary,
+            self.creating,
+            self.fops.as_ref().map(|fops| fops.name).unwrap_or("None"),
+        )
+    }
 }
 
 impl default::Default for tee_pobj {
@@ -306,6 +328,31 @@ pub fn tee_pobj_release(obj: Arc<RwLock<tee_pobj>>) -> TeeResult {
         // Arc will be released automatically when it leaves the scope (if the reference count is 0)
         // Box will also be released, no need to manually call free
     }
+    Ok(())
+}
+
+/// Rename a tee_pobj
+///
+/// # Arguments
+/// * `obj` - The tee_pobj
+/// * `obj_id` - The new object ID
+/// * `obj_id_len` - The actual length of the new object ID
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn tee_pobj_rename(obj: &mut tee_pobj, obj_id: &[u8], obj_id_len: u32) -> TeeResult {
+    let _guard = POBJS_MUTEX.lock();
+
+    if obj.refcnt != 1 {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    // check obj_id_len is not greater than obj_id length
+    if obj_id_len as usize > obj_id.len() {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    obj.obj_id = obj_id[..obj_id_len as usize].to_vec().into_boxed_slice();
+    obj.obj_id_len = obj_id_len;
     Ok(())
 }
 

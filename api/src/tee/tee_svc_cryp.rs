@@ -1749,7 +1749,9 @@ fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResul
     Ok(())
 }
 
-pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: &mut utee_object_info) -> TeeResult {
+pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -> TeeResult {
+    let info = unsafe { &mut *info };
+
     let mut o_info: utee_object_info = utee_object_info::default();
     let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
     let o = o_arc.lock();

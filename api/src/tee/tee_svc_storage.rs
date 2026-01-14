@@ -4,7 +4,7 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use core::{
     ffi::{c_uint, c_ulong, c_void},
     mem::{size_of, size_of_val},
@@ -21,14 +21,14 @@ use super::{
     tee_misc::{tee_b2hs, tee_b2hs_hsbuf_size},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
     tee_pobj::{
-        tee_pobj, tee_pobj_create_final, tee_pobj_get, tee_pobj_release, tee_pobj_usage,
-        with_pobj_usage_lock,
+        tee_pobj, tee_pobj_create_final, tee_pobj_get, tee_pobj_release, tee_pobj_rename,
+        tee_pobj_usage, with_pobj_usage_lock,
     },
     tee_ree_fs::{TeeFileOperations, tee_svc_storage_file_ops},
     tee_session::{tee_session_set_current_uuid, with_tee_ta_ctx},
     tee_svc_cryp::{
-        syscall_cryp_obj_close, tee_obj_attr_copy_from, tee_obj_attr_from_binary,
-        tee_obj_attr_to_binary, tee_obj_set_type,
+        syscall_cryp_obj_close, syscall_cryp_obj_get_info, tee_obj_attr_copy_from,
+        tee_obj_attr_from_binary, tee_obj_attr_to_binary, tee_obj_set_type,
     },
     user_access::{bb_memdup_user_private, copy_to_user_struct},
     uuid::Uuid,
@@ -719,6 +719,90 @@ pub fn syscall_storage_obj_del(obj_id: c_ulong) -> TeeResult {
     res
 }
 
+/// rename a persistent object
+///
+/// # Arguments
+/// * `obj` - the object id
+/// * `object_id` - the new object id
+/// * `object_id_len` - the length of the new object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_obj_rename(
+    obj: c_ulong,
+    object_id: *mut c_void,
+    object_id_len: usize,
+) -> TeeResult {
+    let object_id_slice =
+        unsafe { core::slice::from_raw_parts(object_id as *const u8, object_id_len) };
+
+    let oid_bbuf = bb_memdup_user_private(object_id_slice)?;
+
+    tee_debug!(
+        "syscall_storage_obj_rename: obj: {:X?}, object_id: {:?}, object_id_len: {:04X?}",
+        obj,
+        String::from_utf8_lossy(object_id_slice),
+        object_id_len
+    );
+
+    if object_id_len > TEE_OBJECT_ID_MAX_LEN as usize {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+    let (o, fops) = {
+        let mut o = tee_obj_get(obj)?;
+        let o_guard = o.lock();
+        if o_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT == 0 {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+        if o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE_META == 0 {
+            return Err(TEE_ERROR_ACCESS_CONFLICT);
+        }
+
+        if o_guard.pobj.is_none() || o_guard.pobj.as_ref().unwrap().read().obj_id.is_empty() {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+
+        // reserve dest name
+        let fops = o_guard
+            .pobj
+            .as_ref()
+            .unwrap()
+            .read()
+            .fops
+            .ok_or(TEE_ERROR_BAD_STATE)?;
+        drop(o_guard);
+        (o, fops)
+    };
+
+    let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
+    let uuid = Uuid::parse_str(&uuid)?;
+
+    let po = tee_pobj_get(
+        uuid.as_raw_ref(),
+        &oid_bbuf,
+        object_id_len as u32,
+        TEE_DATA_FLAG_ACCESS_WRITE_META,
+        tee_pobj_usage::TEE_POBJ_USAGE_RENAME,
+        fops,
+    )
+    .inspect_err(|e| {
+        error!("syscall_storage_obj_rename: tee_pobj_get error: {:#X?}", e);
+    })?;
+
+    // move
+    let mut o_guard = o.lock();
+    let mut pobj = o_guard.pobj.as_ref().unwrap().write();
+    (fops.rename)(&mut pobj, &po.read(), false /* no overwrite */).inspect_err(|e| {
+        error!("syscall_storage_obj_rename: fops.rename error: {:#X?}", e);
+    })?;
+
+    let po_guard = po.read();
+    let obj_id = po_guard.obj_id.as_ref();
+    let obj_id_len = po_guard.obj_id_len;
+    tee_pobj_rename(&mut pobj, obj_id, obj_id_len)?;
+
+    Ok(())
+}
+
 pub fn syscall_storage_obj_read(
     obj: c_ulong,
     data: *mut c_void,
@@ -941,7 +1025,7 @@ pub fn syscall_storage_obj_seek(obj: c_ulong, offset: i32, whence: c_ulong) -> T
     };
     drop(o_guard);
 
-    tee_debug!("syscall_storage_obj_seek: new_pos: 0x{:2X?}", new_pos);
+    tee_debug!("syscall_storage_obj_seek: new_pos: 0x{:02X}", new_pos);
     if new_pos < 0 {
         new_pos = 0;
     }
@@ -953,7 +1037,7 @@ pub fn syscall_storage_obj_seek(obj: c_ulong, offset: i32, whence: c_ulong) -> T
     let mut o_guard = o.lock();
     o_guard.info.dataPosition = new_pos as usize;
     tee_debug!(
-        "syscall_storage_obj_seek: new_pos: {:X?}",
+        "syscall_storage_obj_seek: new_pos: 0x{:02X}",
         o_guard.info.dataPosition
     );
 
@@ -1148,7 +1232,10 @@ pub mod tests_tee_svc_storage {
             let storage_id = TEE_STORAGE_PRIVATE as c_ulong;
             let object_id = "test_object_create";
             let object_id_len = object_id.len();
-            let flags = TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_ACCESS_WRITE | TEE_DATA_FLAG_OVERWRITE;
+            let flags = TEE_DATA_FLAG_ACCESS_READ
+                | TEE_DATA_FLAG_ACCESS_WRITE
+                | TEE_DATA_FLAG_ACCESS_WRITE_META
+                | TEE_DATA_FLAG_OVERWRITE;
             // TEE_TYPE_DATA has no attributes
             let attr = TEE_HANDLE_NULL;
             let data_create = b"test_data";
@@ -1217,7 +1304,32 @@ pub mod tests_tee_svc_storage {
             let result = syscall_storage_obj_seek(obj as c_ulong, (data_create.len() + 1) as i32, TEE_DATA_SEEK_SET as c_ulong);
             assert!(result.is_ok());
 
-            // step 2 : close the object
+            // step 7 : get info to check size
+            let mut info = utee_object_info::default();
+            let result = syscall_cryp_obj_get_info(obj as c_ulong, &mut info);
+
+            tee_debug!("info: {:?}", info);
+            assert!(result.is_ok());
+            assert_eq!(info.data_size, data_create.len() as u32);
+            assert!(info.handle_flags&(TEE_HANDLE_FLAG_PERSISTENT
+                | TEE_HANDLE_FLAG_INITIALIZED
+                | TEE_DATA_FLAG_ACCESS_READ
+                | TEE_DATA_FLAG_ACCESS_WRITE
+                | TEE_DATA_FLAG_ACCESS_WRITE_META) != 0);
+            assert_eq!(info.obj_type, TEE_TYPE_DATA);
+
+            // step 8 : rename object
+            let object_id_new = "test_object_new";
+            let object_id_new_len = object_id_new.len();
+            let result = syscall_storage_obj_rename(obj as c_ulong, object_id_new.as_ptr() as *mut c_void, object_id_new_len);
+            tee_debug!("result: {:X?}", result);
+            assert!(result.is_ok());
+
+            // // step 9 : get info to check size
+            // let mut info = utee_object_info::default();
+            // let result = syscall_cryp_obj_get_info(obj as c_ulong, &mut info);
+
+            // step 8 : close the object
             let obj_id = obj as c_ulong;
             let result = syscall_cryp_obj_close(obj_id);
             assert!(result.is_ok());

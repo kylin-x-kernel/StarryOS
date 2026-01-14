@@ -9,7 +9,7 @@ use alloc::{
     sync::Arc,
     vec::{self, Vec},
 };
-use core::{default, ffi::c_ulong};
+use core::{default, ffi::c_ulong, fmt, fmt::Debug};
 
 use axerrno::{AxError, AxResult};
 use axtask::current;
@@ -39,7 +39,6 @@ pub const AX_TEE_OBJ_LIMIT: usize = 1024;
 // }
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct tee_obj {
     pub info: TEE_ObjectInfo,
     pub busy: bool,      // true if used by an operation
@@ -50,6 +49,17 @@ pub struct tee_obj {
     pub pobj: Option<Arc<RwLock<tee_pobj>>>,
     /// file handle for the pobject
     pub fh: Box<tee_file_handle>,
+}
+
+impl Debug for tee_obj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "tee_obj{{info: {:?}, busy: {:?}, have_attrs: {:010X?}, attr: {:?}, ds_pos: {:010X?}, \
+             pobj: {:?}, fh: {:?}}}",
+            self.info, self.busy, self.have_attrs, self.attr, self.ds_pos, self.pobj, self.fh.fd
+        )
+    }
 }
 
 impl default::Default for tee_obj {
