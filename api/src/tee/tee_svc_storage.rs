@@ -856,6 +856,65 @@ pub fn syscall_storage_obj_write(obj: c_ulong, data: *mut c_void, len: usize) ->
     Ok(())
 }
 
+pub fn syscall_storage_obj_trunc(obj: c_ulong, len: usize) -> TeeResult {
+    let o = tee_obj_get(obj)?;
+
+    // check flags and get fops and attr size
+    let (fops, attr_size) = {
+        let mut o_guard = o.lock();
+        if o_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT == 0 {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+        if o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE == 0 {
+            return Err(TEE_ERROR_ACCESS_CONFLICT);
+        }
+
+        let mut attr_size: usize = 0;
+        tee_obj_attr_to_binary(&mut o_guard, &mut [], &mut attr_size)?;
+        (
+            o_guard
+                .pobj
+                .as_ref()
+                .ok_or(TEE_ERROR_BAD_STATE)?
+                .read()
+                .fops
+                .ok_or(TEE_ERROR_BAD_STATE)?,
+            attr_size,
+        )
+    };
+
+    // calculate offset
+    let mut offs = size_of::<tee_svc_storage_head>()
+        .checked_add(attr_size)
+        .ok_or(TEE_ERROR_OVERFLOW)?;
+    offs = offs.checked_add(len).ok_or(TEE_ERROR_OVERFLOW)?;
+
+    // call truncate
+    let res = {
+        let mut o_guard = o.lock();
+        (fops.truncate)(&mut o_guard.fh, offs)
+    };
+
+    match res {
+        Ok(()) => {
+            let mut o_guard = o.lock();
+            tee_debug!(
+                "truncate success, dataSize from {:X?} to {:X?}",
+                o_guard.info.dataSize,
+                len
+            );
+            o_guard.info.dataSize = len;
+            Ok(())
+        }
+        Err(e) if e == TEE_ERROR_CORRUPT_OBJECT => {
+            error!("Object corruption");
+            let _ = remove_corrupt_obj(&mut o.lock()); // Not using the return value
+            Err(TEE_ERROR_CORRUPT_OBJECT)
+        }
+        Err(_) => Err(TEE_ERROR_GENERIC),
+    }
+}
+
 /// seek to the offset in the object
 ///
 /// # Arguments
@@ -882,7 +941,7 @@ pub fn syscall_storage_obj_seek(obj: c_ulong, offset: i32, whence: c_ulong) -> T
     };
     drop(o_guard);
 
-    tee_debug!("syscall_storage_obj_seek: new_pos: {:X?}", new_pos);
+    tee_debug!("syscall_storage_obj_seek: new_pos: 0x{:2X?}", new_pos);
     if new_pos < 0 {
         new_pos = 0;
     }
@@ -1092,27 +1151,27 @@ pub mod tests_tee_svc_storage {
             let flags = TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_ACCESS_WRITE | TEE_DATA_FLAG_OVERWRITE;
             // TEE_TYPE_DATA has no attributes
             let attr = TEE_HANDLE_NULL;
-            let data = b"test_data";
-            let len = data.len();
+            let data_create = b"test_data";
+            let len = data_create.len();
             let mut obj = 0 as c_uint;
             let result = syscall_storage_obj_create(storage_id,
                 object_id.as_ptr() as *mut c_void, object_id_len,
                 flags as c_ulong,
                 attr as c_ulong,
-                data.as_ptr() as *mut c_void,
+                data_create.as_ptr() as *mut c_void,
                 len,
                 &mut obj as *mut c_uint);
             tee_debug!("result: {:X?}", result);
             assert!(result.is_ok());
 
             // step 2 : read the object
-            let mut data_read = vec![0u8; data.len()];
+            let mut data_read = vec![0u8; data_create.len()];
             let mut count = 0 as u64;
             let mut result = syscall_storage_obj_read(obj as c_ulong, data_read.as_ptr() as *mut c_void, data_read.len(), &mut count);
             assert!(result.is_ok());
             tee_debug!("data: {:?}, count: 0x{:X?}", data_read, count);
             assert_eq!(data_read, b"test_data");
-            assert_eq!(count, data.len() as u64);
+            assert_eq!(count, data_create.len() as u64);
             // assert_eq!(str::from_utf8(&data[..len]).unwrap(), "test_data");
 
             // step 3 : syscall_storage_obj_write
@@ -1133,6 +1192,30 @@ pub mod tests_tee_svc_storage {
             tee_debug!("data: {:?}, count: 0x{:X?}", data_read, count);
             assert_eq!(data_read, b"TEST_DATA");
             assert_eq!(count, data_write.len() as u64);
+
+            // step 6 : truncate
+            let len = data_create.len();
+            let result = syscall_storage_obj_trunc(obj as c_ulong, len);
+            assert!(result.is_ok());
+            let result = syscall_storage_obj_seek(obj as c_ulong, 0, TEE_DATA_SEEK_SET as c_ulong);
+            assert!(result.is_ok());
+            // step 7 : read
+            let mut data_read = vec![0u8; data_create.len()];
+            let mut count = 0 as u64;
+            let mut result = syscall_storage_obj_read(obj as c_ulong, data_read.as_ptr() as *mut c_void, data_read.len(), &mut count);
+            assert!(result.is_ok());
+            tee_debug!("data: {:?}, count: 0x{:X?}", data_read, count);
+            assert_eq!(data_read, b"test_data");
+            assert_eq!(count, data_create.len() as u64);
+            // read failed because the object is truncated
+            let mut data_read = vec![0u8; 1];
+            let mut count = 0 as u64;
+            let mut result = syscall_storage_obj_read(obj as c_ulong, data_read.as_ptr() as *mut c_void, data_read.len(), &mut count);
+            // assert!(result.is_err());
+            assert_eq!(count, 0);
+            // seek to the overflow position , is ok
+            let result = syscall_storage_obj_seek(obj as c_ulong, (data_create.len() + 1) as i32, TEE_DATA_SEEK_SET as c_ulong);
+            assert!(result.is_ok());
 
             // step 2 : close the object
             let obj_id = obj as c_ulong;
