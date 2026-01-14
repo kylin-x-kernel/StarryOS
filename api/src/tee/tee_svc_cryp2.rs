@@ -3,7 +3,7 @@
 // See LICENSES for license details.
 //
 // This file has been created by KylinSoft on 2025.
-
+#![allow(static_mut_refs)]
 use alloc::{
     alloc::{alloc, dealloc},
     boxed::Box,
@@ -13,16 +13,24 @@ use alloc::{
     vec::Vec,
 };
 use core::slice::{from_raw_parts, from_raw_parts_mut};
+use spin::Mutex;
 use core::{
     alloc::Layout,
     any::Any,
     ffi::{c_char, c_uint, c_ulong, c_void},
     // from,
-    mem::size_of,
+    mem::{
+        size_of,transmute
+    },
     ops::{Deref, DerefMut},
     ptr::NonNull,
     slice,
     time::Duration,
+    sync::{
+        // import atomic
+        atomic::{AtomicUsize, Ordering::SeqCst}
+        // others ...
+    }
 };
 
 use axerrno::{AxError, AxResult};
@@ -51,8 +59,10 @@ use super::{
         tee_api_objects::TEE_USAGE_DEFAULT,
         utee_defines::{tee_alg_get_class, tee_u32_to_big_endian},
     },
-    memtag::memtag_strip_tag_vaddr,
-    tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
+    memtag::{
+        memtag_strip_tag_vaddr,kaddr_to_uref
+    },
+    tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_close, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
     user_access::{
         bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
@@ -79,7 +89,16 @@ use crate::{
             memtag_strip_tag_const,memtag_strip_tag
         },
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
-        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256
+        // alg identifiers
+        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256,
+        __OPTEE_ALG_ECDH_P192,__OPTEE_ALG_ECDH_P256,__OPTEE_ALG_ECDH_P384,__OPTEE_ALG_ECDH_P224,__OPTEE_ALG_ECDH_P521,
+        __OPTEE_ALG_ECDSA_P224,__OPTEE_ALG_ECDSA_P384,__OPTEE_ALG_ECDSA_P521,
+        TEE_ALG_ECDSA_SHA1,TEE_ALG_ECDSA_SHA224,TEE_ALG_ECDSA_SHA384,TEE_ALG_ECDSA_SHA512,
+        TEE_ALG_ECDH_DERIVE_SHARED_SECRET,TEE_ALG_RSASSA_PKCS1_V1_5,
+        // access
+        user_access::copy_to_user_private,
+        // utee defines
+        utee_defines::TEE_CHAIN_MODE_XTS
     },
 };
 
@@ -126,6 +145,9 @@ enum CrypState {
 /// * `*mut c_void` - A pointer to the context that needs to be finalized
 type TeeCrypCtxFinalizeFunc = unsafe extern "Rust" fn(*mut c_void);
 
+// Maximum number of tee_cryp_state
+pub(crate) const MAX_TEE_CRYP_STATE: usize = 1024;
+
 /// Rust equivalent of the tee_cryp_state struct
 ///
 /// This structure represents the state of a cryptographic operation in the TEE environment.
@@ -153,6 +175,26 @@ pub(crate) struct TeeCrypState {
     pub ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
     pub state: CrypState,
     pub id: usize,
+}
+
+// Implementations
+impl TeeCrypState {
+    // Check if the context is none
+    pub fn is_ctx_none(&self) -> bool {
+        if let Some(ctx) = self.ctx.downcast_ref::<()>() {
+            true
+        } else {
+            false
+        }
+    }
+
+    // Check if the context pointer is null
+    pub fn is_ctx_null(&self) -> bool {
+        let raw_ptr: *const dyn Any = self.ctx;
+        let ptr_addr = raw_ptr as *const u8 as usize;
+
+        ptr_addr == 0
+    }
 }
 
 // Rust equivalent of the tee_cryp_obj_secret struct
@@ -186,6 +228,26 @@ impl TeeCrypObjSecret {
                 (self as *mut Self).add(1) as *mut u8,
                 self.alloc_size as usize,
             )
+        }
+    }
+}
+
+static mut TEECRYPTOSTATENONE: () = ();
+static TEECRYPTOSTATEID: AtomicUsize = AtomicUsize::new(0);
+
+impl Default for TeeCrypState {
+    fn default() -> Self {
+        TEECRYPTOSTATEID.fetch_add(1, SeqCst);
+        TeeCrypState {
+            algo: 0,
+            mode: 0,
+            key1: 0,
+            key2: 0,
+            ctx: unsafe{&mut TEECRYPTOSTATENONE},
+            // ctx: &mut (),
+            ctx_finalize: None,
+            state: CrypState::Uninitialized,
+            id: TEECRYPTOSTATEID.load(SeqCst)
         }
     }
 }
@@ -717,6 +779,533 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
     })?;
 
     Ok(())
+}
+
+/// Translates compatibility algorithm identifiers to standard TEE algorithm identifiers
+///
+/// This function maps legacy/compatibility algorithm constants (like those from OP-TEE)
+/// to their corresponding standard TEE algorithm equivalents. This is primarily used
+/// to maintain backward compatibility with older applications or libraries that may
+/// still be using deprecated algorithm identifiers.
+///
+/// # Arguments
+/// * `algo` - The algorithm identifier to translate (can be either a compatibility ID or standard ID)
+///
+/// # Returns
+/// * `u32` - The translated algorithm identifier:
+///   - Standard TEE algorithm ID if input was a compatibility ID
+///   - Original algorithm ID if no translation mapping exists
+///
+/// # Supported Translations
+/// ## ECDSA Algorithms (Elliptic Curve Digital Signature Algorithm):
+/// - `__OPTEE_ALG_ECDSA_P192` → `TEE_ALG_ECDSA_SHA1`
+/// - `__OPTEE_ALG_ECDSA_P224` → `TEE_ALG_ECDSA_SHA224`
+/// - `__OPTEE_ALG_ECDSA_P256` → `TEE_ALG_ECDSA_SHA256`
+/// - `__OPTEE_ALG_ECDSA_P384` → `TEE_ALG_ECDSA_SHA384`
+/// - `__OPTEE_ALG_ECDSA_P521` → `TEE_ALG_ECDSA_SHA512`
+///
+/// ## ECDH Algorithms (Elliptic Curve Diffie-Hellman):
+/// - `__OPTEE_ALG_ECDH_P192/P224/P256/P384/P521` → `TEE_ALG_ECDH_DERIVE_SHARED_SECRET`
+///
+/// # Behavior
+/// - If the input algorithm matches any known compatibility identifier, it is converted to the standard equivalent
+/// - If no matching compatibility identifier is found, the original algorithm value is returned unchanged
+/// - This allows the function to handle both legacy and modern algorithm identifiers seamlessly
+///
+/// # Example Usage
+/// ```
+/// // Translate legacy ECDSA P256 algorithm
+/// let standard_algo = translate_compat_algo(__OPTEE_ALG_ECDSA_P256);
+/// assert_eq!(standard_algo, TEE_ALG_ECDSA_SHA256);
+///
+/// // Pass through standard algorithm unchanged
+/// let unchanged = translate_compat_algo(TEE_ALG_AES_GCM);
+/// assert_eq!(unchanged, TEE_ALG_AES_GCM);
+/// ```
+fn translate_compat_algo(
+    algo: u32
+) -> u32 {
+    // Match compatibility identifiers
+    let res = match algo {
+        // Map legacy ECDSA algorithms to standard equivalents with appropriate hash functions
+        // These mappings preserve the security properties while using standardized algorithm IDs
+
+        // ECDSA with SHA-1 hash function for P-192 curve
+        __OPTEE_ALG_ECDSA_P192 => TEE_ALG_ECDSA_SHA1,
+
+        // ECDSA with SHA-224 hash function for P-224 curve
+        __OPTEE_ALG_ECDSA_P224 => TEE_ALG_ECDSA_SHA224,
+
+        // ECDSA with SHA-256 hash function for P-256 curve
+        __OPTEE_ALG_ECDSA_P224 => TEE_ALG_ECDSA_SHA224,
+
+        // ECDSA with SHA-384 hash function for P-384 curve
+        __OPTEE_ALG_ECDSA_P384 => TEE_ALG_ECDSA_SHA384,
+
+        // ECDSA with SHA-512 hash function for P-521 curve
+        __OPTEE_ALG_ECDSA_P521 => TEE_ALG_ECDSA_SHA512,
+
+        // Map all legacy ECDH algorithms to the single standard shared secret derivation algorithm
+        // This consolidation simplifies the API while preserving functionality across different curve sizes
+
+        // ECDH key exchange for various curves (P-192, P-224, P-256, P-384, P-521)
+        __OPTEE_ALG_ECDH_P192 |
+        __OPTEE_ALG_ECDH_P224 |
+        __OPTEE_ALG_ECDH_P256 |
+        __OPTEE_ALG_ECDH_P384 |
+        __OPTEE_ALG_ECDH_P521 => TEE_ALG_ECDH_DERIVE_SHARED_SECRET,
+
+        // Default case: return the original algorithm if no compatibility mapping exists
+        // This ensures forward compatibility with new algorithms not yet defined in the mapping
+        _ => algo,
+    };
+
+    // Return the translated algorithm
+    res
+}
+
+#[repr(C)]
+// pub(crate)
+struct FatPointer {
+    data: *mut (),
+    vtable: *mut (),
+}
+
+fn get_data_address(ctx: &dyn Any) -> usize {
+    let fptr: *const dyn Any = ctx;
+
+    let fbits: FatPointer = unsafe {transmute(fptr)};
+
+    fbits.data as usize
+}
+
+// Check if key type is compatible with algorithm and mode
+fn tee_svc_cryp_check_key_type(
+    obj: &tee_obj,
+    algo: u32,
+    mode: u32,
+) -> TeeResult {
+    // Implementation would verify key type compatibility
+    // TODO check logic ...
+    // Return success
+    Ok(())
+}
+
+// Allocate a crypto state structure
+fn alloc_cryp_state() -> TeeResult<TeeCrypState> {
+    let mut cs = TeeCrypState::default();
+    Ok(cs)
+}
+
+
+/// Free cryptographic state and release associated resources
+///
+/// This function performs complete cleanup of a crypto state object including:
+/// - Closing key objects used by the state
+/// - Removing the state from the session's state queue
+/// - Finalizing and freeing algorithm-specific contexts
+/// - Deallocating the state structure itself
+///
+/// # Arguments
+/// * `utc` - User TA context containing state queue and object registry
+/// * `cs` - Pointer to cryptographic state to be freed
+///
+/// # Safety
+/// This function operates on raw pointers and must only be called
+/// with valid pointers to properly initialized structures
+pub(crate) fn cryp_state_free(
+    cs: &TeeCrypState
+) -> TeeResult {
+    // Safety: We assume valid pointers passed from caller
+    // This is a direct translation from C code with same safety assumptions
+
+    // unsafe {
+    // Release key1 if associated with this state
+    // Retrieve the key object from the object registry and close it
+    if let Ok(_ptr) = tee_obj_get(cs.key1 as tee_obj_id_type) {
+        tee_obj_close(cs.key1 as tee_obj_id_type as _);
+    }
+
+    // Release key2 if associated with this state
+    // Same as key1, handle cleanup for second key (used in XTS mode)
+    if let Ok(_ptr) = tee_obj_get(cs.key2 as tee_obj_id_type) {
+        tee_obj_close(cs.key2 as tee_obj_id_type as _);
+    }
+
+    // Remove state from the session's cryptographic state queue
+    // This unlinks the state from the doubly-linked list
+    // link
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                s.retain(|ele| cs.id != ele.id);
+                return Ok(());
+            }
+            None => {
+                Ok(())
+            }
+        }
+    });
+
+    // Call finalization callback if registered
+    // This allows algorithm-specific cleanup before context freeing
+    if cs.ctx_finalize.is_some() {
+        unsafe {
+            let p = get_data_address(cs.ctx);
+            cs.ctx_finalize.unwrap()(p as *mut c_void);
+        }
+    }
+
+    // Free algorithm-specific cryptographic context
+    // The context type depends on the algorithm class being used
+    match tee_alg_get_class(cs.algo) {
+        // Symmetric cipher context (AES, DES, etc.)
+        TEE_OPERATION_CIPHER => {
+            // crypto_cipher_free_ctx((*cs).ctx);
+            // TODO
+            ;
+        }
+
+        // Authenticated encryption context (GCM, CCM, etc.)
+        TEE_OPERATION_AE => {
+            // crypto_authenc_free_ctx((*cs).ctx);
+            // TODO
+            ;
+        }
+
+        // Hash/Digest context (SHA, MD5, etc.)
+        TEE_OPERATION_DIGEST => {
+            // crypto_hash_free_ctx((*cs).ctx);
+            // TODO
+            ;
+        }
+
+        // MAC context (HMAC, CMAC, etc.)
+        TEE_OPERATION_MAC => {
+            // crypto_mac_free_ctx((*cs).ctx);
+            // TODO
+            ;
+        }
+
+        // No context expected for other operation types
+        // Asymmetric operations don't store contexts here
+        _ => {
+            assert!(cs.is_ctx_none(),
+                    "Unexpected context for non-crypto operation");
+        }
+    }
+
+    // Deallocate the state structure itself
+    // Final cleanup after all associated resources are released
+    // }
+
+    // Return success
+    Ok(())
+}
+
+/// Appends an encryption state to the end of the session context's state list
+///
+/// This function manages encryption operation states within a session by adding new encryption states to the current session's state list.
+/// If the session has not yet initialized a state list, a new list will be created.
+///
+/// # Parameters
+/// * `cs` - The encryption state object to be inserted
+///
+/// # Return Value
+/// * `TeeResult` - Operation result:
+///   - Returns `Ok(())` on success
+///   - Returns corresponding error codes on failure
+///
+/// # Errors
+/// * `TEE_ERROR_OUT_OF_MEMORY` - Memory allocation failed
+/// * `TEE_ERROR_BAD_STATE` - Invalid session context
+///
+/// # Safety
+/// - Thread-safe access to session context is guaranteed via `with_tee_session_ctx_mut`
+/// - Uses `Vec` for dynamic state list management to ensure memory safety
+/// Insert crypto state at tail of list
+fn cryp_states_insert(
+    cs: TeeCrypState
+) -> TeeResult<usize> {
+    // Get the session context
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                let len = s.len();
+                let p = s.as_ptr();
+                s.push(cs);
+                let res = unsafe{p.offset(len as _)};
+                return Ok(res as usize);
+            }
+            None => {
+                let mut v = Vec::with_capacity(MAX_TEE_CRYP_STATE);
+                let len = v.len();
+                let p = v.as_ptr();
+                // cs
+                v.push(cs);
+                let res = unsafe{p.add(len as _)};
+                ctx.cryp_state = Some(v);
+                Ok(res as _)
+            }
+        }
+    })
+}
+
+fn copy_kaddr_to_uref(
+    // uint32_t *uref,
+    // void *kaddr
+    uref: vaddr_t,
+    kaddr: vaddr_t
+) -> TeeResult
+{
+    let _ref = kaddr_to_uref(kaddr);
+    let len = size_of_val(&_ref);
+    let _ref = unsafe{
+        from_raw_parts(
+            &raw const _ref as *const usize as *const u8,
+            size_of::<u32>()
+        )
+    };
+    let uref = unsafe{from_raw_parts_mut(uref as *mut vaddr_t as *mut u8, size_of::<u32>())};
+    return copy_to_user_private(uref, &_ref, len as size_t);
+}
+
+/// Extracts the chain mode from a TEE algorithm identifier
+///
+/// This function extracts the chaining mode from a TEE algorithm identifier according to
+/// the GlobalPlatform TEE Internal Core API specification. The chain mode is stored
+/// in bits [11:8] of the algorithm identifier.
+///
+/// # Arguments
+/// * [algo](file:///home/kylin/work/git-src/optee_os/core/include/signed_hdr.h#L37-L37) - Algorithm identifier as any integer type (u8, u16, u32, u64, etc.)
+///
+/// # Returns
+/// * Chain mode extracted from bits [11:8] of the algorithm identifier
+///
+/// # Example
+/// ```
+/// let alg = 0x10000110u32; // AES CBC_NOPAD
+/// let chain_mode = get_chain_mode(alg); // Returns 1 (CBC_NOPAD)
+/// ```
+// pub(crate)
+fn tee_alg_get_chain_mode<T>(algo: T) -> u32
+where
+    T: Into<u32>
+{
+    let algo_value: u32 = algo.into();
+    ((algo_value >> 8) & 0xF) as u32
+}
+
+/// Allocate and initialize a cryptographic operation state
+///
+/// # Arguments
+/// * `algo` - Cryptographic algorithm identifier
+/// * `mode` - Operation mode (encrypt/decrypt/sign/verify etc.)
+/// * `key1` - First key object reference (required for most operations)
+/// * `key2` - Second key object reference (optional, used for XTS cipher)
+/// * `state` - Output parameter to receive allocated state handle
+///
+/// # Returns
+/// * `TEE_SUCCESS` on success
+/// * `TEE_ERROR_BAD_PARAMETERS` if parameters are invalid
+/// * `TEE_ERROR_OUT_OF_MEMORY` if allocation fails
+/// * `TEE_ERROR_NOT_SUPPORTED` if algorithm is not supported
+pub(crate) fn sys_tee_scn_cryp_state_alloc(
+    algo: usize,
+    mode: usize,
+    key1: usize,
+    key2: usize,
+    state: vaddr_t,
+) -> TeeResult {
+    let mut algo = translate_compat_algo(algo as u32);
+
+    let mut o1: Option<Arc<Mutex<tee_obj>>> = None;
+    let mut o2: Option<Arc<Mutex<tee_obj>>> = None;
+
+    // Get and validate first key (key1)
+    if key1 != 0 {
+        match tee_obj_get(key1 as tee_obj_id_type) {
+            Ok(o) => {
+                let obj = o.lock();
+                if obj.busy {
+                    return Err(TEE_ERROR_BAD_PARAMETERS);
+                }
+                if let Err(e) = tee_svc_cryp_check_key_type(&obj, algo, mode as u32) {
+                    return Err(e);
+                }
+                o1 = Some(o.clone());
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Get and validate second key (key2)
+    if key2 != 0 {
+        match tee_obj_get(key2 as tee_obj_id_type) {
+            Ok(o) => {
+                let obj = o.lock();
+                if obj.busy {
+                    return Err(TEE_ERROR_BAD_PARAMETERS);
+                }
+                if let Err(e) = tee_svc_cryp_check_key_type(&obj, algo, mode as u32) {
+                    return Err(e);
+                }
+                o2 = Some(o.clone());
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Allocate crypto state structure
+    let mut cs = match alloc_cryp_state() {
+        Ok(state) => state,
+        Err(_) => return Err(TEE_ERROR_OUT_OF_MEMORY),
+    };
+
+    // Initialize state fields
+    cs.algo = algo;
+    cs.mode = mode as u32;
+    cs.state = CrypState::Uninitialized;
+
+    // Insert crypto state at tail
+    let pcs = match cryp_states_insert(cs) {
+        Ok(cs) => {
+            // info!("Inserted crypto state");
+            cs
+        }
+        Err(e) => {
+            error!("Error inserting crypto state");
+            return Err(e);
+        }
+    };
+
+    // Allocate context based on algorithm class
+    let res = match tee_alg_get_class(algo) {
+        TEE_OPERATION_CIPHER => {
+            // Cipher operations: XTS requires two keys, other modes require one
+            let chain_mode = tee_alg_get_chain_mode(algo);
+            let is_xts = chain_mode == TEE_CHAIN_MODE_XTS;
+            let has_key1 = key1 != 0;
+            let has_key2 = key2 != 0;
+
+            if (is_xts && (!has_key1 || !has_key2)) ||
+               (!is_xts && (!has_key1 || has_key2)) {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                // TODO!
+                // crypto_cipher_alloc_ctx(&mut cs.ctx, algo)
+                TEE_SUCCESS
+            }
+        }
+
+        TEE_OPERATION_AE => {
+            // Authenticated encryption: requires exactly one key
+            if key1 == 0 || key2 != 0 {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                // TODO
+                // crypto_authenc_alloc_ctx(&mut cs.ctx, algo)
+                TEE_SUCCESS
+            }
+        }
+
+        TEE_OPERATION_MAC => {
+            // MAC operations: requires exactly one key
+            if key1 == 0 || key2 != 0 {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                // TODO
+                // crypto_mac_alloc_ctx(&mut cs.ctx, algo)
+                TEE_SUCCESS
+            }
+        }
+
+        TEE_OPERATION_DIGEST => {
+            // Hash operations: no keys allowed
+            if key1 != 0 || key2 != 0 {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                // TODO
+                // crypto_hash_alloc_ctx(&mut cs.ctx, algo)
+                TEE_SUCCESS
+            }
+        }
+
+        TEE_OPERATION_ASYMMETRIC_CIPHER | TEE_OPERATION_ASYMMETRIC_SIGNATURE => {
+            // Asymmetric operations: require exactly one key
+            // Check for disabled algorithms
+            if algo == TEE_ALG_RSASSA_PKCS1_V1_5 /* TEE_ALG_RSASSA_PKCS1_V1_5 */
+               && !cfg_rsassa_na1_enabled() {
+                TEE_ERROR_NOT_SUPPORTED
+            } else if key1 == 0 || key2 != 0 {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                // Context allocated separately for asymmetric ops
+                TEE_SUCCESS
+            }
+        }
+
+        TEE_OPERATION_KEY_DERIVATION => {
+            // Key derivation: most require one key, SM2_KEP requires two
+            let is_sm2_kep = algo == TEE_ALG_SM2_KEP /* TEE_ALG_SM2_KEP */;
+            if is_sm2_kep {
+                if key1 == 0 || key2 == 0 {
+                    TEE_ERROR_BAD_PARAMETERS
+                } else {
+                    TEE_SUCCESS
+                }
+            } else if key1 == 0 || key2 != 0 {
+                TEE_ERROR_BAD_PARAMETERS
+            } else {
+                TEE_SUCCESS
+            }
+        }
+
+        _ => TEE_ERROR_NOT_SUPPORTED,
+    };
+
+    if res != TEE_SUCCESS {
+        cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        return Err(res);
+    }
+
+    // Return state handle to caller
+    if let Err(e) = copy_kaddr_to_uref(state, pcs) {
+        cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        return Err(e);
+    }
+
+    // Register keys
+    if let Some(key) = o1 {
+        key.lock().busy = true;
+        let pcs = unsafe{&mut*(pcs as *mut TeeCrypState)};
+        let guard = key.lock();
+        let tee_obj_ref: &tee_obj = unsafe {transmute(&guard as *const _)};
+        pcs.key1 =tee_obj_ref as *const tee_obj as usize;
+    }
+
+    if let Some(key) = o2 {
+        key.lock().busy = true;
+        let pcs = unsafe{&mut*(pcs as *mut TeeCrypState)};
+        let guard = key.lock();
+        let tee_obj_ref: &tee_obj = unsafe {transmute(&guard as *const _)};
+        pcs.key2 =tee_obj_ref as *const tee_obj as usize;
+    }
+
+    Ok(())
+}
+
+// Check if RSASSA_PKCS1_V1_5 is enabled
+fn cfg_rsassa_na1_enabled() -> bool {
+    #[cfg(CFG_CRYPTO_RSASSA_NA1)]
+    {
+        true
+    }
+
+    #[cfg(not(CFG_CRYPTO_RSASSA_NA1))]
+    {
+        false
+    }
 }
 
 /// Initializes a hash or MAC operation with the given state

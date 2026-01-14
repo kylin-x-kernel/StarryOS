@@ -84,6 +84,7 @@ use crate::tee::{
     // tee_svc_cryp::sys_tee_scn_hash_init
     tee_svc_cryp2::sys_tee_scn_hash_init,
     tee_svc_cryp2::sys_tee_scn_hash_update,
+    tee_svc_cryp2::sys_tee_scn_cryp_state_alloc,
     tee_time::{sys_tee_scn_get_time, sys_tee_scn_set_ta_time, sys_tee_scn_wait},
 };
 
@@ -161,7 +162,15 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             sys_tee_scn_hash_update(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
         }
 
-        Sysno::tee_scn_hash_update => sys_tee_scn_hash_final(
+        Sysno::tee_scn_hash_final => sys_tee_scn_hash_final(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+            _uctx.arg4() as _,
+        ),
+
+        Sysno::tee_scn_cryp_state_alloc => sys_tee_scn_cryp_state_alloc(
             _uctx.arg0() as _,
             _uctx.arg1() as _,
             _uctx.arg2() as _,
