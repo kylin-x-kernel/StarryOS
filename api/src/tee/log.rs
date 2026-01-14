@@ -32,14 +32,5 @@ pub(crate) fn sys_tee_scn_log(buf: *const c_char, len: usize) -> TeeResult {
 
     info!("TEE Log: {}", message);
 
-    let mut ctx = SESSION_CTX.write();
-    ctx.push_str("abc");
-    info!("after push {}", *ctx);
-
-    #[cfg(feature = "tee_test")]
-    tee_test_example();
-    #[cfg(feature = "tee_test")]
-    tee_test_unit();
-
     Ok(())
 }
