@@ -14,6 +14,7 @@ vsock = ["axnet/vsock"]
 dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
 tee = ["syscalls/tee", "dep:tee_raw_sys"]
+tee_test = []
 
 [dependencies]
 axalloc.workspace = true
