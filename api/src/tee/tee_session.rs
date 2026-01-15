@@ -20,7 +20,10 @@ use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
 use super::{TeeResult, tee_obj::tee_obj, tee_svc_cryp2::TeeCrypState};
-use crate::tee::{tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx, uuid::Uuid};
+use crate::tee::{
+    tee_svc_storage::tee_storage_enum, tee_ta_manager::SessionIdentity, user_ta::user_ta_ctx,
+    uuid::Uuid,
+};
 
 scope_local::scope_local! {
     /// The tee ta context.
@@ -44,6 +47,7 @@ pub struct tee_session_ctx {
     pub login_type: u32,
     pub user_id: u32,
     pub objects: Slab<Arc<Mutex<tee_obj>>>,
+    pub storage_enums: Slab<Arc<Mutex<tee_storage_enum>>>,
     pub clnt_id: TEE_Identity,
     pub cancel: bool,
     pub cancel_mask: bool,
@@ -79,6 +83,7 @@ impl Default for tee_session_ctx {
             login_type: 0,
             user_id: 0,
             objects: Slab::new(),
+            storage_enums: Slab::new(),
             clnt_id: TEE_Identity {
                 login: 0,
                 uuid: TEE_UUID {

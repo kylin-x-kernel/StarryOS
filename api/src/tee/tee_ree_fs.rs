@@ -802,11 +802,11 @@ pub struct TeeFileOperations {
 
     pub truncate: fn(fh: &mut TeeFsFd, size: usize) -> TeeResult,
 
-    // fn opendir(uuid: &TEE_UUID, d: &mut Arc<tee_fs_dir>) -> TeeResult;
+    pub opendir: fn(uuid: &TEE_UUID) -> TeeResult<Box<TeeFsDir>>,
 
-    // fn readdir(d: &mut Arc<tee_fs_dir>, ent: &mut Arc<tee_fs_dirent>) -> TeeResult;
+    pub readdir: fn(d: &mut TeeFsDir, ent: &mut tee_fs_dirent) -> TeeResult,
 
-    // fn closedir(d: &mut Arc<tee_fs_dir>) -> TeeResult;
+    pub closedir: fn(d: &mut TeeFsDir) -> TeeResult,
     #[cfg(feature = "tee_test")]
     pub echo: fn() -> String,
 }
@@ -1141,6 +1141,9 @@ pub static REE_FS_OPS: TeeFileOperations = TeeFileOperations {
     truncate: ree_fs_truncate,
     rename: ree_fs_rename,
     remove: ree_fs_remove,
+    opendir: ree_fs_opendir_rpc,
+    closedir: ree_fs_closedir_rpc,
+    readdir: ree_fs_readdir_rpc,
     #[cfg(feature = "tee_test")]
     echo: ree_fs_echo,
 };
@@ -1272,11 +1275,11 @@ pub fn put_dirh(_dirh: &TeeFsDirfileDirh, close: bool) {
     let _ = put_dirh_primitive(close);
 }
 
-pub fn ree_fs_opendir_rpc(uuid: Option<&TEE_UUID>) -> TeeResult<Box<TeeFsDir>> {
+pub fn ree_fs_opendir_rpc(uuid: &TEE_UUID) -> TeeResult<Box<TeeFsDir>> {
     let mut d = Box::new(TeeFsDir::default());
 
     // d->uuid = uuid; (如果 uuid 是 NULL，则使用默认值)
-    d.uuid = uuid.copied().unwrap_or_default();
+    d.uuid = *uuid;
 
     let _guard = REE_FS_MUTEX.lock();
 
@@ -1315,19 +1318,18 @@ pub fn ree_fs_opendir_rpc(uuid: Option<&TEE_UUID>) -> TeeResult<Box<TeeFsDir>> {
     }
 }
 
-pub fn ree_fs_closedir_rpc(d: &mut Option<Box<TeeFsDir>>) {
-    if let Some(mut dir) = d.take() {
-        let _guard = REE_FS_MUTEX.lock();
-        let dirh_ptr = dir.dirh;
-        if !dirh_ptr.is_null() {
-            let dirh = unsafe {
-                assert!(!dirh_ptr.is_null());
-                &mut *dirh_ptr
-            };
-            put_dirh(dirh, false);
-        }
-        drop(dir);
+pub fn ree_fs_closedir_rpc(d: &mut TeeFsDir) -> TeeResult {
+    let _guard = REE_FS_MUTEX.lock();
+    let dirh_ptr = d.dirh;
+    if !dirh_ptr.is_null() {
+        let dirh = unsafe {
+            assert!(!dirh_ptr.is_null());
+            &mut *dirh_ptr
+        };
+        put_dirh(dirh, false);
     }
+
+    Ok(())
 }
 
 pub fn ree_fs_readdir_rpc(d: &mut TeeFsDir, ent: &mut tee_fs_dirent) -> TeeResult {
