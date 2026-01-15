@@ -12,11 +12,12 @@ use core::{
 };
 
 use bytemuck::{Pod, Zeroable, bytes_of, bytes_of_mut};
-use spin::RwLock;
+use spin::{Mutex, RwLock};
 use tee_raw_sys::*;
 
 use super::{
     fs_dirfile::{TeeFsDirfileFileh, tee_fs_dirfile_fileh_to_fname},
+    tee_fs::tee_fs_dirent,
     tee_fs_key_manager::tee_fs_init_key_manager,
     tee_misc::{tee_b2hs, tee_b2hs_hsbuf_size},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
@@ -24,13 +25,15 @@ use super::{
         tee_pobj, tee_pobj_create_final, tee_pobj_get, tee_pobj_release, tee_pobj_rename,
         tee_pobj_usage, with_pobj_usage_lock,
     },
-    tee_ree_fs::{TeeFileOperations, tee_svc_storage_file_ops},
-    tee_session::{tee_session_set_current_uuid, with_tee_ta_ctx},
+    tee_ree_fs::{TeeFileOperations, TeeFsDir, tee_svc_storage_file_ops},
+    tee_session::{tee_session_set_current_uuid, with_tee_session_ctx_mut, with_tee_ta_ctx},
     tee_svc_cryp::{
         syscall_cryp_obj_close, syscall_cryp_obj_get_info, tee_obj_attr_copy_from,
         tee_obj_attr_from_binary, tee_obj_attr_to_binary, tee_obj_set_type,
     },
-    user_access::{bb_memdup_user_private, copy_to_user_struct},
+    user_access::{
+        bb_memdup_user_private, copy_to_user, copy_to_user_private, copy_to_user_struct,
+    },
     uuid::Uuid,
 };
 use crate::tee::TeeResult;
@@ -46,6 +49,70 @@ struct tee_svc_storage_head {
     pub objectUsage: u32,
     pub objectType: u32,
     pub have_attrs: u32,
+}
+
+pub struct tee_storage_enum {
+    pub id: c_ulong,
+    pub dir: Option<Box<TeeFsDir>>,
+    pub fops: Option<&'static TeeFileOperations>,
+}
+
+pub fn tee_svc_storage_add_enum(mut obj: tee_storage_enum) -> TeeResult<c_ulong> {
+    with_tee_session_ctx_mut(|ctx| {
+        // 获取一个可用的 ID
+        let vacant = ctx.storage_enums.vacant_entry();
+        let id = vacant.key();
+
+        // 设置 objectId
+        obj.id = id as c_ulong;
+
+        // 创建 Arc 并插入
+        let arc_obj = Arc::new(Mutex::new(obj));
+        let inserted_id = vacant.insert(arc_obj);
+        tee_debug!("tee_svc_storage_add_enum: id: {}", id);
+
+        Ok(id as c_ulong)
+    })
+}
+
+fn tee_svc_storage_delete_enum(enum_id: c_ulong) -> TeeResult<Arc<Mutex<tee_storage_enum>>> {
+    // remove from session objects
+    with_tee_session_ctx_mut(|ctx| -> TeeResult<Arc<Mutex<tee_storage_enum>>> {
+        let obj = ctx
+            .storage_enums
+            .try_remove(enum_id as _)
+            .ok_or(TEE_ERROR_ITEM_NOT_FOUND)?;
+        Ok(obj)
+    })
+}
+
+fn tee_svc_storage_get_enum(enum_id: c_ulong) -> TeeResult<Arc<Mutex<tee_storage_enum>>> {
+    with_tee_session_ctx_mut(|ctx| {
+        let e = ctx
+            .storage_enums
+            .get(enum_id as usize)
+            .ok_or(TEE_ERROR_BAD_PARAMETERS)?;
+        Ok(e.clone())
+    })
+}
+
+fn tee_svc_close_enum(enum_id: c_ulong) -> TeeResult {
+    let obj = tee_svc_storage_delete_enum(enum_id)?;
+
+    // get the lock of the dir, and get the &mut TeeFsDir borrow
+    let fops = {
+        let obj_guard = obj.lock();
+        obj_guard.fops
+    };
+
+    if let Some(fops) = fops {
+        let mut obj_guard = obj.lock();
+        // let mut d = obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?.lock();
+        (fops.closedir)(obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?)?;
+    }
+
+    // obj auto released when the scope ends
+    Ok(())
 }
 
 /// 创建一个基于 TEE_UUID 的目录名。
@@ -765,7 +832,7 @@ pub fn syscall_storage_obj_rename(
         let fops = o_guard
             .pobj
             .as_ref()
-            .unwrap()
+            .ok_or(TEE_ERROR_ITEM_NOT_FOUND)?
             .read()
             .fops
             .ok_or(TEE_ERROR_BAD_STATE)?;
@@ -803,6 +870,15 @@ pub fn syscall_storage_obj_rename(
     Ok(())
 }
 
+/// read data from the object
+///
+/// # Arguments
+/// * `obj` - the object id
+/// * `data` - the data to read
+/// * `len` - the length of the data
+/// * `count` - the count of the data
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn syscall_storage_obj_read(
     obj: c_ulong,
     data: *mut c_void,
@@ -940,6 +1016,13 @@ pub fn syscall_storage_obj_write(obj: c_ulong, data: *mut c_void, len: usize) ->
     Ok(())
 }
 
+/// truncate the object to the length
+///
+/// # Arguments
+/// * `obj` - the object id
+/// * `len` - the length to truncate
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn syscall_storage_obj_trunc(obj: c_ulong, len: usize) -> TeeResult {
     let o = tee_obj_get(obj)?;
 
@@ -1042,6 +1125,203 @@ pub fn syscall_storage_obj_seek(obj: c_ulong, offset: i32, whence: c_ulong) -> T
     );
 
     Ok(())
+}
+
+/// allocate the enumeration of the object
+///
+/// # Arguments
+/// * `obj_enum` - the object enumeration id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_alloc_enum(obj_enum: *mut c_uint) -> TeeResult {
+    let obj = tee_storage_enum {
+        id: 0,
+        dir: None,
+        fops: None,
+    };
+    let id = tee_svc_storage_add_enum(obj)? as u32;
+    copy_to_user_struct(unsafe { &mut *obj_enum }, &id)?;
+    Ok(())
+}
+
+/// free the enumeration of the object
+///
+/// # Arguments
+/// * `obj_enum` - the object enumeration id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_free_enum(obj_enum: c_ulong) -> TeeResult {
+    tee_svc_close_enum(obj_enum)
+}
+
+/// reset the enumeration of the object
+///
+/// # Arguments
+/// * `obj_enum` - the object enumeration id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_reset_enum(obj_enum: c_ulong) -> TeeResult {
+    let obj = tee_svc_storage_get_enum(obj_enum)?;
+    // get the lock of the dir, and get the &mut TeeFsDir borrow
+    let fops = {
+        let obj_guard = obj.lock();
+        obj_guard.fops
+    };
+
+    if let Some(fops) = fops {
+        let mut obj_guard = obj.lock();
+        {
+            (fops.closedir)(obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?)?;
+        }
+        obj_guard.fops = None;
+        obj_guard.dir = None;
+    }
+
+    let obj_guard = obj.lock();
+    debug_assert!(obj_guard.dir.is_none());
+    Ok(())
+}
+
+/// start the enumeration of the object
+///
+/// # Arguments
+/// * `obj_enum` - the object enumeration id
+/// * `storage_id` - the storage id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_start_enum(obj_enum: c_ulong, storage_id: c_ulong) -> TeeResult {
+    let fops = tee_svc_storage_file_ops(storage_id as u32).map_err(|e| TEE_ERROR_ITEM_NOT_FOUND)?;
+
+    let e = tee_svc_storage_get_enum(obj_enum)?;
+
+    let e_fops = {
+        let obj_guard = e.lock();
+        obj_guard.fops
+    };
+
+    let mut obj_guard = e.lock();
+    if obj_guard.dir.is_some() {
+        let e_fops = e_fops.ok_or(TEE_ERROR_BAD_STATE)?;
+        (e_fops.closedir)(obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?)?;
+        obj_guard.dir = None;
+    }
+
+    obj_guard.fops = Some(fops);
+
+    let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
+    let uuid = Uuid::parse_str(&uuid)?;
+
+    let dir = (fops.opendir)(uuid.as_raw_ref())?;
+    obj_guard.dir = Some(dir);
+    Ok(())
+}
+
+/// get the next object in the enumeration
+///
+/// # Arguments
+/// * `obj_enum` - the object enumeration id
+/// * `info` - the information of the object
+/// * `obj_id` - the object id
+/// * `len` - the length of the object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_storage_next_enum(
+    obj_enum: c_ulong,
+    info: *mut utee_object_info,
+    obj_id: *mut c_void,
+    len: *mut u64,
+) -> TeeResult {
+    let mut o: Option<Box<tee_obj>> = None;
+
+    let res = (|| -> TeeResult {
+        let e = tee_svc_storage_get_enum(obj_enum)?;
+
+        let fops = {
+            let obj_guard = e.lock();
+            obj_guard.fops.ok_or(TEE_ERROR_ITEM_NOT_FOUND)?
+        };
+
+        let mut obj_guard = e.lock();
+        let mut dir = obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+        let mut d = tee_fs_dirent::default();
+        (fops.readdir)(dir, &mut d)?;
+        drop(obj_guard); // 释放 e 的锁，避免在 tee_pobj_get 中持有多个锁
+
+        o = Some(Box::new(tee_obj::default()));
+        let o = o.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+
+        let uuid = with_tee_ta_ctx(|ctx| Ok(ctx.uuid.clone()))?;
+        let uuid = Uuid::parse_str(&uuid)?;
+
+        let pobj = tee_pobj_get(
+            uuid.as_raw_ref(),
+            d.oid.as_ref(),
+            d.oid_len as u32,
+            0,
+            tee_pobj_usage::TEE_POBJ_USAGE_ENUM,
+            fops,
+        )?;
+
+        o.pobj = Some(pobj.clone());
+        o.info.handleFlags =
+            pobj.read().flags | TEE_HANDLE_FLAG_PERSISTENT | TEE_HANDLE_FLAG_INITIALIZED;
+
+        let pobj_flags = {
+            let pobj_guard = pobj.read();
+            pobj_guard.flags
+        };
+
+        let mut bbuf: utee_object_info = utee_object_info::default();
+        with_pobj_usage_lock(pobj_flags, || -> TeeResult {
+            tee_svc_storage_read_head(o)?;
+
+            let pobj_guard = pobj.read();
+            bbuf.obj_type = o.info.objectType;
+            bbuf.obj_size = o.info.objectSize;
+            bbuf.max_obj_size = o.info.maxObjectSize;
+            bbuf.obj_usage = pobj_guard.obj_info_usage;
+            bbuf.data_size = o.info.dataSize as _;
+            bbuf.data_pos = o.info.dataPosition as _;
+            bbuf.handle_flags = o.info.handleFlags as _;
+            Ok(())
+        })?;
+
+        let info_ref = unsafe { &mut *info };
+        copy_to_user_struct(info_ref, &bbuf)?;
+
+        let pobj_guard = pobj.read();
+        let obj_id_len = pobj_guard.obj_id_len as usize;
+
+        let obj_id_slice =
+            unsafe { core::slice::from_raw_parts_mut(obj_id as *mut u8, obj_id_len) };
+        copy_to_user(obj_id_slice, pobj_guard.obj_id.as_ref(), obj_id_len)?;
+
+        let l = pobj_guard.obj_id_len as u64;
+        drop(pobj_guard);
+
+        let l_bytes: &[u8] = unsafe {
+            core::slice::from_raw_parts(l as *const u64 as *const u8, core::mem::size_of::<u64>())
+        };
+        let len_bytes: &mut [u8] = unsafe {
+            core::slice::from_raw_parts_mut(len as *mut u64 as *mut u8, core::mem::size_of::<u64>())
+        };
+        copy_to_user_private(len_bytes, l_bytes, core::mem::size_of::<u64>())?;
+
+        Ok(())
+    })();
+
+    // 清理资源（对应 C 版本的 702-709 行）
+    if let Some(mut o) = o {
+        if let Some(pobj) = o.pobj.take() {
+            let fops = pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
+
+            let mut fh_opt = Some(o.fh);
+            let _ = (fops.close)(&mut fh_opt);
+            let _ = tee_pobj_release(pobj);
+        }
+    }
+
+    res
 }
 
 #[cfg(feature = "tee_test")]
