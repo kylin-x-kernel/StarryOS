@@ -34,4 +34,13 @@ pub fn init() {
 
     info!("Initialize alarm...");
     starry_core::time::spawn_alarm_task();
+
+    #[cfg(feature = "tee_test")]
+    {
+        use crate::tee::test::{test_examples::tee_test_example, test_unit_test::tee_test_unit};
+
+        info!("Running TEE tests...");
+        tee_test_example();
+        tee_test_unit();
+    }
 }
