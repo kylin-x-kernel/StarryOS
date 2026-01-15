@@ -44,6 +44,7 @@ pub struct tee_session_ctx {
     pub login_type: u32,
     pub user_id: u32,
     pub objects: Slab<Arc<Mutex<tee_obj>>>,
+    pub crypt_state: Option<Slab<TeeCrypState>>,
     pub clnt_id: TEE_Identity,
     pub cancel: bool,
     pub cancel_mask: bool,
@@ -79,6 +80,7 @@ impl Default for tee_session_ctx {
             login_type: 0,
             user_id: 0,
             objects: Slab::new(),
+            crypt_state: None,
             clnt_id: TEE_Identity {
                 login: 0,
                 uuid: TEE_UUID {

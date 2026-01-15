@@ -23,7 +23,9 @@ tee = [
     "dep:mbedtls",
     "dep:mbedtls-sys-auto",
     "axalloc/tee",
+    "tee_slab_crypt_state",
 ]
+tee_slab_crypt_state = []
 
 [dependencies]
 axalloc.workspace = true

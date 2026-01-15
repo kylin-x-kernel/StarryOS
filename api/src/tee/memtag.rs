@@ -63,6 +63,7 @@ pub(crate) fn memtag_strip_tag(addr: vaddr_t) -> vaddr_t {
 /// # Safety
 /// This function is a pure computation operation and does not access actual memory, making it a safe operation.
 /// Even passing an invalid address will not cause a memory access exception.
+#[cfg(not(feature = "tee_slab_crypt_state"))]
 #[inline]
 fn memtag_get_tag(
     _addr: vaddr_t
@@ -81,6 +82,16 @@ fn memtag_get_tag(
     }
 }
 
+
+#[cfg(feature = "tee_slab_crypt_state")]
+#[inline]
+fn memtag_get_tag(
+    _addr: vaddr_t
+) -> u8
+{
+    0
+}
+
 #[inline]
 pub(crate) fn memtag_insert_tag_vaddr(
     addr: vaddr_t,
@@ -95,6 +106,7 @@ pub(crate) fn memtag_insert_tag_vaddr(
     return va;
 }
 
+#[cfg(not(feature = "tee_slab_crypt_state"))]
 #[inline]
 pub(crate) fn uref_to_vaddr (
     uref: u32
@@ -118,6 +130,26 @@ pub(crate) fn uref_to_vaddr (
     return VCORE_START_VA + uref as vaddr_t;
 }
 
+// Convert kernel address to user reference
+// new slab
+#[cfg(feature = "tee_slab_crypt_state")]
+#[inline]
+pub(crate) fn kaddr_to_uref(
+    kaddr: vaddr_t
+) -> u32 {
+    kaddr as _
+}
+
+#[cfg(feature = "tee_slab_crypt_state")]
+#[inline]
+pub(crate) fn uref_to_vaddr (
+    uref: u32
+) -> vaddr_t
+{
+    uref as _
+}
+
+#[cfg(not(feature = "tee_slab_crypt_state"))]
 #[inline]
 pub(crate) fn kaddr_to_uref(
     kaddr: vaddr_t

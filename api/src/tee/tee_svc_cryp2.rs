@@ -14,6 +14,7 @@ use alloc::{
 };
 use core::slice::{from_raw_parts, from_raw_parts_mut};
 use spin::Mutex;
+use slab::Slab;
 use core::{
     alloc::Layout,
     any::Any,
@@ -266,6 +267,8 @@ impl Default for TeeCrypState {
 /// * `Ok(Option<&mut TeeCrypState>)` - Returns Some with reference to found state if found,
 ///   or None if not found
 /// * `Err(TEE_Result)` - Error code if the operation fails (TEE_ERROR_BAD_PARAMETERS if not found)
+
+#[cfg(not(feature = "tee_slab_crypt_state"))]
 fn tee_svc_cryp_get_state<'a>(
     // sess: &'a TsSession<'a>
     sess: &'a mut Vec<TeeCrypState>,
@@ -282,6 +285,17 @@ fn tee_svc_cryp_get_state<'a>(
 
     // State not found in the list, return error
     Err(TEE_ERROR_BAD_PARAMETERS)
+}
+
+#[cfg(feature = "tee_slab_crypt_state")]
+fn tee_svc_cryp_get_state<'a>(
+    // sess: &'a TsSession<'a>
+    sess: &'a mut Slab<TeeCrypState>,
+    state_id: usize,
+) -> TeeResult<&'a mut TeeCrypState> {
+    // Iterate through the list of cryptographic states
+    // Get the user TA context from the session
+    sess.get_mut(state_id).ok_or(TEE_ERROR_BAD_PARAMETERS)
 }
 
 /// Check if algorithm is an XOF (Extendable Output Function)
@@ -390,7 +404,52 @@ pub(crate) fn sys_tee_scn_hash_final(
 
     // Get current session and retrieve crypto state
     with_tee_session_ctx_mut(|ctx| {
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
         match ctx.cryp_state.as_mut() {
+            Some(s) => {
+                // Retrieve specific crypto operation state
+                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
+
+                // Verify that state is initialized
+                if crypto_state.state != CrypState::Initialized {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+
+                // Process based on algorithm class
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        // Hash digest operation
+                        process_digest_final(
+                            &mut crypto_state,
+                            chunk,
+                            chunk_size,
+                            hash,
+                            &mut hlen,
+                        )?;
+                    }
+                    TEE_OPERATION_MAC => {
+                        // MAC (Message Authentication Code) operation
+                        process_mac_final(
+                            &mut crypto_state,
+                            chunk,
+                            chunk_size,
+                            hash,
+                            &mut hlen,
+                        )?;
+                    }
+                    _ => {
+                        // Unsupported operation class
+                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                    }
+                }
+
+                Ok(())
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+        // new slab
+        #[cfg(feature = "tee_slab_crypt_state")]
+        match ctx.crypt_state.as_mut() {
             Some(s) => {
                 // Retrieve specific crypto operation state
                 let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
@@ -721,6 +780,8 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
     })?;
 
     with_tee_session_ctx_mut(|ctx| {
+        // new slab
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
         match ctx.cryp_state.as_mut() {
             Some(s) => {
                 // Retrieve the specific crypto operation state
@@ -776,6 +837,64 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
             }
             None => Err(TEE_ERROR_BAD_STATE),
         }
+        // new slab
+        #[cfg(feature = "tee_slab_crypt_state")]
+        match ctx.crypt_state.as_mut() {
+            Some(s) => {
+                // Retrieve the specific crypto operation state
+                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
+
+                // Verify that the state is initialized
+                if crypto_state.state != CrypState::Initialized {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+
+                // Process based on algorithm class (HASH or MAC)
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        // Hash digest operation
+                        let chunk_d = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
+
+                        // Enter user access context for safe memory access
+                        enter_user_access();
+                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+                            crypto_hash_update(ctx, chunk_d)
+                        } else {
+                            Err(TEE_ERROR_BAD_STATE)
+                        };
+                        exit_user_access();
+
+                        res?;
+                    }
+                    TEE_OPERATION_MAC => {
+                        // MAC (Message Authentication Code) operation
+                        let chunk_d =
+                            unsafe { slice::from_raw_parts(chunk as *const u8, chunk_size) };
+
+                        // Enter user access context for safe memory access
+                        enter_user_access();
+                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+                            crypto_mac_update(ctx, chunk_d)
+                        } else {
+                            Err(TEE_ERROR_BAD_STATE)
+                        };
+                        exit_user_access();
+
+                        if let Err(_) = res {
+                            return Err(TEE_ERROR_MAC_INVALID);
+                        }
+                    }
+                    _ => {
+                        // Unsupported operation class
+                        return Err(TEE_ERROR_BAD_PARAMETERS);
+                    }
+                }
+
+                Ok(())
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+
     })?;
 
     Ok(())
@@ -935,10 +1054,24 @@ pub(crate) fn cryp_state_free(
     // Remove state from the session's cryptographic state queue
     // This unlinks the state from the doubly-linked list
     // link
+    #[cfg(not(feature = "tee_slab_crypt_state"))]
     with_tee_session_ctx_mut(|ctx| {
         match ctx.cryp_state.as_mut() {
             Some(s) => {
                 s.retain(|ele| cs.id != ele.id);
+                return Ok(());
+            }
+            None => {
+                Ok(())
+            }
+        }
+    });
+    // new slab
+    #[cfg(feature = "tee_slab_crypt_state")]
+    with_tee_session_ctx_mut(|ctx| {
+        match ctx.crypt_state.as_mut() {
+            Some(s) => {
+                s.remove(cs.id);
                 return Ok(());
             }
             None => {
@@ -1025,30 +1158,66 @@ pub(crate) fn cryp_state_free(
 /// - Uses `Vec` for dynamic state list management to ensure memory safety
 /// Insert crypto state at tail of list
 fn cryp_states_insert(
-    cs: TeeCrypState
+    mut cs: TeeCrypState
 ) -> TeeResult<usize> {
-    // Get the session context
-    with_tee_session_ctx_mut(|ctx| {
-        match ctx.cryp_state.as_mut() {
-            Some(s) => {
-                let len = s.len();
-                let p = s.as_ptr();
-                s.push(cs);
-                let res = unsafe{p.offset(len as _)};
-                return Ok(res as usize);
+    #[cfg(not(feature = "tee_slab_crypt_state"))]
+    {
+        // Get the session context
+        with_tee_session_ctx_mut(|ctx| {
+            match ctx.cryp_state.as_mut() {
+                Some(s) => {
+                    let len = s.len();
+                    let p = s.as_ptr();
+                    s.push(cs);
+                    let res = unsafe{p.offset(len as _)};
+                    return Ok(res as usize);
+                }
+                None => {
+                    let mut v = Vec::with_capacity(MAX_TEE_CRYP_STATE);
+                    let len = v.len();
+                    let p = v.as_ptr();
+                    // cs
+                    v.push(cs);
+                    let res = unsafe{p.add(len as _)};
+                    ctx.cryp_state = Some(v);
+                    Ok(res as _)
+                }
             }
-            None => {
-                let mut v = Vec::with_capacity(MAX_TEE_CRYP_STATE);
-                let len = v.len();
-                let p = v.as_ptr();
-                // cs
-                v.push(cs);
-                let res = unsafe{p.add(len as _)};
-                ctx.cryp_state = Some(v);
-                Ok(res as _)
+        })
+    }
+
+    #[cfg(feature = "tee_slab_crypt_state")]
+    {
+        // Get the session context
+        with_tee_session_ctx_mut(|ctx| {
+            // session context
+            match ctx.crypt_state.as_mut() {
+                Some(s) => {
+                    // get a vacant entry
+                    let vacant = s.vacant_entry();
+                    let id = vacant.key();
+
+                    // set id
+                    cs.id = id;
+
+                    // create obj
+                    let inserted_id = vacant.insert(cs);
+                    // info!("add: id: {}", id);
+
+                    return Ok(id);
+                }
+                None => {
+                    let mut v = Slab::new();
+                    let vacant = v.vacant_entry();
+                    let id = vacant.key();
+                    cs.id = id;
+                    v.insert(cs);
+                    ctx.crypt_state = Some(v);
+                    Ok(id)
+                }
             }
-        }
-    })
+        })
+    }
 }
 
 fn copy_kaddr_to_uref(
@@ -1265,31 +1434,102 @@ pub(crate) fn sys_tee_scn_cryp_state_alloc(
     };
 
     if res != TEE_SUCCESS {
-        cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
+        {
+            cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        }
+        #[cfg(feature = "tee_slab_crypt_state")]
+        {
+            with_tee_session_ctx(|ctx| {
+                match ctx.crypt_state.as_ref() {
+                    Some(s) => {
+                        cryp_state_free(s.get(pcs).expect("Freeing crypt state"));
+                        Ok(())
+                    }
+                    _ => {
+                        error !("Error freeing crypt state");
+                        Err(TEE_ERROR_GENERIC)
+                    }
+            }});
+        }
         return Err(res);
     }
 
     // Return state handle to caller
     if let Err(e) = copy_kaddr_to_uref(state, pcs) {
-        cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        // cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
+        {
+            cryp_state_free(unsafe{&*(pcs as *const TeeCrypState)});
+        }
+        #[cfg(feature = "tee_slab_crypt_state")]
+        {
+            with_tee_session_ctx(|ctx| {
+                match ctx.crypt_state.as_ref() {
+                    Some(s) => {
+                        cryp_state_free(s.get(pcs).expect("Freeing crypt state"));
+                        Ok(())
+                    }
+                    _ => {
+                        error !("Error freeing crypt state");
+                        Err(TEE_ERROR_GENERIC)
+                    }
+            }});
+        }
         return Err(e);
     }
 
     // Register keys
     if let Some(key) = o1 {
         key.lock().busy = true;
-        let pcs = unsafe{&mut*(pcs as *mut TeeCrypState)};
-        let guard = key.lock();
-        let tee_obj_ref: &tee_obj = unsafe {transmute(&guard as *const _)};
-        pcs.key1 =tee_obj_ref as *const tee_obj as usize;
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
+        {
+            let pcs = unsafe{
+                &mut*(pcs as *mut TeeCrypState)
+            };
+            pcs.key1 = pcs.id as usize;
+        }
+        #[cfg(feature = "tee_slab_crypt_state")]
+        {
+            with_tee_session_ctx_mut(|ctx| {
+                match ctx.crypt_state.as_mut() {
+                    Some(s) => {
+                        s.get_mut(pcs).expect("Getting crypt state")
+                        .key1 = pcs;
+                        Ok(())
+                    }
+                    _ => {
+                        error !("Error freeing crypt state");
+                        Err(TEE_ERROR_GENERIC)
+                    }
+            }});
+        }
     }
 
     if let Some(key) = o2 {
         key.lock().busy = true;
-        let pcs = unsafe{&mut*(pcs as *mut TeeCrypState)};
-        let guard = key.lock();
-        let tee_obj_ref: &tee_obj = unsafe {transmute(&guard as *const _)};
-        pcs.key2 =tee_obj_ref as *const tee_obj as usize;
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
+        {
+            let pcs = unsafe{
+                &mut*(pcs as *mut TeeCrypState)
+            };
+            pcs.key2 = pcs.id as usize;
+        }
+        #[cfg(feature = "tee_slab_crypt_state")]
+        {
+            with_tee_session_ctx_mut(|ctx| {
+                match ctx.crypt_state.as_mut() {
+                    Some(s) => {
+                        s.get_mut(pcs).expect("Getting crypt state")
+                        .key2 = pcs;
+                        Ok(())
+                    }
+                    _ => {
+                        error !("Error freeing crypt state");
+                        Err(TEE_ERROR_GENERIC)
+                    }
+            }});
+        }
     }
 
     Ok(())
@@ -1337,12 +1577,75 @@ pub(crate) fn sys_tee_scn_hash_init(state: usize, _iv: usize, _iv_len: usize) ->
     // let session = ts_get_current_session()?;
     // let mut session =
     with_tee_session_ctx_mut(|ctx| {
+        #[cfg(not(feature = "tee_slab_crypt_state"))]
         match ctx.cryp_state.as_mut() {
             Some(s) => {
                 // get crypto state
                 let mut crypto_state; // = tee_svc_cryp_get_state(session, state)?;
                 crypto_state = tee_svc_cryp_get_state(s, state)?;
                 // 根据算法类型执行不同的初始化
+                match tee_alg_get_class(crypto_state.algo) {
+                    TEE_OPERATION_DIGEST => {
+                        if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
+                            crypto_hash_init(ctx)?;
+                        } else {
+                            return Err(TEE_ERROR_BAD_STATE);
+                        }
+                    }
+                    TEE_OPERATION_MAC => {
+                        // get key
+                        let o_arc = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
+                        let o = o_arc.lock();
+                        if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
+                            return Err(TEE_ERROR_BAD_PARAMETERS);
+                        }
+
+                        let key = o.attr.get(0);
+                        let key1 = o.attr.get(1);
+                        if let Some(key) = key {
+                            if let Some(key1) = key1 {
+                                if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
+                                    let len = match key {
+                                        TeeCryptObj::obj_secret(key) => key.layout.size(),
+                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                                    };
+                                    let data = match key1 {
+                                        TeeCryptObj::obj_secret(key) => {
+                                            key.secret() as *const tee_cryp_obj_secret as *const u8
+                                        }
+                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                                    };
+                                    let key = unsafe { from_raw_parts(data, len) };
+                                    crypto_mac_init(ctx, key)?;
+                                } else {
+                                    return Err(TEE_ERROR_BAD_STATE);
+                                }
+                            } else {
+                                return Err(TEE_ERROR_BAD_PARAMETERS);
+                            }
+                        } else {
+                            return Err(TEE_ERROR_BAD_PARAMETERS);
+                        }
+                    }
+                    _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+                }
+
+                // 更新状态
+                if CrypState::Initialized != crypto_state.state {
+                    crypto_state.state = CrypState::Initialized;
+                }
+                return Ok(());
+            }
+            None => Err(TEE_ERROR_BAD_STATE),
+        }
+        // new slab
+        #[cfg(feature = "tee_slab_crypt_state")]
+        match ctx.crypt_state.as_mut() {
+            Some(s) => {
+                // get crypto state
+                let mut crypto_state; // = tee_svc_cryp_get_state(session, state)?;
+                crypto_state = tee_svc_cryp_get_state(s, state)?;
+                // initialize
                 match tee_alg_get_class(crypto_state.algo) {
                     TEE_OPERATION_DIGEST => {
                         if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
