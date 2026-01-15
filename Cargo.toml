@@ -91,6 +91,7 @@ repository.workspace = true
 
 [features]
 default = []
+tee = ["starry-api/tee"]
 qemu = [
     "axfeat/display",
     "axfeat/input",

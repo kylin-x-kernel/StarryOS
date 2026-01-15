@@ -624,8 +624,22 @@ pub fn handle_syscall(uctx: &mut UserContext) {
         Sysno::timer_create | Sysno::timer_gettime | Sysno::timer_settime => Ok(0),
 
         _ => {
-            warn!("Unimplemented syscall: {sysno}");
-            Err(AxError::Unsupported)
+            #[cfg(feature = "tee")]
+            {
+                use tee_raw_sys::TEE_SUCCESS;
+
+                use crate::tee::handle_tee_syscall;
+
+                match handle_tee_syscall(sysno, uctx) {
+                    Ok(_) => Ok(TEE_SUCCESS as isize),
+                    Err(errno) => Ok(errno as isize),
+                }
+            }
+            #[cfg(not(feature = "tee"))]
+            {
+                warn!("Unimplemented syscall: {sysno}");
+                Err(AxError::Unsupported)
+            }
         }
     };
     debug!("Syscall {sysno} return {result:?}");

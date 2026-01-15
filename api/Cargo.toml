@@ -13,6 +13,7 @@ memtrack = ["axfeat/dwarf", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice","dep:rand_chacha"]
+tee = ["syscalls/tee", "dep:tee_raw_sys"]
 
 [dependencies]
 axalloc.workspace = true
@@ -64,8 +65,10 @@ spin.workspace = true
 starry-process.workspace = true
 starry-signal.workspace = true
 starry-vm.workspace = true
-syscalls = { git = "https://github.com/Starry-OS/syscalls.git", rev = "efac241", default-features = false }
+syscalls = { git = "https://github.com/Starry-OS/syscalls.git", rev = "6cbfa16", default-features = false }
 zerocopy = { version = "0.8.26", features = ["derive"] }
+
+tee_raw_sys = { git = "https://github.com/kylin-x-kernel/tee_raw_sys.git", optional = true }
 
 starry-core.workspace = true
 
