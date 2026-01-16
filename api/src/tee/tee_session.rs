@@ -22,12 +22,12 @@ scope_local::scope_local! {
 
 /// TEE Session Context
 /// This context stores per-session information and state for a client session
-/// 
+///
 /// Parameters:
 /// - session_id: Unique identifier for this session
 /// - login_type: Type of login/authentication used for this session
 /// - user_id: Identifier of the user associated with this session
-/// 
+///
 /// This structure is attached to each thread handling a client session
 pub struct TeeSessionCtx {
     pub session_id: u32,
@@ -57,13 +57,13 @@ impl Default for TeeSessionCtx {
 
 /// Acquire a mutable reference to the current thread's tee_session_ctx
 /// Executes the provided closure with the mutable reference
-/// 
+///
 /// # Parameters
 /// - `f`: Closure that takes `&mut TeeSessionCtx` and returns `TeeResult<R>`
-/// 
+///
 /// # Returns
 /// The result of the closure execution
-/// 
+///
 /// # Note
 /// Creates a default session context if none exists for the current thread
 pub fn with_tee_session_ctx_mut<F, R>(f: F) -> TeeResult<R>
@@ -91,13 +91,13 @@ where
 
 /// Acquire an immutable reference to the current thread's tee_session_ctx
 /// Executes the provided closure with the immutable reference
-/// 
+///
 /// # Parameters
 /// - `f`: Closure that takes `&TeeSessionCtx` and returns `TeeResult<R>`
-/// 
+///
 /// # Returns
 /// The result of the closure execution
-/// 
+///
 /// # Note
 /// Creates a default session context if none exists for the current thread
 pub fn with_tee_session_ctx<F, R>(f: F) -> TeeResult<R>
@@ -136,10 +136,10 @@ pub struct TeeTaCtx {
 /// Acquire a mutable reference to the global tee_ta_ctx
 /// Executes the provided closure with the mutable reference
 /// The closure pattern ensures proper lock release
-/// 
+///
 /// # Parameters
 /// - `f`: Closure that takes `&mut tee_ta_ctx` and returns `TeeResult<R>`
-/// 
+///
 /// # Returns
 /// The result of the closure execution
 pub fn with_tee_ta_ctx_mut<F, R>(f: F) -> TeeResult<R>
@@ -153,10 +153,10 @@ where
 /// Acquire an immutable reference to the global tee_ta_ctx
 /// Executes the provided closure with the immutable reference
 /// The closure pattern ensures proper lock release
-/// 
+///
 /// # Parameters
 /// - `f`: Closure that takes `&tee_ta_ctx` and returns `TeeResult<R>`
-/// 
+///
 /// # Returns
 /// The result of the closure execution
 pub fn with_tee_ta_ctx<F, R>(f: F) -> TeeResult<R>
