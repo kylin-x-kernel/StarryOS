@@ -8,8 +8,9 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
+#[cfg(feature = "tee")]
+use core::any::Any;
 use core::{
-    any::Any,
     cell::RefCell,
     ops::Deref,
     sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicUsize, Ordering},
