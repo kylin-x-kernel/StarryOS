@@ -9,6 +9,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{
+    any::Any,
     cell::RefCell,
     ops::Deref,
     sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicUsize, Ordering},
@@ -52,6 +53,15 @@ impl<T> Deref for AssumeSync<T> {
     }
 }
 
+/// Tee session context trait
+#[cfg(feature = "tee")]
+pub trait TeeSessionCtxTrait {
+    /// Get the any reference of the tee session context
+    fn as_any(&self) -> &dyn Any;
+    /// Get the any mutable reference of the tee session context
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
 /// The inner data of a thread.
 pub struct Thread {
     /// The process data shared by all threads in the process.
@@ -85,6 +95,10 @@ pub struct Thread {
 
     /// Indicates whether the thread is currently accessing user memory.
     accessing_user_memory: AtomicBool,
+
+    /// Tee session context
+    #[cfg(feature = "tee")]
+    pub tee_session_ctx: Mutex<Option<Box<dyn TeeSessionCtxTrait>>>,
 }
 
 impl Thread {
@@ -99,6 +113,8 @@ impl Thread {
             oom_score_adj: AtomicI32::new(200),
             exit: AtomicBool::new(false),
             accessing_user_memory: AtomicBool::new(false),
+            #[cfg(feature = "tee")]
+            tee_session_ctx: Mutex::new(None),
         })
     }
 
@@ -153,6 +169,15 @@ impl Thread {
     pub fn set_accessing_user_memory(&self, accessing: bool) {
         self.accessing_user_memory
             .store(accessing, Ordering::Release);
+    }
+
+    /// Set the tee session context.
+    #[cfg(feature = "tee")]
+    pub fn set_tee_session_ctx(&self, ctx: Box<dyn TeeSessionCtxTrait>) {
+        let mut guard = self.tee_session_ctx.lock();
+        if guard.is_none() {
+            *guard = Some(ctx);
+        }
     }
 }
 
