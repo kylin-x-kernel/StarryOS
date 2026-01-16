@@ -91,7 +91,8 @@ repository.workspace = true
 
 [features]
 default = []
-tee = ["starry-api/tee"]
+tee = ["starry-api/tee", "starry-core/tee"]
+tee_test = ["tee", "starry-api/tee_test"]
 qemu = [
     "axfeat/display",
     "axfeat/input",
