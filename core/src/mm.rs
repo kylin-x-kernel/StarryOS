@@ -20,10 +20,10 @@ use kernel_guard::IrqSave;
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, VirtAddr};
 use ouroboros::self_referencing;
 use starry_vm::{VmError, VmIo, VmResult};
-use crate::lrucache::LruCache;
 
 use crate::{
     config::{USER_SPACE_BASE, USER_SPACE_SIZE},
+    lrucache::LruCache,
     task::AsThread,
 };
 

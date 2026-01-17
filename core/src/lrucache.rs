@@ -76,14 +76,14 @@ impl<V, const CAP: usize> LruCache<V, CAP> {
         }
         false
     }
-    
+
     /// Returns a reference to the most-recently-used (MRU) item.
     ///
     /// This does not change the cache state.
     pub fn peek_mru(&self) -> Option<&V> {
         self.storage.get(self.mru_idx as usize).map(|n| &n.payload)
     }
-    
+
     /// Returns an iterator over the cache items, ordered from MRU to LRU.
     pub fn items(&self) -> LruIter<'_, V, CAP> {
         LruIter::<V, CAP> {
@@ -96,31 +96,31 @@ impl<V, const CAP: usize> LruCache<V, CAP> {
     pub fn flush(&mut self) {
         self.storage.clear();
     }
-    
+
     fn promote(&mut self, idx: u16) {
         if idx != self.mru_idx {
             self.unlink(idx);
             self.push_mru(idx);
         }
     }
-    
+
     fn unlink(&mut self, idx: u16) {
         let prev = self.storage[idx as usize].prev;
         let next = self.storage[idx as usize].next;
-        
+
         if idx == self.mru_idx {
             self.mru_idx = next;
         } else {
             self.storage[prev as usize].next = next;
         }
-        
+
         if idx == self.lru_idx {
             self.lru_idx = prev;
         } else {
             self.storage[next as usize].prev = prev;
         }
     }
-    
+
     fn push_mru(&mut self, idx: u16) {
         if self.storage.len() == 1 {
             self.lru_idx = idx;
@@ -130,7 +130,7 @@ impl<V, const CAP: usize> LruCache<V, CAP> {
         }
         self.mru_idx = idx;
     }
-    
+
     fn pop_lru(&mut self) -> u16 {
         let idx = self.lru_idx;
         let prev = self.storage[idx as usize].prev;
@@ -147,13 +147,18 @@ pub struct LruIter<'a, V, const CAP: usize> {
 
 impl<'a, V, const CAP: usize> Iterator for LruIter<'a, V, CAP> {
     type Item = &'a V;
+
     fn next(&mut self) -> Option<&'a V> {
-        if self.cache.storage.is_empty() { return None; }
-        if self.pos as usize >= CAP { return None; }
-        
+        if self.cache.storage.is_empty() {
+            return None;
+        }
+        if self.pos as usize >= CAP {
+            return None;
+        }
+
         let node = &self.cache.storage[self.pos as usize];
         let val = &node.payload;
-        
+
         let current_pos = self.pos;
         if current_pos == self.cache.lru_idx {
             self.pos = CAP as u16;
