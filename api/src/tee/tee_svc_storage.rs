@@ -7,7 +7,7 @@
 use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use core::{
     ffi::{c_uint, c_ulong, c_void},
-    mem::{size_of, size_of_val},
+    mem::{offset_of, size_of, size_of_val},
     ptr,
 };
 
@@ -1016,6 +1016,26 @@ pub fn syscall_storage_obj_write(obj: c_ulong, data: *mut c_void, len: usize) ->
     Ok(())
 }
 
+pub fn tee_svc_storage_write_usage(o: &mut tee_obj, usage: u32) -> TeeResult {
+    let pos = offset_of!(tee_svc_storage_head, objectUsage);
+
+    let fops = {
+        let guard = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.read();
+        guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+    };
+
+    let usage_slice = unsafe {
+        core::slice::from_raw_parts(
+            &usage as *const u32 as *const u8,
+            core::mem::size_of::<u32>(),
+        )
+    };
+
+    (fops.write)(&mut o.fh, pos, usage_slice, &[], usage_slice.len()).inspect_err(|e| {
+        error!("tee_svc_storage_write_usage: write failed: {:X?}", e);
+    })
+}
+
 /// truncate the object to the length
 ///
 /// # Arguments
@@ -1310,7 +1330,6 @@ pub fn syscall_storage_next_enum(
         Ok(())
     })();
 
-    // 清理资源（对应 C 版本的 702-709 行）
     if let Some(mut o) = o {
         if let Some(pobj) = o.pobj.take() {
             let fops = pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
