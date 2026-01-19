@@ -4,7 +4,7 @@
 //
 // This file has been created by KylinSoft on 2025.
 
-use alloc::{boxed::Box, sync::Arc};
+use alloc::{boxed::Box, string::String, sync::Arc};
 use core::{any::Any, default::Default};
 
 use axtask::current;
@@ -131,6 +131,7 @@ pub struct TeeTaCtx {
     /// Test-only field, used only when the tee_test feature is enabled
     #[cfg(feature = "tee_test")]
     pub for_test_only: u32,
+    pub uuid: String,
 }
 
 /// Acquire a mutable reference to the global tee_ta_ctx

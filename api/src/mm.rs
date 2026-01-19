@@ -16,7 +16,7 @@ use axio::prelude::*;
 use axtask::current;
 use memory_addr::{MemoryAddr, PAGE_SIZE_4K, VirtAddr};
 use starry_core::{mm::access_user_memory, task::AsThread};
-use starry_vm::{vm_load_until_nul, vm_read_slice, vm_write_slice};
+use starry_vm::{vm_load, vm_load_until_nul, vm_read_slice, vm_write_slice};
 
 fn check_region(start: VirtAddr, layout: Layout, access_flags: MappingFlags) -> AxResult<()> {
     let align = layout.align();
@@ -256,6 +256,12 @@ fn handle_page_fault(vaddr: VirtAddr, access_flags: MappingFlags) -> bool {
 pub fn vm_load_string(ptr: *const c_char) -> AxResult<String> {
     #[allow(clippy::unnecessary_cast)]
     let bytes = vm_load_until_nul(ptr as *const u8)?;
+    String::from_utf8(bytes).map_err(|_| AxError::IllegalBytes)
+}
+
+pub fn vm_load_any_string(ptr: *const c_char, len: usize) -> AxResult<String> {
+    let bytes = vm_load(ptr as *const u8, len)?;
+    #[allow(clippy::unnecessary_cast)]
     String::from_utf8(bytes).map_err(|_| AxError::IllegalBytes)
 }
 
