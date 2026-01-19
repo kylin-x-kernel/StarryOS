@@ -260,8 +260,8 @@ pub fn vm_load_string(ptr: *const c_char) -> AxResult<String> {
 }
 
 pub fn vm_load_any_string(ptr: *const c_char, len: usize) -> AxResult<String> {
-    let bytes = vm_load(ptr, len)?;
     #[allow(clippy::unnecessary_cast)]
+    let bytes = vm_load(ptr as *const u8, len)?;
     String::from_utf8(bytes).map_err(|_| AxError::IllegalBytes)
 }
 
