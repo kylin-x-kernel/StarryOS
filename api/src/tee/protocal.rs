@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use alloc::{string::String, vec::Vec};
+
 use bincode::{Decode, Encode};
 
 #[derive(Encode, Decode)]

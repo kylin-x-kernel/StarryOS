@@ -1,13 +1,19 @@
+use alloc::{format, vec::Vec};
 use core::ffi::c_char;
 
-use alloc::{format, vec::Vec};
-use axnet::{SendOptions, SocketAddrEx, SocketOps, unix::{StreamTransport, UnixSocket, UnixSocketAddr}};
+use axnet::{
+    SendOptions, SocketAddrEx, SocketOps,
+    unix::{StreamTransport, UnixSocket, UnixSocketAddr},
+};
 use axtask::current;
 use bincode::config;
 use starry_core::task::AsThread;
 use tee_raw_sys::{TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_GENERIC};
 
-use crate::{mm::vm_load_any_string, tee::{TeeResult, protocal::TeeRequest, tee_session::with_tee_ta_ctx}};
+use crate::{
+    mm::vm_load_any_string,
+    tee::{TeeResult, protocal::TeeRequest, tee_session::with_tee_ta_ctx},
+};
 
 pub fn sys_tee_scn_return(_return_code: u32) -> TeeResult {
     // Now we just ignore the return code and return Ok
