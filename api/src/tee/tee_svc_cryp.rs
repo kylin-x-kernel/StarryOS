@@ -41,6 +41,7 @@ use super::{
     memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
     tee_pobj::with_pobj_usage_lock,
+    tee_svc_storage::tee_svc_storage_write_usage,
     user_access::{
         bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
         copy_to_user_struct, copy_to_user_u64,
@@ -1159,6 +1160,30 @@ pub fn syscall_cryp_obj_close(obj_id: c_ulong) -> TeeResult {
     tee_obj_close(obj_id as u32)
 }
 
+/// reset the object
+/// 
+/// # Arguments
+/// * `obj_id` - the object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_cryp_obj_reset(obj_id: c_ulong) -> TeeResult {
+    let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let mut o = o_arc.lock();
+
+    if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        tee_obj_attr_clear(&mut o);
+        o.info.objectSize = 0;
+        o.info.objectUsage = TEE_USAGE_DEFAULT;
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+
+    // the object is no more initialized
+    o.info.handleFlags &= !(TEE_HANDLE_FLAG_INITIALIZED as u32);
+
+    Ok(())
+}
+
 fn tee_svc_cryp_obj_find_type_attr_idx(
     attr_id: u32,
     type_props: &tee_cryp_obj_type_props,
@@ -1776,6 +1801,50 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -
     Ok(())
 }
 
+/// restrict the usage of the object
+/// 
+/// # Arguments
+/// * `obj_id` - the object id
+/// * `usage` - the usage to restrict
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_cryp_obj_restrict_usage(obj_id: c_ulong, usage: c_ulong) -> TeeResult {
+    let mut o_info = utee_object_info::default();
+
+    let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
+    let mut o = o_arc.lock();
+    if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
+        // get pobj arc and flags in the closure, avoid multiple borrows in the closure
+        let pobj_arc = o.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.clone();
+        let pobj_flags = {
+            let pobj_guard = pobj_arc.read();
+            pobj_guard.flags
+        };
+
+        let mut new_usage: u32 = 0;
+        let write_res = with_pobj_usage_lock(pobj_flags, || -> TeeResult {
+            // get pobj arc in the closure, avoid multiple borrows in the closure
+            let pobj_guard = pobj_arc.read();
+            new_usage = pobj_guard.obj_info_usage & usage as u32;
+            drop(pobj_guard);
+
+            // call write_usage（need &mut o，now can borrow safely，because pobj's lock is released）
+            tee_svc_storage_write_usage(&mut o, new_usage)?;
+
+            // get write lock to update obj_info_usage
+            let mut pobj_guard = pobj_arc.write();
+            pobj_guard.obj_info_usage = new_usage;
+            Ok(())
+        });
+
+        write_res?;
+    } else {
+        o.info.objectUsage &= usage as u32;
+    }
+
+    Ok(())
+}
+
 pub fn syscall_cryp_obj_get_attr(
     obj_id: c_ulong,
     attr_id: c_ulong,
@@ -1825,6 +1894,20 @@ pub fn syscall_cryp_obj_get_attr(
     }
 
     Ok(TEE_SUCCESS)
+}
+
+pub fn tee_obj_attr_clear(o: &mut tee_obj) -> TeeResult {
+    let tp = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
+    if o.attr.is_empty() {
+        return Ok(());
+    }
+
+    for ta in tp.type_attrs.iter() {
+        let mut attr = o.attr[0].get_attr_by_id(ta.attr_id as _)?;
+        attr.clear();
+    }
+
+    Ok(())
 }
 
 /// copy in attributes from user space to kernel space
