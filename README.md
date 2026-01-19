@@ -37,8 +37,7 @@ repo sync -j$(nproc)
 #### 2. Fix dependency versions
 
 ```bash
-cd StarryOS
-./fix-versions.sh
+cd StarryOS && ./fix-versions.sh
 ```
 
 This script ensures all dependency repositories are checked out to compatible versions.
