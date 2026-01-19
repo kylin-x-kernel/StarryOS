@@ -53,6 +53,9 @@ bitbake starry
 
 # Or build complete system image
 bitbake starry-minimal-image
+
+# Or runqemu for starryos
+runqemu starry-minimal-image nographic
 ```
 
 
