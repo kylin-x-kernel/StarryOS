@@ -50,8 +50,32 @@ bitbake starry-minimal-image
 runqemu starry-minimal-image nographic
 ```
 
+**Note:** If the `local.conf.sample` template in `meta-starry/conf/` has been updated, you may need to manually merge the changes into your `build/conf/local.conf`
 
----
+#### 3. Daily development 
+
+
+```bash
+# Sync all repositories to latest commits on their branches (recommended)
+repo sync -c
+
+# Sync all repositories (fetches all branches, slower)
+repo sync
+
+# Sync specific repository only
+repo sync StarryOS
+repo sync arceos
+
+# View status of all repositories
+repo status
+
+# View current branches
+repo branches
+
+# Switch to different manifest (e.g., kernel-tee.xml)
+repo init -m kernel-tee.xml
+repo sync -c
+```
 
 ### Standalone Build 
 
