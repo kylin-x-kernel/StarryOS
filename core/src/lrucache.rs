@@ -95,6 +95,8 @@ impl<V, const CAP: usize> LruCache<V, CAP> {
     /// Clears all items from the cache.
     pub fn flush(&mut self) {
         self.storage.clear();
+        self.mru_idx = 0;
+        self.lru_idx = 0;
     }
 
     fn promote(&mut self, idx: u16) {
