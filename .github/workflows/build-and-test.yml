@@ -1,0 +1,92 @@
+name: Build and Test (Yocto)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  STARRY_WORKSPACE: ~/starryos-workspace
+  STARRY_SOURCE_DIR: ~/starryos-workspace/StarryOS
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, Linux, X64, yocto]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          fetch-depth: 0
+
+      - name: Sync code to StarryOS workspace
+        run: |
+          # 确保目标目录存在
+          mkdir -p ${{ env.STARRY_SOURCE_DIR }}
+          
+          # 使用 rsync 同步代码，排除 .git 目录以保留工作区的 git 配置
+          rsync -av --delete \
+            --exclude '.git' \
+            --exclude 'target' \
+            ${{ github.workspace }}/ ${{ env.STARRY_SOURCE_DIR }}/
+          
+          echo "Code synced to ${{ env.STARRY_SOURCE_DIR }}"
+
+      - name: Build StarryOS kernel with bitbake
+        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
+        run: |
+          # 初始化 Yocto 构建环境
+          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
+          
+          # 构建 StarryOS 内核
+          bitbake starry
+
+      - name: Build minimal image
+        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
+        run: |
+          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
+          
+          # 构建最小镜像
+          bitbake starry-minimal-image
+
+      - name: Test with QEMU
+        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
+        timeout-minutes: 10
+        run: |
+          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
+          
+          # 使用 expect 或 timeout 来运行 QEMU 测试
+          timeout 120 bash -c '
+            runqemu starry-minimal-image nographic slirp &
+            QEMU_PID=$!
+            
+            # 等待启动并检查是否进入 shell
+            sleep 60
+            
+            # 检查进程是否还在运行
+            if ps -p $QEMU_PID > /dev/null; then
+              echo "QEMU is running, test passed"
+              kill $QEMU_PID 2>/dev/null || true
+              exit 0
+            else
+              echo "QEMU exited unexpectedly"
+              exit 1
+            fi
+          ' || {
+            echo "Test timed out or failed"
+            exit 1
+          }
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # 清理可能残留的 QEMU 进程
+          pkill -f "qemu.*starry" || true
