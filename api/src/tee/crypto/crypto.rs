@@ -15,7 +15,10 @@ use tee_raw_sys::*;
 
 use crate::tee::{
     TeeResult,
-    crypto::crypto_impl::crypto_ecc_keypair_ops,
+    crypto::crypto_impl::{
+        EccAlgoKeyPair, EccComKeyPair, EccKeypair, Sm2DsaKeyPair, Sm2KepKeyPair, Sm2PkeKeyPair,
+        crypto_ecc_keypair_ops, crypto_ecc_keypair_ops_generate,
+    },
     libmbedtls::{
         bignum::{BigNum, crypto_bignum_allocate},
         ecc::{EcdOps, Sm2DsaOps, Sm2KepOps, Sm2PkeOps},
@@ -76,7 +79,7 @@ pub struct ecc_keypair {
     pub y: BigNum,
     pub curve: u32,
     // TODO: add ops
-    pub ops: Box<dyn crypto_ecc_keypair_ops>,
+    // pub ops: Box<dyn crypto_ecc_keypair_ops>,
 }
 
 impl Default for ecc_keypair {
@@ -86,7 +89,7 @@ impl Default for ecc_keypair {
             x: BigNum::default(),
             y: BigNum::default(),
             curve: 0,
-            ops: Box::new(EcdOps),
+            // ops: Box::new(EcdOps),
         }
     }
 }
@@ -117,7 +120,7 @@ impl tee_crypto_ops for ecc_keypair {
             x: crypto_bignum_allocate(key_size_bits)?,
             y: crypto_bignum_allocate(key_size_bits)?,
             curve,
-            ops,
+            // ops,
         })
     }
 
@@ -139,6 +142,20 @@ impl PartialEq for ecc_keypair {
 }
 
 impl Eq for ecc_keypair {}
+
+pub fn crypto_acipher_gen_ecc_key(
+    key: &mut ecc_keypair,
+    key_size_bits: usize,
+    typ: EccAlgoKeyPair,
+) -> TeeResult {
+    let mut key: Box<dyn crypto_ecc_keypair_ops_generate> = match typ {
+        EccAlgoKeyPair::EccCom => Box::new(EccKeypair::<EccComKeyPair>::new(key)),
+        EccAlgoKeyPair::Sm2Pke => Box::new(EccKeypair::<Sm2PkeKeyPair>::new(key)),
+        EccAlgoKeyPair::Sm2Dsa => Box::new(EccKeypair::<Sm2DsaKeyPair>::new(key)),
+        EccAlgoKeyPair::Sm2Kep => Box::new(EccKeypair::<Sm2KepKeyPair>::new(key)),
+    };
+    key.generate(key_size_bits)
+}
 
 // The crypto context used by the crypto_hash_*() functions
 pub(crate) struct CryptoHashContext {
