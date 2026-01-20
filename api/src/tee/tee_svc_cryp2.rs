@@ -854,7 +854,7 @@ fn translate_compat_algo(algo: u32) -> u32{
     }
 }
 
-fn tee_svc_cryp_check_key_type(o: tee_obj, algo: u32, mode: TEE_OperationMode) -> TeeResult{
+fn tee_svc_cryp_check_key_type(o: &tee_obj, algo: u32, mode: TEE_OperationMode) -> TeeResult{
     let mut req_key_type: u32 = 0;
 	let mut req_key_type2: u32 = 0;
     match tee_alg_get_main_alg(algo){
