@@ -259,7 +259,7 @@ pub fn vm_load_string(ptr: *const c_char) -> AxResult<String> {
     String::from_utf8(bytes).map_err(|_| AxError::IllegalBytes)
 }
 
-pub fn vm_load_any_string(ptr: *const c_char, len: usize) -> AxResult<String> {
+pub fn vm_load_string_with_len(ptr: *const c_char, len: usize) -> AxResult<String> {
     #[allow(clippy::unnecessary_cast)]
     let bytes = vm_load(ptr as *const u8, len)?;
     String::from_utf8(bytes).map_err(|_| AxError::IllegalBytes)
