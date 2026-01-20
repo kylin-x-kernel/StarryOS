@@ -33,6 +33,7 @@ pub struct TeeSessionCtx {
     pub session_id: u32,
     pub login_type: u32,
     pub user_id: u32,
+    pub clnt_id: TEE_Identity,
 }
 
 impl TeeSessionCtxTrait for TeeSessionCtx {
@@ -51,6 +52,15 @@ impl Default for TeeSessionCtx {
             session_id: 0,
             login_type: 0,
             user_id: 0,
+            clnt_id: TEE_Identity {
+                login: 0,
+                uuid: TEE_UUID {
+                    timeLow: 0,
+                    timeMid: 0,
+                    timeHiAndVersion: 0,
+                    clockSeqAndNode: [0; 8],
+                },
+            },
         }
     }
 }
