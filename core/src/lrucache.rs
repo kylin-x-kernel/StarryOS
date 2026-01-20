@@ -133,8 +133,20 @@ impl<V, const CAP: usize> LruCache<V, CAP> {
 
     fn pop_lru(&mut self) -> u16 {
         let idx = self.lru_idx;
-        let prev = self.storage[idx as usize].prev;
-        self.lru_idx = prev;
+
+        if self.storage.len() <= 1 {
+            // Single-element cache: after popping, there is no valid MRU/LRU.
+            // Reset indices; the caller is expected to reuse `idx` as needed.
+            self.mru_idx = 0;
+            self.lru_idx = 0;
+        } else {
+            let prev = self.storage[idx as usize].prev;
+            // The previous node becomes the new LRU (tail).
+            self.lru_idx = prev;
+            // Fully unlink the old LRU by clearing the new tail's `next`
+            // pointer so it no longer points at the removed node.
+            self.storage[prev as usize].next = prev;
+        }
         idx
     }
 }
