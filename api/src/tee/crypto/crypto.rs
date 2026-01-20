@@ -279,35 +279,24 @@ pub(crate) fn crypto_mac_init(ctx: &mut dyn CryptoMacCtx, key: &[u8]) -> TeeResu
 }
 
 // Crypto MAC update
-pub(crate) fn crypto_mac_update(
-    ctx: &mut dyn CryptoMacCtx,
-    data: &[u8]
-) -> TeeResult {
+pub(crate) fn crypto_mac_update(ctx: &mut dyn CryptoMacCtx, data: &[u8]) -> TeeResult {
     ctx.update(data)
 }
 
 // Crypto MAC finalization
-pub(crate) fn crypto_mac_final(
-    ctx: &mut dyn CryptoMacCtx,
-    digest: &mut [u8]
-) -> TeeResult {
+pub(crate) fn crypto_mac_final(ctx: &mut dyn CryptoMacCtx, digest: &mut [u8]) -> TeeResult {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
     ctx.r#final(digest)
 }
 
 // Crypto MAC free
-pub(crate) fn crypto_mac_free(
-    ctx: impl CryptoMacCtx
-) {
+pub(crate) fn crypto_mac_free(ctx: impl CryptoMacCtx) {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
     ctx.free_ctx();
 }
 
 //
-pub(crate) fn crypto_mac_copy_state(
-    ctx: &mut dyn CryptoMacCtx,
-    src_ctx: &dyn CryptoMacCtx
-) {
+pub(crate) fn crypto_mac_copy_state(ctx: &mut dyn CryptoMacCtx, src_ctx: &dyn CryptoMacCtx) {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
     ctx.copy_state(src_ctx)
 }

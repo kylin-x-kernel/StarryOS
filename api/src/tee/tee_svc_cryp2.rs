@@ -29,18 +29,12 @@ use axerrno::{AxError, AxResult};
 use lazy_static::lazy_static;
 use tee_raw_sys::{libc_compat::size_t, *};
 
-// use core::ffi::c_void;
-// use core::ptr::NonNull;
-use super::{tee_svc_cryp::{
-    TeeCryptObj, get_user_u64_as_size_t, tee_cryp_obj_secret, tee_cryp_obj_secret_wrapper, tee_cryp_obj_type_props
-}, types_ext::vaddr_t};
 use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{
-        CryptoHashCtx, CryptoMacCtx,
-        crypto_hash_init, crypto_mac_init, crypto_mac_update, crypto_mac_final, crypto_hash_update, crypto_hash_final,
-        ecc_keypair, ecc_public_key,
+        CryptoHashCtx, CryptoMacCtx, crypto_hash_final, crypto_hash_init, crypto_hash_update,
+        crypto_mac_final, crypto_mac_init, crypto_mac_update, ecc_keypair, ecc_public_key,
     },
     crypto::{sm3_hash::SM3HashCtx, sm3_hmac::SM3HmacCtx},
     libmbedtls::bignum::{
@@ -49,7 +43,7 @@ use super::{
     },
     libutee::{
         tee_api_objects::TEE_USAGE_DEFAULT,
-        utee_defines::{tee_alg_get_class, tee_u32_to_big_endian, tee_alg_get_main_alg},
+        utee_defines::{tee_alg_get_class, tee_alg_get_main_alg, tee_u32_to_big_endian},
     },
     memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
@@ -70,17 +64,24 @@ use super::{
     utils::{bit, bit32},
     vm::vm_check_access_rights,
 };
+// use core::ffi::c_void;
+// use core::ptr::NonNull;
+use super::{
+    tee_svc_cryp::{
+        TeeCryptObj, get_user_u64_as_size_t, tee_cryp_obj_secret, tee_cryp_obj_secret_wrapper,
+        tee_cryp_obj_type_props,
+    },
+    types_ext::vaddr_t,
+};
 use crate::{
     mm::vm_load_string,
     tee,
     tee::{
+        TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384, TEE_ALG_SHA3_512, TEE_ALG_SHAKE128,
+        TEE_ALG_SHAKE256, TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
         libmbedtls::bignum::BigNum,
-        memtag::{
-            memtag_strip_tag_const,memtag_strip_tag
-        },
+        memtag::{memtag_strip_tag, memtag_strip_tag_const},
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
-        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256,
-        TEE_TYPE_HKDF_IKM,TEE_TYPE_CONCAT_KDF_Z,TEE_TYPE_PBKDF2_PASSWORD
     },
 };
 
@@ -271,9 +272,9 @@ pub fn is_xof_algo(algo: u32) -> bool {
 ///
 /// # Example
 /// ```
-/// let state = 0x12345678;  // Crypto state handle
-/// let chunk = 0xAB00000012345678;  // Tagged input pointer
-/// let hash_buf = 0xCD00000087654321;  // Tagged output pointer
+/// let state = 0x12345678; // Crypto state handle
+/// let chunk = 0xAB00000012345678; // Tagged input pointer
+/// let hash_buf = 0xCD00000087654321; // Tagged output pointer
 /// let mut hash_len = 0u64;
 ///
 /// sys_tee_scn_hash_final(state, chunk, 32, hash_buf, &mut hash_len)?;
@@ -286,9 +287,7 @@ pub(crate) fn sys_tee_scn_hash_final(
     hash: usize,
     hash_len: vaddr_t,
 ) -> TeeResult {
-    let hash_len = unsafe{
-        &mut *(hash_len as *mut u64)
-    };
+    let hash_len = unsafe { &mut *(hash_len as *mut u64) };
     // Validate parameters: null chunk with non-zero size is invalid
     if chunk == 0 && chunk_size != 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
@@ -303,8 +302,7 @@ pub(crate) fn sys_tee_scn_hash_final(
     with_tee_session_ctx(|ctx| {
         vm_check_access_rights(
             unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
-            TEE_MEMORY_ACCESS_READ |
-            TEE_MEMORY_ACCESS_ANY_OWNER,
+            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
             chunk,
             chunk_size,
         )
@@ -319,9 +317,7 @@ pub(crate) fn sys_tee_scn_hash_final(
         vm_check_access_rights(
             // &ctx.uctx
             unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
-            TEE_MEMORY_ACCESS_READ |
-            TEE_MEMORY_ACCESS_WRITE |
-            TEE_MEMORY_ACCESS_ANY_OWNER,
+            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_WRITE | TEE_MEMORY_ACCESS_ANY_OWNER,
             hash,
             hlen,
         )
@@ -353,13 +349,7 @@ pub(crate) fn sys_tee_scn_hash_final(
                     }
                     TEE_OPERATION_MAC => {
                         // MAC (Message Authentication Code) operation
-                        process_mac_final(
-                            &mut crypto_state,
-                            chunk,
-                            chunk_size,
-                            hash,
-                            &mut hlen,
-                        )?;
+                        process_mac_final(&mut crypto_state, chunk, chunk_size, hash, &mut hlen)?;
                     }
                     _ => {
                         // Unsupported operation class
@@ -403,9 +393,7 @@ fn process_mac_final(
 
     // Update MAC with final chunk if provided
     if chunk_size != 0 {
-        let data_slice = unsafe {
-            slice::from_raw_parts(chunk as *const u8, chunk_size)
-        };
+        let data_slice = unsafe { slice::from_raw_parts(chunk as *const u8, chunk_size) };
 
         enter_user_access();
         let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
@@ -421,9 +409,7 @@ fn process_mac_final(
     }
 
     // Finalize MAC computation
-    let hash_slice = unsafe {
-        slice::from_raw_parts_mut(hash as *mut u8, *hlen)
-    };
+    let hash_slice = unsafe { slice::from_raw_parts_mut(hash as *mut u8, *hlen) };
 
     enter_user_access();
     let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
@@ -466,9 +452,7 @@ fn process_digest_final(
     if is_xof_algo(crypto_state.algo) {
         // Update hash with final chunk if provided
         if chunk_size != 0 {
-            let data_slice = unsafe {
-                from_raw_parts(chunk as *const u8, chunk_size)
-            };
+            let data_slice = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
 
             enter_user_access();
             let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
@@ -485,9 +469,7 @@ fn process_digest_final(
 
         // hash_size is supposed to be unchanged for XOF
         // algorithms so return directly.
-        let hash_slice = unsafe {
-            from_raw_parts_mut(hash as *mut u8, *hlen)
-        };
+        let hash_slice = unsafe { from_raw_parts_mut(hash as *mut u8, *hlen) };
 
         enter_user_access();
         let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
@@ -511,9 +493,7 @@ fn process_digest_final(
 
     // Update hash with final chunk if provided
     if chunk_size != 0 {
-        let data_slice = unsafe {
-            from_raw_parts(chunk as *const u8, chunk_size)
-        };
+        let data_slice = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
 
         enter_user_access();
         let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
@@ -529,9 +509,7 @@ fn process_digest_final(
     }
 
     // Finalize hash computation
-    let hash_slice = unsafe {
-        from_raw_parts_mut(hash as *mut u8, *hlen)
-    };
+    let hash_slice = unsafe { from_raw_parts_mut(hash as *mut u8, *hlen) };
 
     enter_user_access();
     let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
@@ -544,7 +522,6 @@ fn process_digest_final(
     if let Err(_) = res {
         return res;
     }
-
 
     // Return actual hash length
     // For XOF: return provided buffer size
@@ -592,10 +569,7 @@ fn tee_alg_get_digest_size(algo: u32, size: &mut usize) -> TeeResult {
 /// # Safety
 /// - Caller must ensure `dst` is a valid user-space address
 /// - Performs user-space memory write operations, must ensure target memory is writable
-fn put_user_u64(
-    dst: &mut usize,
-    src: &u64
-) -> TeeResult {
+fn put_user_u64(dst: &mut usize, src: &u64) -> TeeResult {
     let mut d: u64 = 0;
 
     // check overflow: 32bit，usize = u32，not hold u64
@@ -838,142 +812,140 @@ pub mod tests_tee_svc_cryp {
     }
 }
 
-fn translate_compat_algo(algo: u32) -> u32{
+fn translate_compat_algo(algo: u32) -> u32 {
     match algo {
         TEE_ALG_ECDSA_P192 => TEE_ALG_ECDSA_SHA1,
         TEE_ALG_ECDSA_P224 => TEE_ALG_ECDSA_SHA224,
         TEE_ALG_ECDSA_P256 => TEE_ALG_ECDSA_SHA256,
         TEE_ALG_ECDSA_P384 => TEE_ALG_ECDSA_SHA384,
         TEE_ALG_ECDSA_P521 => TEE_ALG_ECDSA_SHA512,
-        TEE_ALG_ECDH_P192 |
-        TEE_ALG_ECDH_P224 |
-        TEE_ALG_ECDH_P256 |
-        TEE_ALG_ECDH_P384 |
-        TEE_ALG_ECDH_P521 => TEE_ALG_ECDH_DERIVE_SHARED_SECRET,
+        TEE_ALG_ECDH_P192 | TEE_ALG_ECDH_P224 | TEE_ALG_ECDH_P256 | TEE_ALG_ECDH_P384
+        | TEE_ALG_ECDH_P521 => TEE_ALG_ECDH_DERIVE_SHARED_SECRET,
         _ => algo,
     }
 }
 
-fn tee_svc_cryp_check_key_type(o: &tee_obj, algo: u32, mode: TEE_OperationMode) -> TeeResult{
+fn tee_svc_cryp_check_key_type(o: &tee_obj, algo: u32, mode: TEE_OperationMode) -> TeeResult {
     let mut req_key_type: u32 = 0;
-	let mut req_key_type2: u32 = 0;
-    match tee_alg_get_main_alg(algo){
+    let mut req_key_type2: u32 = 0;
+    match tee_alg_get_main_alg(algo) {
         TEE_MAIN_ALGO_MD5 => {
             req_key_type = TEE_TYPE_HMAC_MD5;
         }
-        TEE_MAIN_ALGO_SHA1 =>{
+        TEE_MAIN_ALGO_SHA1 => {
             req_key_type = TEE_TYPE_HMAC_SHA1;
         }
-        TEE_MAIN_ALGO_SHA224 =>{
+        TEE_MAIN_ALGO_SHA224 => {
             req_key_type = TEE_TYPE_HMAC_SHA224;
         }
-        TEE_MAIN_ALGO_SHA256 =>{
+        TEE_MAIN_ALGO_SHA256 => {
             req_key_type = TEE_TYPE_HMAC_SHA256;
         }
-        TEE_MAIN_ALGO_SHA384 =>{
+        TEE_MAIN_ALGO_SHA384 => {
             req_key_type = TEE_TYPE_HMAC_SHA384;
         }
-        TEE_MAIN_ALGO_SHA512 =>{
+        TEE_MAIN_ALGO_SHA512 => {
             req_key_type = TEE_TYPE_HMAC_SHA512;
         }
-        TEE_MAIN_ALGO_SHA3_224 =>{
+        TEE_MAIN_ALGO_SHA3_224 => {
             req_key_type = TEE_TYPE_HMAC_SHA3_224;
         }
-        TEE_MAIN_ALGO_SHA3_256 =>{
+        TEE_MAIN_ALGO_SHA3_256 => {
             req_key_type = TEE_TYPE_HMAC_SHA3_256;
         }
-        TEE_MAIN_ALGO_SHA3_384 =>{
+        TEE_MAIN_ALGO_SHA3_384 => {
             req_key_type = TEE_TYPE_HMAC_SHA3_384;
         }
-        TEE_MAIN_ALGO_SHA3_512 =>{
+        TEE_MAIN_ALGO_SHA3_512 => {
             req_key_type = TEE_TYPE_HMAC_SHA3_512;
         }
-        TEE_MAIN_ALGO_SM3 =>{
+        TEE_MAIN_ALGO_SM3 => {
             req_key_type = TEE_TYPE_HMAC_SM3;
         }
-        TEE_MAIN_ALGO_AES =>{
+        TEE_MAIN_ALGO_AES => {
             req_key_type = TEE_TYPE_AES;
         }
-        TEE_MAIN_ALGO_DES =>{
+        TEE_MAIN_ALGO_DES => {
             req_key_type = TEE_TYPE_DES;
         }
-        TEE_MAIN_ALGO_DES3 =>{
+        TEE_MAIN_ALGO_DES3 => {
             req_key_type = TEE_TYPE_DES3;
         }
-        TEE_MAIN_ALGO_SM4 =>{
+        TEE_MAIN_ALGO_SM4 => {
             req_key_type = TEE_TYPE_SM4;
         }
-        TEE_MAIN_ALGO_RSA =>{
+        TEE_MAIN_ALGO_RSA => {
             req_key_type = TEE_TYPE_RSA_KEYPAIR;
-            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT || mode == TEE_OperationMode::TEE_MODE_VERIFY){
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT
+                || mode == TEE_OperationMode::TEE_MODE_VERIFY)
+            {
                 req_key_type2 = TEE_TYPE_RSA_PUBLIC_KEY;
             }
         }
-        TEE_MAIN_ALGO_DSA =>{
+        TEE_MAIN_ALGO_DSA => {
             req_key_type = TEE_TYPE_DSA_KEYPAIR;
-            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT || mode == TEE_OperationMode::TEE_MODE_VERIFY){
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT
+                || mode == TEE_OperationMode::TEE_MODE_VERIFY)
+            {
                 req_key_type2 = TEE_TYPE_DSA_PUBLIC_KEY;
             }
         }
-        TEE_MAIN_ALGO_DH =>{
+        TEE_MAIN_ALGO_DH => {
             req_key_type = TEE_TYPE_DH_KEYPAIR;
         }
-        TEE_MAIN_ALGO_ECDSA =>{
+        TEE_MAIN_ALGO_ECDSA => {
             req_key_type = TEE_TYPE_ECDSA_KEYPAIR;
-            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY) {
                 req_key_type2 = TEE_TYPE_ECDSA_PUBLIC_KEY;
             }
         }
-        TEE_MAIN_ALGO_ECDH =>{
+        TEE_MAIN_ALGO_ECDH => {
             req_key_type = TEE_TYPE_ECDH_KEYPAIR;
         }
-        TEE_MAIN_ALGO_ED25519 =>{
+        TEE_MAIN_ALGO_ED25519 => {
             req_key_type = TEE_TYPE_ED25519_KEYPAIR;
-            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY) {
                 req_key_type2 = TEE_TYPE_ED25519_PUBLIC_KEY;
             }
         }
-        TEE_MAIN_ALGO_SM2_PKE =>{
-            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT){
+        TEE_MAIN_ALGO_SM2_PKE => {
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT) {
                 req_key_type = TEE_TYPE_SM2_PKE_PUBLIC_KEY;
-            }
-            else{
+            } else {
                 req_key_type = TEE_TYPE_SM2_PKE_KEYPAIR;
             }
         }
-        TEE_MAIN_ALGO_SM2_DSA_SM3 =>{
-            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+        TEE_MAIN_ALGO_SM2_DSA_SM3 => {
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY) {
                 req_key_type = TEE_TYPE_SM2_DSA_PUBLIC_KEY;
-            }
-            else{
+            } else {
                 req_key_type = TEE_TYPE_SM2_DSA_KEYPAIR;
             }
         }
-        TEE_MAIN_ALGO_SM2_KEP =>{
+        TEE_MAIN_ALGO_SM2_KEP => {
             req_key_type = TEE_TYPE_SM2_KEP_KEYPAIR;
-		    req_key_type2 = TEE_TYPE_SM2_KEP_PUBLIC_KEY;
+            req_key_type2 = TEE_TYPE_SM2_KEP_PUBLIC_KEY;
         }
-        TEE_MAIN_ALGO_HKDF =>{
-            req_key_type =  TEE_TYPE_HKDF_IKM;
+        TEE_MAIN_ALGO_HKDF => {
+            req_key_type = TEE_TYPE_HKDF_IKM;
         }
-        TEE_MAIN_ALGO_CONCAT_KDF =>{
+        TEE_MAIN_ALGO_CONCAT_KDF => {
             req_key_type = TEE_TYPE_CONCAT_KDF_Z;
         }
-        TEE_MAIN_ALGO_PBKDF2 =>{
+        TEE_MAIN_ALGO_PBKDF2 => {
             req_key_type = TEE_TYPE_PBKDF2_PASSWORD;
         }
-        TEE_MAIN_ALGO_X25519 =>{
+        TEE_MAIN_ALGO_X25519 => {
             req_key_type = TEE_TYPE_X25519_KEYPAIR;
         }
-        TEE_MAIN_ALGO_X448 =>{
+        TEE_MAIN_ALGO_X448 => {
             req_key_type = TEE_TYPE_X448_KEYPAIR;
         }
         _ => return Err(TEE_ERROR_BAD_PARAMETERS),
     }
 
-    if (req_key_type != o.info.objectType &&
-	    req_key_type2 != o.info.objectType){
-            return Err(TEE_ERROR_BAD_PARAMETERS);
+    if (req_key_type != o.info.objectType && req_key_type2 != o.info.objectType) {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
     }
     Ok(())
 }
