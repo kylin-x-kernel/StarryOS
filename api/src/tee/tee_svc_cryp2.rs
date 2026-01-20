@@ -27,6 +27,7 @@ use core::{
 
 use axerrno::{AxError, AxResult};
 use lazy_static::lazy_static;
+use mbedtls::{cipher::raw::Cipher, hash::Md, pk::Pk};
 use tee_raw_sys::{libc_compat::size_t, *};
 
 use super::{
@@ -148,13 +149,35 @@ pub(crate) struct TeeCrypState {
     // Since TAILQ_ENTRY is a linked list node, we use Option<NonNull> for safe pointer handling
     // pub link: Option<NonNull<TeeCrypState<'a>>>,
     pub algo: u32,
-    pub mode: u32,
-    pub key1: usize, // vaddr_t is typically usize in Rust
-    pub key2: usize,
-    pub ctx: &'static mut dyn Any,
+    pub mode: TEE_OperationMode,
+    pub key1: tee_obj_id_type, // vaddr_t is typically usize in Rust
+    pub key2: tee_obj_id_type,
+    pub ctx: CrypCtx,
     pub ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
     pub state: CrypState,
     pub id: usize,
+}
+
+pub(crate) enum CrypCtx {
+    CipherCtx(Cipher),
+    HashCtx(Md),
+    AsyCtx(Pk),
+    Others,
+}
+
+impl Default for TeeCrypState {
+    fn default() -> Self {
+        Self {
+            algo: 0,
+            mode: TEE_OperationMode::TEE_MODE_DECRYPT,
+            key1: 0,
+            key2: 0,
+            ctx: CrypCtx::Others,
+            ctx_finalize: None,
+            state: CrypState::Uninitialized,
+            id: 0,
+        }
+    }
 }
 
 // Rust equivalent of the tee_cryp_obj_secret struct
@@ -281,88 +304,13 @@ pub fn is_xof_algo(algo: u32) -> bool {
 /// // Result: hash_len bytes written to hash_buf
 /// ```
 pub(crate) fn sys_tee_scn_hash_final(
-    state: usize,
-    chunk: usize,
-    chunk_size: usize,
-    hash: usize,
-    hash_len: vaddr_t,
+    _state: usize,
+    _chunk: usize,
+    _chunk_size: usize,
+    _hash: usize,
+    _hash_len: vaddr_t,
 ) -> TeeResult {
-    let hash_len = unsafe { &mut *(hash_len as *mut u64) };
-    // Validate parameters: null chunk with non-zero size is invalid
-    if chunk == 0 && chunk_size != 0 {
-        return Err(TEE_ERROR_BAD_PARAMETERS);
-    }
-
-    // Strip memory tags from user pointers
-    // For XOF algorithms, both input and output may be arbitrary size
-    let chunk = memtag_strip_tag_const(chunk as _);
-    let hash = memtag_strip_tag(hash as _);
-
-    // Check read access rights for input chunk
-    with_tee_session_ctx(|ctx| {
-        vm_check_access_rights(
-            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
-            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
-            chunk,
-            chunk_size,
-        )
-    })?;
-
-    // Get user-provided buffer length
-    let mut hlen: usize = 0;
-    get_user_u64_as_size_t(&mut hlen, hash_len)?;
-
-    // Check write access rights for output hash buffer
-    with_tee_session_ctx(|ctx| {
-        vm_check_access_rights(
-            // &ctx.uctx
-            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
-            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_WRITE | TEE_MEMORY_ACCESS_ANY_OWNER,
-            hash,
-            hlen,
-        )
-    })?;
-
-    // Get current session and retrieve crypto state
-    with_tee_session_ctx_mut(|ctx| {
-        match ctx.cryp_state.as_mut() {
-            Some(s) => {
-                // Retrieve specific crypto operation state
-                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
-
-                // Verify that state is initialized
-                if crypto_state.state != CrypState::Initialized {
-                    return Err(TEE_ERROR_BAD_STATE);
-                }
-
-                // Process based on algorithm class
-                match tee_alg_get_class(crypto_state.algo) {
-                    TEE_OPERATION_DIGEST => {
-                        // Hash digest operation
-                        process_digest_final(
-                            &mut crypto_state,
-                            chunk,
-                            chunk_size,
-                            hash,
-                            &mut hlen,
-                        )?;
-                    }
-                    TEE_OPERATION_MAC => {
-                        // MAC (Message Authentication Code) operation
-                        process_mac_final(&mut crypto_state, chunk, chunk_size, hash, &mut hlen)?;
-                    }
-                    _ => {
-                        // Unsupported operation class
-                        return Err(TEE_ERROR_BAD_PARAMETERS);
-                    }
-                }
-
-                Ok(())
-            }
-            None => Err(TEE_ERROR_BAD_STATE),
-        }
-    })?;
-
+    // TODO
     Ok(())
 }
 
@@ -375,57 +323,13 @@ pub(crate) fn sys_tee_scn_hash_final(
 /// * `hash` - Pointer to output MAC buffer
 /// * `hlen` - Input/output: buffer size / actual MAC length written
 fn process_mac_final(
-    crypto_state: &mut TeeCrypState,
-    chunk: usize,
-    chunk_size: usize,
-    hash: usize,
-    hlen: &mut usize,
+    _crypto_state: &mut TeeCrypState,
+    _chunk: usize,
+    _chunk_size: usize,
+    _hash: usize,
+    _hlen: &mut usize,
 ) -> TeeResult {
-    // Get digest size for MAC algorithm
-    let mut hash_size: usize = 0;
-    tee_alg_get_digest_size(crypto_state.algo, &mut hash_size)?;
-
-    // Check buffer size
-    if *hlen < hash_size {
-        put_user_u64(hlen, &(hash_size as u64))?;
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    // Update MAC with final chunk if provided
-    if chunk_size != 0 {
-        let data_slice = unsafe { slice::from_raw_parts(chunk as *const u8, chunk_size) };
-
-        enter_user_access();
-        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-            crypto_mac_update(ctx, data_slice)
-        } else {
-            Err(TEE_ERROR_BAD_STATE)
-        };
-        exit_user_access();
-
-        if let Err(_) = res {
-            return res;
-        }
-    }
-
-    // Finalize MAC computation
-    let hash_slice = unsafe { slice::from_raw_parts_mut(hash as *mut u8, *hlen) };
-
-    enter_user_access();
-    let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-        crypto_mac_final(ctx, hash_slice)
-    } else {
-        Err(TEE_ERROR_BAD_STATE)
-    };
-    exit_user_access();
-
-    if let Err(_) = res {
-        return res;
-    }
-
-    // Return actual MAC length
-    *hlen = hash_size;
-
+    // TODO
     Ok(())
 }
 
@@ -438,95 +342,13 @@ fn process_mac_final(
 /// * `hash` - Pointer to output hash buffer
 /// * `hlen` - Input/output: buffer size / actual hash length written
 fn process_digest_final(
-    crypto_state: &mut TeeCrypState,
-    chunk: usize,
-    chunk_size: usize,
-    hash: usize,
-    hlen: &mut usize,
+    _crypto_state: &mut TeeCrypState,
+    _chunk: usize,
+    _chunk_size: usize,
+    _hash: usize,
+    _hlen: &mut usize,
 ) -> TeeResult {
-    // Get digest size for algorithm
-    let mut hash_size: usize = 0;
-
-    // For XOF algorithms, hash_size is unchanged
-    // For regular algorithms, check buffer size
-    if is_xof_algo(crypto_state.algo) {
-        // Update hash with final chunk if provided
-        if chunk_size != 0 {
-            let data_slice = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
-
-            enter_user_access();
-            let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-                crypto_hash_update(ctx, data_slice)
-            } else {
-                Err(TEE_ERROR_BAD_STATE)
-            };
-            exit_user_access();
-
-            if let Err(_) = res {
-                return res;
-            }
-        }
-
-        // hash_size is supposed to be unchanged for XOF
-        // algorithms so return directly.
-        let hash_slice = unsafe { from_raw_parts_mut(hash as *mut u8, *hlen) };
-
-        enter_user_access();
-        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-            crypto_hash_final(ctx, hash_slice)
-        } else {
-            Err(TEE_ERROR_BAD_STATE)
-        };
-        exit_user_access();
-
-        if let Err(_) = res {
-            return res;
-        }
-    }
-
-    tee_alg_get_digest_size(crypto_state.algo, &mut hash_size)?;
-
-    if *hlen < hash_size {
-        put_user_u64(hlen, &(hash_size as u64))?;
-        return Err(TEE_ERROR_SHORT_BUFFER);
-    }
-
-    // Update hash with final chunk if provided
-    if chunk_size != 0 {
-        let data_slice = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
-
-        enter_user_access();
-        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-            crypto_hash_update(ctx, data_slice)
-        } else {
-            Err(TEE_ERROR_BAD_STATE)
-        };
-        exit_user_access();
-
-        if let Err(_) = res {
-            return res;
-        }
-    }
-
-    // Finalize hash computation
-    let hash_slice = unsafe { from_raw_parts_mut(hash as *mut u8, *hlen) };
-
-    enter_user_access();
-    let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-        crypto_hash_final(ctx, hash_slice)
-    } else {
-        Err(TEE_ERROR_BAD_STATE)
-    };
-    exit_user_access();
-
-    if let Err(_) = res {
-        return res;
-    }
-
-    // Return actual hash length
-    // For XOF: return provided buffer size
-    // For regular: return algorithm's hash size
-
+    // TODO
     Ok(())
 }
 
@@ -608,89 +430,12 @@ fn put_user_u64(dst: &mut usize, src: &u64) -> TeeResult {
 /// # Safety
 /// - Requires valid user-space pointers for data chunk
 /// - Must be called with valid cryptographic state handle
-pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: usize) -> TeeResult {
-    // Supporting function definitions (based on provided context)
-    // Validate parameters: null chunk with non-zero size is invalid
-    if chunk == 0 && chunk_size != 0 {
-        return Err(TEE_ERROR_BAD_PARAMETERS);
-    }
-
-    // Zero length hash is valid but requires no action
-    if chunk_size == 0 {
-        return Ok(());
-    }
-
-    // Strip memory tag if present (for systems with memory tagging)
-    let chunk = memtag_strip_tag_const(chunk);
-
-    with_tee_session_ctx(|ctx| {
-        vm_check_access_rights(
-            // uctx,
-            unsafe { &*(ctx as *const _ as usize as *const user_mode_ctx) },
-            TEE_MEMORY_ACCESS_READ | TEE_MEMORY_ACCESS_ANY_OWNER,
-            chunk,
-            chunk_size,
-        )
-    })?;
-
-    with_tee_session_ctx_mut(|ctx| {
-        match ctx.cryp_state.as_mut() {
-            Some(s) => {
-                // Retrieve the specific crypto operation state
-                let mut crypto_state = tee_svc_cryp_get_state(s, state)?;
-
-                // Verify that the state is initialized
-                if crypto_state.state != CrypState::Initialized {
-                    return Err(TEE_ERROR_BAD_STATE);
-                }
-
-                // Process based on algorithm class (HASH or MAC)
-                match tee_alg_get_class(crypto_state.algo) {
-                    TEE_OPERATION_DIGEST => {
-                        // Hash digest operation
-                        let chunk_d = unsafe { from_raw_parts(chunk as *const u8, chunk_size) };
-
-                        // Enter user access context for safe memory access
-                        enter_user_access();
-                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-                            crypto_hash_update(ctx, chunk_d)
-                        } else {
-                            Err(TEE_ERROR_BAD_STATE)
-                        };
-                        exit_user_access();
-
-                        res?;
-                    }
-                    TEE_OPERATION_MAC => {
-                        // MAC (Message Authentication Code) operation
-                        let chunk_d =
-                            unsafe { slice::from_raw_parts(chunk as *const u8, chunk_size) };
-
-                        // Enter user access context for safe memory access
-                        enter_user_access();
-                        let res = if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-                            crypto_mac_update(ctx, chunk_d)
-                        } else {
-                            Err(TEE_ERROR_BAD_STATE)
-                        };
-                        exit_user_access();
-
-                        if let Err(_) = res {
-                            return Err(TEE_ERROR_MAC_INVALID);
-                        }
-                    }
-                    _ => {
-                        // Unsupported operation class
-                        return Err(TEE_ERROR_BAD_PARAMETERS);
-                    }
-                }
-
-                Ok(())
-            }
-            None => Err(TEE_ERROR_BAD_STATE),
-        }
-    })?;
-
+pub(crate) fn sys_tee_scn_hash_update(
+    _state: usize,
+    _chunk: usize,
+    _chunk_size: usize,
+) -> TeeResult {
+    // TODO
     Ok(())
 }
 
@@ -718,73 +463,8 @@ pub(crate) fn sys_tee_scn_hash_update(state: usize, chunk: usize, chunk_size: us
 /// # State Management
 /// - Updates the cryptographic state to `CrypState::Initialized` after successful initialization
 /// - Verifies that the key object is properly initialized before using it for MAC operations
-pub(crate) fn sys_tee_scn_hash_init(state: usize, _iv: usize, _iv_len: usize) -> TeeResult {
-    // get current session user_ta_ctx
-    // let session = ts_get_current_session()?;
-    // let mut session =
-    with_tee_session_ctx_mut(|ctx| {
-        match ctx.cryp_state.as_mut() {
-            Some(s) => {
-                // get crypto state
-                let mut crypto_state; // = tee_svc_cryp_get_state(session, state)?;
-                crypto_state = tee_svc_cryp_get_state(s, state)?;
-                // 根据算法类型执行不同的初始化
-                match tee_alg_get_class(crypto_state.algo) {
-                    TEE_OPERATION_DIGEST => {
-                        if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HashCtx>() {
-                            crypto_hash_init(ctx)?;
-                        } else {
-                            return Err(TEE_ERROR_BAD_STATE);
-                        }
-                    }
-                    TEE_OPERATION_MAC => {
-                        // get key
-                        let o_arc = tee_obj_get(crypto_state.key1 as tee_obj_id_type)?;
-                        let o = o_arc.lock();
-                        if (o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0 {
-                            return Err(TEE_ERROR_BAD_PARAMETERS);
-                        }
-
-                        let key = o.attr.get(0);
-                        let key1 = o.attr.get(1);
-                        if let Some(key) = key {
-                            if let Some(key1) = key1 {
-                                if let Some(ctx) = crypto_state.ctx.downcast_mut::<SM3HmacCtx>() {
-                                    let len = match key {
-                                        TeeCryptObj::obj_secret(key) => key.layout.size(),
-                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-                                    };
-                                    let data = match key1 {
-                                        TeeCryptObj::obj_secret(key) => {
-                                            key.secret() as *const tee_cryp_obj_secret as *const u8
-                                        }
-                                        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-                                    };
-                                    let key = unsafe { from_raw_parts(data, len) };
-                                    crypto_mac_init(ctx, key)?;
-                                } else {
-                                    return Err(TEE_ERROR_BAD_STATE);
-                                }
-                            } else {
-                                return Err(TEE_ERROR_BAD_PARAMETERS);
-                            }
-                        } else {
-                            return Err(TEE_ERROR_BAD_PARAMETERS);
-                        }
-                    }
-                    _ => return Err(TEE_ERROR_BAD_PARAMETERS),
-                }
-
-                // 更新状态
-                if CrypState::Initialized != crypto_state.state {
-                    crypto_state.state = CrypState::Initialized;
-                }
-                return Ok(());
-            }
-            None => Err(TEE_ERROR_BAD_STATE),
-        }
-    })?;
-
+pub(crate) fn sys_tee_scn_hash_init(_state: usize, _iv: usize, _iv_len: usize) -> TeeResult {
+    // TODO
     Ok(())
 }
 
