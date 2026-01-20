@@ -3,8 +3,8 @@ use core::mem::replace;
 
 /// A simple LRU Cache implementation based on a fixed-size array.
 ///
-/// It maintains a fixed-capacity storage and uses a doubly-linked list
-/// indices to track the usage order (from MRU to LRU).
+/// It maintains a fixed-capacity storage and uses an intrusive doubly-linked list
+/// structure using array indices to track the usage order (from MRU to LRU).
 #[derive(Debug, Clone)]
 pub struct LruCache<V, const CAP: usize> {
     storage: Vec<CacheNode<V>>,
@@ -163,10 +163,13 @@ impl<'a, V, const CAP: usize> Iterator for LruIter<'a, V, CAP> {
     type Item = &'a V;
 
     fn next(&mut self) -> Option<&'a V> {
+        // Ensure CAP fits in u16, as indices are u16.
+        const _: () = assert!(CAP <= u16::MAX as usize, "CAP must fit in u16");
+
         if self.cache.storage.is_empty() {
             return None;
         }
-        if self.pos as usize >= CAP {
+        if self.pos as usize >= self.cache.storage.len() {
             return None;
         }
 
