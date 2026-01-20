@@ -1161,7 +1161,7 @@ pub fn syscall_cryp_obj_close(obj_id: c_ulong) -> TeeResult {
 }
 
 /// reset the object
-/// 
+///
 /// # Arguments
 /// * `obj_id` - the object id
 /// # Returns
@@ -1802,7 +1802,7 @@ pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -
 }
 
 /// restrict the usage of the object
-/// 
+///
 /// # Arguments
 /// * `obj_id` - the object id
 /// * `usage` - the usage to restrict

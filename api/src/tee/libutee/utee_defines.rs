@@ -3,7 +3,7 @@ use tee_raw_sys::*;
 #[cfg(feature = "tee")]
 use crate::tee::{
     TEE_ALG_DES3_CMAC, TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5, TEE_ALG_RSASSA_PKCS1_PSS_MGF1_MD5,
-    TEE_ALG_RSASSA_PKCS1_V1_5, TEE_ALG_SM4_XTS, TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ALG_X448
+    TEE_ALG_RSASSA_PKCS1_V1_5, TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ALG_SM4_XTS, TEE_ALG_X448,
 };
 
 pub(crate) fn tee_u32_to_big_endian(x: u32) -> u32 {
@@ -38,17 +38,14 @@ pub(crate) fn tee_alg_get_class(algo: u32) -> u32 {
     (algo >> 28) & 0xF
 }
 
-pub fn tee_alg_get_main_alg(algo: u32) -> u32{
-    match algo{
+pub fn tee_alg_get_main_alg(algo: u32) -> u32 {
+    match algo {
         TEE_ALG_SM2_PKE => TEE_MAIN_ALGO_SM2_PKE,
         TEE_ALG_SM2_KEP => TEE_MAIN_ALGO_SM2_KEP,
         TEE_ALG_X25519 => TEE_MAIN_ALGO_X25519,
         TEE_ALG_ED25519 => TEE_MAIN_ALGO_ED25519,
-        TEE_ALG_ECDSA_SHA1 |
-        TEE_ALG_ECDSA_SHA224 |
-        TEE_ALG_ECDSA_SHA256 |
-        TEE_ALG_ECDSA_SHA384 |
-        TEE_ALG_ECDSA_SHA512 => TEE_MAIN_ALGO_ECDSA,
+        TEE_ALG_ECDSA_SHA1 | TEE_ALG_ECDSA_SHA224 | TEE_ALG_ECDSA_SHA256 | TEE_ALG_ECDSA_SHA384
+        | TEE_ALG_ECDSA_SHA512 => TEE_MAIN_ALGO_ECDSA,
         TEE_ALG_HKDF => TEE_MAIN_ALGO_HKDF,
         TEE_ALG_SHAKE128 => TEE_MAIN_ALGO_SHAKE128,
         TEE_ALG_SHAKE256 => TEE_MAIN_ALGO_SHAKE256,
