@@ -53,7 +53,7 @@ pub struct tee_session_ctx {
     pub cancel_mask: bool,
     pub cancel_time: TeeTime,
     // pub cryp_state: Option<&'static mut Vec<TeeCrypState>>,
-    pub cryp_state: Option<Vec<TeeCrypState>>,
+    pub cryp_state: Slab<Arc<Mutex<TeeCrypState>>>,
 }
 
 #[repr(C)]
@@ -99,7 +99,7 @@ impl Default for tee_session_ctx {
                 seconds: 0,
                 millis: 0,
             },
-            cryp_state: None,
+            cryp_state: Slab::new(),
         }
     }
 }
