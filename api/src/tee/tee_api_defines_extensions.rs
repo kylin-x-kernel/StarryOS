@@ -108,6 +108,9 @@ pub const TEE_MEMORY_ACCESS_SECURE: u32 = 0x20000000;
 // Private login method for REE kernel clients
 pub const TEE_LOGIN_REE_KERNEL: u32 = 0x80000000;
 
+// X448
+pub(crate) const TEE_ALG_X448: u32 = 0x80000045;
+
 // SHA3 224
 pub(crate) const TEE_ALG_SHA3_224: u32 = 0x50000008;
 

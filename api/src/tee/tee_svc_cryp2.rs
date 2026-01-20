@@ -49,7 +49,7 @@ use super::{
     },
     libutee::{
         tee_api_objects::TEE_USAGE_DEFAULT,
-        utee_defines::{tee_alg_get_class, tee_u32_to_big_endian},
+        utee_defines::{tee_alg_get_class, tee_u32_to_big_endian, tee_alg_get_main_alg},
     },
     memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
@@ -79,7 +79,8 @@ use crate::{
             memtag_strip_tag_const,memtag_strip_tag
         },
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
-        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256
+        TEE_ALG_SHAKE128,TEE_ALG_SHA3_224,TEE_ALG_SHA3_256,TEE_ALG_SHA3_384,TEE_ALG_SHA3_512,TEE_ALG_SHAKE256,
+        TEE_TYPE_HKDF_IKM,TEE_TYPE_CONCAT_KDF_Z,TEE_TYPE_PBKDF2_PASSWORD
     },
 };
 
@@ -835,4 +836,144 @@ pub mod tests_tee_svc_cryp {
         //------------------------
         test_tee_svc_cryp_utils,
     }
+}
+
+fn translate_compat_algo(algo: u32) -> u32{
+    match algo {
+        TEE_ALG_ECDSA_P192 => TEE_ALG_ECDSA_SHA1,
+        TEE_ALG_ECDSA_P224 => TEE_ALG_ECDSA_SHA224,
+        TEE_ALG_ECDSA_P256 => TEE_ALG_ECDSA_SHA256,
+        TEE_ALG_ECDSA_P384 => TEE_ALG_ECDSA_SHA384,
+        TEE_ALG_ECDSA_P521 => TEE_ALG_ECDSA_SHA512,
+        TEE_ALG_ECDH_P192 |
+        TEE_ALG_ECDH_P224 |
+        TEE_ALG_ECDH_P256 |
+        TEE_ALG_ECDH_P384 |
+        TEE_ALG_ECDH_P521 => TEE_ALG_ECDH_DERIVE_SHARED_SECRET,
+        _ => algo,
+    }
+}
+
+fn tee_svc_cryp_check_key_type(o: tee_obj, algo: u32, mode: TEE_OperationMode) -> TeeResult{
+    let mut req_key_type: u32 = 0;
+	let mut req_key_type2: u32 = 0;
+    match tee_alg_get_main_alg(algo){
+        TEE_MAIN_ALGO_MD5 => {
+            req_key_type = TEE_TYPE_HMAC_MD5;
+        }
+        TEE_MAIN_ALGO_SHA1 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA1;
+        }
+        TEE_MAIN_ALGO_SHA224 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA224;
+        }
+        TEE_MAIN_ALGO_SHA256 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA256;
+        }
+        TEE_MAIN_ALGO_SHA384 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA384;
+        }
+        TEE_MAIN_ALGO_SHA512 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA512;
+        }
+        TEE_MAIN_ALGO_SHA3_224 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA3_224;
+        }
+        TEE_MAIN_ALGO_SHA3_256 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA3_256;
+        }
+        TEE_MAIN_ALGO_SHA3_384 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA3_384;
+        }
+        TEE_MAIN_ALGO_SHA3_512 =>{
+            req_key_type = TEE_TYPE_HMAC_SHA3_512;
+        }
+        TEE_MAIN_ALGO_SM3 =>{
+            req_key_type = TEE_TYPE_HMAC_SM3;
+        }
+        TEE_MAIN_ALGO_AES =>{
+            req_key_type = TEE_TYPE_AES;
+        }
+        TEE_MAIN_ALGO_DES =>{
+            req_key_type = TEE_TYPE_DES;
+        }
+        TEE_MAIN_ALGO_DES3 =>{
+            req_key_type = TEE_TYPE_DES3;
+        }
+        TEE_MAIN_ALGO_SM4 =>{
+            req_key_type = TEE_TYPE_SM4;
+        }
+        TEE_MAIN_ALGO_RSA =>{
+            req_key_type = TEE_TYPE_RSA_KEYPAIR;
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT || mode == TEE_OperationMode::TEE_MODE_VERIFY){
+                req_key_type2 = TEE_TYPE_RSA_PUBLIC_KEY;
+            }
+        }
+        TEE_MAIN_ALGO_DSA =>{
+            req_key_type = TEE_TYPE_DSA_KEYPAIR;
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT || mode == TEE_OperationMode::TEE_MODE_VERIFY){
+                req_key_type2 = TEE_TYPE_DSA_PUBLIC_KEY;
+            }
+        }
+        TEE_MAIN_ALGO_DH =>{
+            req_key_type = TEE_TYPE_DH_KEYPAIR;
+        }
+        TEE_MAIN_ALGO_ECDSA =>{
+            req_key_type = TEE_TYPE_ECDSA_KEYPAIR;
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+                req_key_type2 = TEE_TYPE_ECDSA_PUBLIC_KEY;
+            }
+        }
+        TEE_MAIN_ALGO_ECDH =>{
+            req_key_type = TEE_TYPE_ECDH_KEYPAIR;
+        }
+        TEE_MAIN_ALGO_ED25519 =>{
+            req_key_type = TEE_TYPE_ED25519_KEYPAIR;
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+                req_key_type2 = TEE_TYPE_ED25519_PUBLIC_KEY;
+            }
+        }
+        TEE_MAIN_ALGO_SM2_PKE =>{
+            if (mode == TEE_OperationMode::TEE_MODE_ENCRYPT){
+                req_key_type = TEE_TYPE_SM2_PKE_PUBLIC_KEY;
+            }
+            else{
+                req_key_type = TEE_TYPE_SM2_PKE_KEYPAIR;
+            }
+        }
+        TEE_MAIN_ALGO_SM2_DSA_SM3 =>{
+            if (mode == TEE_OperationMode::TEE_MODE_VERIFY){
+                req_key_type = TEE_TYPE_SM2_DSA_PUBLIC_KEY;
+            }
+            else{
+                req_key_type = TEE_TYPE_SM2_DSA_KEYPAIR;
+            }
+        }
+        TEE_MAIN_ALGO_SM2_KEP =>{
+            req_key_type = TEE_TYPE_SM2_KEP_KEYPAIR;
+		    req_key_type2 = TEE_TYPE_SM2_KEP_PUBLIC_KEY;
+        }
+        TEE_MAIN_ALGO_HKDF =>{
+            req_key_type =  TEE_TYPE_HKDF_IKM;
+        }
+        TEE_MAIN_ALGO_CONCAT_KDF =>{
+            req_key_type = TEE_TYPE_CONCAT_KDF_Z;
+        }
+        TEE_MAIN_ALGO_PBKDF2 =>{
+            req_key_type = TEE_TYPE_PBKDF2_PASSWORD;
+        }
+        TEE_MAIN_ALGO_X25519 =>{
+            req_key_type = TEE_TYPE_X25519_KEYPAIR;
+        }
+        TEE_MAIN_ALGO_X448 =>{
+            req_key_type = TEE_TYPE_X448_KEYPAIR;
+        }
+        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+    }
+
+    if (req_key_type != o.info.objectType &&
+	    req_key_type2 != o.info.objectType){
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+    Ok(())
 }
