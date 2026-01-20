@@ -34,15 +34,7 @@ repo init -u https://github.com/kylin-x-kernel/starryos-manifest -m kernel-main.
 repo sync -j$(nproc)
 ```
 
-#### 2. Fix dependency versions
-
-```bash
-cd StarryOS && ./fix-versions.sh
-```
-
-This script ensures all dependency repositories are checked out to compatible versions.
-
-#### 3. Build with Yocto
+#### 2. Build with Yocto
 
 ```bash
 cd starryos-workspace
