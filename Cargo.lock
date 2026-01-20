@@ -241,7 +241,7 @@ dependencies = [
 [[package]]
 name = "axcpu"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axcpu?branch=dev#df212325150f58978ec1991ce997dc94947a95ae"
+source = "git+https://github.com/kylin-x-kernel/axcpu?branch=dev#7ca3b7e9766bf2f55c20263cf8b022ed4d4735f5"
 dependencies = [
  "aarch64-cpu",
  "axbacktrace",
@@ -575,7 +575,7 @@ dependencies = [
 [[package]]
 name = "axplat"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "axplat-macros 0.1.0 (git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev)",
  "bitflags 2.10.0",
@@ -609,7 +609,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-peripherals"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "aarch64-cpu",
  "arm-gic-driver",
@@ -630,7 +630,7 @@ dependencies = [
 [[package]]
 name = "axplat-aarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -643,7 +643,7 @@ dependencies = [
 [[package]]
 name = "axplat-loongarch64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -670,7 +670,7 @@ dependencies = [
 [[package]]
 name = "axplat-macros"
 version = "0.1.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -680,7 +680,7 @@ dependencies = [
 [[package]]
 name = "axplat-riscv64-qemu-virt"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -716,7 +716,7 @@ dependencies = [
 [[package]]
 name = "axplat-x86-pc"
 version = "0.3.0"
-source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#28d9b734049fb02c99fada250a367a7cd40cb58e"
+source = "git+https://github.com/kylin-x-kernel/axplat_crates.git?branch=dev#e404649b77775f638d6e8ca7f3bce0bc38e08af9"
 dependencies = [
  "axconfig-macros",
  "axcpu",
@@ -2115,9 +2115,9 @@ dependencies = [
 
 [[package]]
 name = "rustc-demangle"
-version = "0.1.26"
+version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56f7d92ca342cea22a06f2121d944b4fd82af56988c270852495420f961d4ace"
+checksum = "b50b8869d9fc858ce7266cce0194bd74df58b9d0e3f6df3a9fc8eb470d95c09d"
 
 [[package]]
 name = "rustc-hash"
@@ -2529,22 +2529,22 @@ source = "git+https://github.com/Starry-OS/syscalls.git?rev=6cbfa16#6cbfa1621b84
 [[package]]
 name = "tee_raw_sys"
 version = "0.1.0"
-source = "git+https://github.com/kylin-x-kernel/tee_raw_sys.git#59db449b15771a86cdefbd2d960524a6fb9bd2cc"
+source = "git+https://github.com/kylin-x-kernel/tee_raw_sys.git#a99bffbd91b60244bd10881421bf4ad73d68d8fb"
 
 [[package]]
 name = "thiserror"
-version = "2.0.17"
+version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.17"
+version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
+checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",
