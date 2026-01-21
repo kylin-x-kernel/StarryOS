@@ -104,8 +104,9 @@ jobs:
           pkill -f "runqemu.*starry" 2>/dev/null || true
 
           # 初始化环境（注意：oe-init-build-env 会 cd 到 build/）
-          export BBSERVER=${BBSERVER:-}
+          set +u
           source poky/oe-init-build-env build
+          set -u
 
           bitbake starry
           bitbake starry-minimal-image
@@ -115,7 +116,9 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUN_DIR"
+          set +u
           source poky/oe-init-build-env build
+          set -u
 
           # runqemu 有时需要指定 MACHINE/参数；你现在用 slirp + nographic 是 OK 的
           # 这里用 timeout 控制最长时间；并且给 runqemu 一个更“可杀掉”的方式
