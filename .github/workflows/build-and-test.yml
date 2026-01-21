@@ -13,105 +13,84 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Docker 镜像名称
   DOCKER_IMAGE: crops/poky:ubuntu-22.04
-  # 服务器上的 Yocto 工作空间路径
-  HOST_WORKSPACE: /home/yean/code/starryos-workspace
+  # 整个workspace路径
+  WORKSPACE: /home/yean/code/starryos-workspace
 
 jobs:
   build-and-test:
     runs-on: [self-hosted, yean-jiaolong]
     
     steps:
-      - name: Checkout code
+      - name: Checkout PR code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Build and Test in Docker
         run: |
-          # 创建临时构建目录并设置权限
-          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
-          mkdir -p $BUILD_DIR
-          chmod 777 $BUILD_DIR
-          
           docker run --rm \
             --privileged \
-            -v ${{ github.workspace }}:/source:ro \
-            -v ${{ env.HOST_WORKSPACE }}:/host-workspace:ro \
-            -v $BUILD_DIR:/build \
-            -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
+            -v ${{ github.workspace }}:/pr-code:ro \
+            -v ${{ env.WORKSPACE }}:/workspace \
             --network host \
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
               set -e
               
-              echo "=== Setting up build environment ==="
-              WORKSPACE=/build/workspace
-              mkdir -p $WORKSPACE
+              echo "=== Sync Dependencies (repo sync) ==="
+              cd /workspace
+              # repo sync所有依赖，但排除StarryOS主项目
+              # 这会同步arceos、local_crates等到StarryOS目录下
+              repo sync -c --no-clone-bundle -j8 || {
+                echo "Warning: repo sync failed, using existing code"
+              }
               
-              # 符号链接共享的 Yocto 组件（只读）
-              ln -sfn /host-workspace/poky $WORKSPACE/poky
-              ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
-              ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
+              echo "=== Overlay PR Code ==="
+              # 保留repo sync的依赖，只覆盖StarryOS主代码
+              rsync -av --delete \
+                --exclude=arceos \
+                --exclude=local_crates \
+                --exclude=.git \
+                --exclude=target \
+                /pr-code/ /workspace/StarryOS/
               
-              # 创建 build 目录
-              mkdir -p $WORKSPACE/build/conf
+              # 验证目录结构
+              echo "=== Verify Structure ==="
+              echo "StarryOS main code: $(ls /workspace/StarryOS/src 2>/dev/null | wc -l) files in src/"
+              echo "arceos exists: $(test -d /workspace/StarryOS/arceos && echo YES || echo NO)"
+              echo "local_crates exists: $(test -d /workspace/StarryOS/local_crates && echo YES || echo NO)"
               
-              # 复制并修复 bblayers.conf 中的路径（使用传入的 HOST_PATH 变量）
-              cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
-              sed -i "s|$HOST_PATH|$WORKSPACE|g" $WORKSPACE/build/conf/bblayers.conf
-              
-              # 显示修改后的配置用于调试
-              echo "=== bblayers.conf ==="
-              cat $WORKSPACE/build/conf/bblayers.conf
-              echo "===================="
-              
-              # 复制其他配置文件
-              cp /host-workspace/build/conf/local.conf $WORKSPACE/build/conf/local.conf 2>/dev/null || true
-              
-              # 同步 CI 触发的 StarryOS 代码
-              echo "Copying StarryOS source code..."
-              rm -rf $WORKSPACE/StarryOS
-              mkdir -p $WORKSPACE/StarryOS
-              cp -a /source/. $WORKSPACE/StarryOS/
-              rm -rf $WORKSPACE/StarryOS/.git $WORKSPACE/StarryOS/target
-              
-              # 配置 StarryOS 源码路径（EXTERNALSRC）
-              echo "" >> $WORKSPACE/build/conf/local.conf
-              echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
-              echo "EXTERNALSRC:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
-              echo "EXTERNALSRC_BUILD:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
-              
-              echo "=== local.conf (tail) ==="
-              tail -10 $WORKSPACE/build/conf/local.conf
-              echo "========================="
-              
-              echo "=== Initializing Yocto environment ==="
-              cd $WORKSPACE
+              echo "=== Initialize Yocto Build ==="
+              cd /workspace
               source poky/oe-init-build-env build
               
-              echo "=== Building StarryOS kernel ==="
+              # 显示缓存统计
+              echo "=== Build Configuration ==="
+              echo "Sstate cache: $(du -sh /workspace/sstate-cache 2>/dev/null | cut -f1 || echo N/A)"
+              echo "Downloads: $(du -sh /workspace/downloads 2>/dev/null | cut -f1 || echo N/A)"
+              
+              echo "=== Building StarryOS ==="
               bitbake starry
               
-              echo "=== Building minimal image ==="
+              echo "=== Building Image ==="
               bitbake starry-minimal-image
               
-              echo "=== Running QEMU test ==="
+              echo "=== Running QEMU Test ==="
               timeout 120 bash -c "
                 runqemu starry-minimal-image nographic slirp &
                 QEMU_PID=\$!
                 sleep 60
                 if ps -p \$QEMU_PID > /dev/null; then
-                  echo \"✔ QEMU boot test passed\"
+                  echo \"✓ QEMU boot test passed\"
                   kill \$QEMU_PID 2>/dev/null || true
                   exit 0
                 else
-                  echo \"❌ QEMU exited unexpectedly\"
+                  echo \"✗ QEMU exited unexpectedly\"
                   exit 1
                 fi
               " || {
-                echo "❌ Test timed out or failed"
+                echo "✗ Test timed out or failed"
                 exit 1
               }
               
@@ -121,7 +100,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          # 清理临时构建目录
-          rm -rf /tmp/starry-build-${{ github.run_id }} || true
           # 清理可能残留的容器
           docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
