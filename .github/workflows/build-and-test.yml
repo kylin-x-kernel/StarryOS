@@ -30,9 +30,15 @@ jobs:
         run: |
           docker run --rm \
             --privileged \
-            --user root \
-            -v ${{ github.workspace }}:/pr-code:ro \
-            -v ${{ env.WORKSPACE }}:/workspace \
+            -v ${{ github.workspace }}:/source:ro \
+            -v ${{ env.HOST_WORKSPACE }}/poky:/host-workspace/poky:ro \
+            -v ${{ env.HOST_WORKSPACE }}/meta-starry:/host-workspace/meta-starry:ro \
+            -v ${{ env.HOST_WORKSPACE }}/meta-openembedded:/host-workspace/meta-openembedded:ro \
+            -v ${{ env.HOST_WORKSPACE }}/build/conf:/host-workspace/build/conf:ro \
+            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
+            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
+            -v $BUILD_DIR:/build \
+            -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             --network host \
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
@@ -46,12 +52,12 @@ jobs:
               curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
               chmod a+x /usr/local/bin/repo
               
-              echo "=== Sync Dependencies (repo sync) ==="
-              cd /workspace
-              # 配置git（repo需要）
-              git config --global user.email "ci@example.com"
-              git config --global user.name "CI Bot"
-              git config --global color.ui false
+              # 符号链接缓存目录（复用下载和构建缓存）
+              ln -sfn /host-workspace/sstate-cache $WORKSPACE/sstate-cache 2>/dev/null || true
+              ln -sfn /host-workspace/downloads $WORKSPACE/downloads 2>/dev/null || true
+              
+              # 创建 build 目录
+              mkdir -p $WORKSPACE/build/conf
               
               # repo sync所有依赖，但排除StarryOS主项目
               repo sync -c --no-clone-bundle -j8 || {
