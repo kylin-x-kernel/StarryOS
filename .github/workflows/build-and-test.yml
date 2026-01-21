@@ -30,11 +30,16 @@ jobs:
 
       - name: Build and Test in Docker
         run: |
+          # 创建临时构建目录并设置权限
+          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
+          mkdir -p $BUILD_DIR
+          chmod 777 $BUILD_DIR
+          
           docker run --rm \
             --privileged \
             -v ${{ github.workspace }}:/source:ro \
             -v ${{ env.HOST_WORKSPACE }}:/host-workspace:ro \
-            -v /tmp/starry-build-${{ github.run_id }}:/build \
+            -v $BUILD_DIR:/build \
             --network host \
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
