@@ -59,11 +59,11 @@ jobs:
               cp -r /host-workspace/build/conf/* $WORKSPACE/build/conf/ 2>/dev/null || true
               
               # 同步 CI 触发的 StarryOS 代码
+              echo "Copying StarryOS source code..."
+              rm -rf $WORKSPACE/StarryOS
               mkdir -p $WORKSPACE/StarryOS
-              rsync -av --delete \
-                --exclude ".git" \
-                --exclude "target" \
-                /source/ $WORKSPACE/StarryOS/
+              cp -a /source/. $WORKSPACE/StarryOS/
+              rm -rf $WORKSPACE/StarryOS/.git $WORKSPACE/StarryOS/target
               
               echo "=== Initializing Yocto environment ==="
               cd $WORKSPACE
