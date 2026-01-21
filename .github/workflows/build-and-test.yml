@@ -14,7 +14,7 @@ concurrency:
 
 env:
   DOCKER_IMAGE: crops/poky:ubuntu-22.04
-  WORKSPACE: /home/yean/code/starryos-workspace
+  HOST_WORKSPACE: /home/yean/code/starryos-workspace
 
 jobs:
   build-and-test:
@@ -28,6 +28,10 @@ jobs:
 
       - name: Build and Test in Docker
         run: |
+          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
+          mkdir -p $BUILD_DIR
+          chmod 777 $BUILD_DIR
+
           docker run --rm \
             --privileged \
             -v ${{ github.workspace }}:/source:ro \
