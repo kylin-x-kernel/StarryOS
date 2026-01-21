@@ -30,6 +30,7 @@ jobs:
         run: |
           docker run --rm \
             --privileged \
+            --user root \
             -v ${{ github.workspace }}:/pr-code:ro \
             -v ${{ env.WORKSPACE }}:/workspace \
             --network host \
