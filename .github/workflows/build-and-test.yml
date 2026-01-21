@@ -14,7 +14,7 @@ concurrency:
 
 env:
   HOST_WORKSPACE: /home/yean/code
-  WORKSPACE_TEMPLATE: /home/yean/code/starryos-workspace/starry-workspace
+  WORKSPACE_TEMPLATE: /home/yean/code/starryos-workspace
   CACHE_DIR: /home/yean/code/starryos-workspace/build-cache
 
 jobs:
