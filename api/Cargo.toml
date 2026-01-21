@@ -13,7 +13,7 @@ memtrack = ["axfeat/dwarf", "axalloc/tracking", "dep:gimli"]
 vsock = ["axnet/vsock"]
 dev-log = []
 dice = ["dep:axplat-aarch64-crosvm-virt", "axalloc/dice", "dep:rand_chacha"]
-tee = ["syscalls/tee", "dep:tee_raw_sys", "dep:bincode"]
+tee = ["syscalls/tee", "dep:tee_raw_sys", "dep:bincode", "dep:uuid", "dep:hex"]
 tee_test = []
 tee_test_mock_user_access = []
 
@@ -75,6 +75,10 @@ bincode = { version = "2.0.1", default-features = false, optional = true, featur
     "derive",
 ] }
 tee_raw_sys = { git = "https://github.com/kylin-x-kernel/tee_raw_sys.git", optional = true }
+uuid = { version = "0.8", default-features = false, optional = true }
+hex = { version = "0.4", default-features = false, optional = true, features = [
+    "alloc",
+] }
 
 starry-core.workspace = true
 

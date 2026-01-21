@@ -8,11 +8,12 @@ use alloc::{boxed::Box, string::String, sync::Arc};
 use core::{any::Any, default::Default};
 
 use axtask::current;
+use hashbrown::HashMap;
 use spin::RwLock;
 use starry_core::task::{AsThread, TeeSessionCtxTrait};
 use tee_raw_sys::*;
 
-use crate::tee::TeeResult;
+use crate::tee::{TeeResult, tee_ta_manager::SessionIdentity};
 
 scope_local::scope_local! {
     /// Global TEE TA (Trusted Application) context shared across all sessions
@@ -141,6 +142,8 @@ pub struct TeeTaCtx {
     /// Test-only field, used only when the tee_test feature is enabled
     #[cfg(feature = "tee_test")]
     pub for_test_only: u32,
+    pub session_handle: u32,
+    pub open_sessions: HashMap<u32, SessionIdentity>,
     pub uuid: String,
 }
 
