@@ -15,13 +15,10 @@ use bincode::config;
 use starry_core::task::AsThread;
 use tee_raw_sys::{TEE_ERROR_GENERIC, TEE_ERROR_ITEM_NOT_FOUND, TEE_SUCCESS, utee_params};
 
-use crate::{
-    socket::SocketAddrExt,
-    tee::{
-        TeeResult,
-        protocal::{Parameters, TeeRequest, TeeResponse},
-        tee_session::{with_tee_ta_ctx, with_tee_ta_ctx_mut},
-    },
+use crate::tee::{
+    TeeResult,
+    protocal::{Parameters, TeeRequest, TeeResponse},
+    tee_session::{with_tee_ta_ctx, with_tee_ta_ctx_mut},
 };
 
 #[derive(Debug, Clone)]

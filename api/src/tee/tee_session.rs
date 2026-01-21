@@ -35,6 +35,9 @@ pub struct TeeSessionCtx {
     pub login_type: u32,
     pub user_id: u32,
     pub clnt_id: TEE_Identity,
+    pub cancel: bool,
+    pub cancel_mask: bool,
+    pub cancel_time: TeeTime,
 }
 
 impl TeeSessionCtxTrait for TeeSessionCtx {
@@ -61,6 +64,12 @@ impl Default for TeeSessionCtx {
                     timeHiAndVersion: 0,
                     clockSeqAndNode: [0; 8],
                 },
+            },
+            cancel: false,
+            cancel_mask: false,
+            cancel_time: TeeTime {
+                seconds: 0,
+                millis: 0,
             },
         }
     }
