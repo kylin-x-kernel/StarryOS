@@ -40,6 +40,7 @@ jobs:
             -v ${{ github.workspace }}:/source:ro \
             -v ${{ env.HOST_WORKSPACE }}:/host-workspace:ro \
             -v $BUILD_DIR:/build \
+            -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             --network host \
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
@@ -57,14 +58,17 @@ jobs:
               # 创建 build 目录
               mkdir -p $WORKSPACE/build/conf
               
-              # 复制并修改 bblayers.conf，将路径替换为容器内路径
-              if [ -f /host-workspace/build/conf/bblayers.conf ]; then
-                sed "s|/home/[^/]*/[^/]*|$WORKSPACE|g" /host-workspace/build/conf/bblayers.conf > $WORKSPACE/build/conf/bblayers.conf
-              fi
+              # 复制并修复 bblayers.conf 中的路径（使用传入的 HOST_PATH 变量）
+              cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
+              sed -i "s|$HOST_PATH|$WORKSPACE|g" $WORKSPACE/build/conf/bblayers.conf
+              
+              # 显示修改后的配置用于调试
+              echo "=== bblayers.conf ==="
+              cat $WORKSPACE/build/conf/bblayers.conf
+              echo "===================="
               
               # 复制其他配置文件
               cp /host-workspace/build/conf/local.conf $WORKSPACE/build/conf/local.conf 2>/dev/null || true
-              cp /host-workspace/build/conf/*.conf $WORKSPACE/build/conf/ 2>/dev/null || true
               
               # 同步 CI 触发的 StarryOS 代码
               echo "Copying StarryOS source code..."
