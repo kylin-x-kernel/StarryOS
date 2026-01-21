@@ -6,11 +6,21 @@
 
 // for source:
 // 	- core/include/crypto/crypto.h
+use alloc::vec;
 use core::marker::PhantomData;
+
+use mbedtls::pk::Pk;
+use mbedtls_sys_auto::*;
+use tee_raw_sys::{TEE_ECC_CURVE_SM2, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_NOT_SUPPORTED};
 
 use crate::tee::{
     TeeResult,
     crypto::crypto::{ecc_keypair, ecc_public_key},
+    libmbedtls::{
+        bignum::{crypto_bignum_bn2bin, crypto_bignum_copy_from_mpi},
+        ecc::{curve_to_group_id, ecc_get_keysize},
+    },
+    rng_software::TeeSoftwareRng,
 };
 
 pub trait crypto_ecc_keypair_ops {
@@ -142,8 +152,54 @@ impl<'a, A> EccKeypair<'a, A> {
 }
 
 impl<A: EccKeyPairCanGenerate> crypto_ecc_keypair_ops_generate for EccKeypair<'_, A> {
-    fn generate(&mut self, key_size_bits: usize) -> TeeResult {
-        todo!()
+    fn generate(&mut self, key_size: usize) -> TeeResult {
+        let mut key_size_bytes: usize = 0;
+        let mut key_size_bits: usize = 0;
+
+        ecc_get_keysize(self.inner.curve, 0, &mut key_size_bytes, &mut key_size_bits)?;
+
+        tee_debug!(
+            "key_size: {}, key_size_bytes: {}, key_size_bits: {}",
+            key_size,
+            key_size_bytes,
+            key_size_bits
+        );
+
+        if key_size != key_size_bits {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+        // Generate the ECC key
+        let gid = curve_to_group_id(self.inner.curve);
+        let mut rng = TeeSoftwareRng::new();
+        let pk = Pk::generate_ec(&mut rng, gid)
+            .inspect_err(|e| {
+                error!("Pk::generate_ec failed: {:X?}", e);
+            })
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+
+        let ctx = pk.inner().pk_ctx as *mut ecp_keypair;
+
+        // check the size of the keys
+        if ((unsafe { mpi_bitlen(&(*ctx).Q.X) } > key_size_bits)
+            || (unsafe { mpi_bitlen(&(*ctx).Q.Y) } > key_size_bits)
+            || (unsafe { mpi_bitlen(&(*ctx).d) } > key_size_bits))
+        {
+            error!("Check the size of the keys failed.");
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        // check LMD is returning z==1
+        if (unsafe { mpi_bitlen(&(*ctx).Q.Z) } != 1) {
+            error!("Check LMD failed.");
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+
+        // Copy the key
+        crypto_bignum_copy_from_mpi(&mut self.inner.d, unsafe { &(*ctx).d });
+        crypto_bignum_copy_from_mpi(&mut self.inner.x, unsafe { &(*ctx).Q.X });
+        crypto_bignum_copy_from_mpi(&mut self.inner.y, unsafe { &(*ctx).Q.Y });
+
+        Ok(())
     }
 }
 
@@ -194,5 +250,43 @@ pub struct EccPublicKey<A> {
 impl<A: EccPublicKeyCanFree> crypto_ecc_public_ops_free for EccPublicKey<A> {
     fn free(&mut self) -> TeeResult {
         todo!()
+    }
+}
+
+#[cfg(feature = "tee_test")]
+pub mod tests_tee_crypto_impl {
+    //-------- test framework import --------
+    //-------- local tests import --------
+    use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
+
+    test_fn! {
+        using TestResult;
+
+        fn test_crypto_ecc_keypair_ops_generate() {
+            let mut keypair = ecc_keypair::default();
+            keypair.curve = TEE_ECC_CURVE_SM2;
+            let key_size = 256;
+            let result = EccKeypair::<Sm2DsaKeyPair>::new(&mut keypair).generate(key_size);
+            info!("Generated ECC key: {:X?}", result);
+            assert!(result.is_ok());
+
+            let mut d = vec![0u8; 32];
+            let mut x = vec![0u8; 32];
+            let mut y = vec![0u8; 32];
+            assert!(crypto_bignum_bn2bin(&keypair.d, &mut d).is_ok());
+            assert!(crypto_bignum_bn2bin(&keypair.x, &mut x).is_ok());
+            assert!(crypto_bignum_bn2bin(&keypair.y, &mut y).is_ok());
+        }
+    }
+
+    tests_name! {
+        TEST_TEE_CRYPTO_IMPL;
+        //------------------------
+        test_crypto_ecc_keypair_ops_generate,
     }
 }
