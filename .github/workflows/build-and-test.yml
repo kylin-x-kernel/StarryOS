@@ -3,90 +3,98 @@ name: Build and Test (Yocto)
 on:
   push:
     branches:
-      - main
+      - change-workflow
   pull_request:
     branches:
-      - main
+      - change-workflow
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
-  STARRY_WORKSPACE: ~/starryos-workspace
-  STARRY_SOURCE_DIR: ~/starryos-workspace/StarryOS
+  # Docker 镜像名称
+  DOCKER_IMAGE: crops/poky:ubuntu-22.04
+  # 服务器上的 Yocto 工作空间路径
+  HOST_WORKSPACE: /home/yean/code/starryos-workspace
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, Linux, X64, yocto]
+    runs-on: [self-hosted, Linux, X64, yean-jiaolong]
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: "recursive"
           fetch-depth: 0
 
-      - name: Sync code to StarryOS workspace
+      - name: Build and Test in Docker
         run: |
-          # 确保目标目录存在
-          mkdir -p ${{ env.STARRY_SOURCE_DIR }}
-          
-          # 使用 rsync 同步代码，排除 .git 目录以保留工作区的 git 配置
-          rsync -av --delete \
-            --exclude '.git' \
-            --exclude 'target' \
-            ${{ github.workspace }}/ ${{ env.STARRY_SOURCE_DIR }}/
-          
-          echo "Code synced to ${{ env.STARRY_SOURCE_DIR }}"
-
-      - name: Build StarryOS kernel with bitbake
-        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
-        run: |
-          # 初始化 Yocto 构建环境
-          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
-          
-          # 构建 StarryOS 内核
-          bitbake starry
-
-      - name: Build minimal image
-        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
-        run: |
-          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
-          
-          # 构建最小镜像
-          bitbake starry-minimal-image
-
-      - name: Test with QEMU
-        working-directory: ${{ env.STARRY_WORKSPACE }}/meta-starry
-        timeout-minutes: 10
-        run: |
-          source ${{ env.STARRY_WORKSPACE }}/poky/oe-init-build-env ${{ env.STARRY_WORKSPACE }}/build
-          
-          # 使用 expect 或 timeout 来运行 QEMU 测试
-          timeout 120 bash -c '
-            runqemu starry-minimal-image nographic slirp &
-            QEMU_PID=$!
-            
-            # 等待启动并检查是否进入 shell
-            sleep 60
-            
-            # 检查进程是否还在运行
-            if ps -p $QEMU_PID > /dev/null; then
-              echo "QEMU is running, test passed"
-              kill $QEMU_PID 2>/dev/null || true
-              exit 0
-            else
-              echo "QEMU exited unexpectedly"
-              exit 1
-            fi
-          ' || {
-            echo "Test timed out or failed"
-            exit 1
-          }
+          docker run --rm \
+            --privileged \
+            -v ${{ github.workspace }}:/source:ro \
+            -v ${{ env.HOST_WORKSPACE }}:/host-workspace:ro \
+            -v /tmp/starry-build-${{ github.run_id }}:/build \
+            --network host \
+            ${{ env.DOCKER_IMAGE }} \
+            bash -c '
+              set -e
+              
+              echo "=== Setting up build environment ==="
+              WORKSPACE=/build/workspace
+              mkdir -p $WORKSPACE
+              
+              # 符号链接共享的 Yocto 组件（只读）
+              ln -sfn /host-workspace/poky $WORKSPACE/poky
+              ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
+              ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
+              
+              # 复制 build 配置（需要可写）
+              mkdir -p $WORKSPACE/build/conf
+              cp -r /host-workspace/build/conf/* $WORKSPACE/build/conf/ 2>/dev/null || true
+              
+              # 同步 CI 触发的 StarryOS 代码
+              mkdir -p $WORKSPACE/StarryOS
+              rsync -av --delete \
+                --exclude ".git" \
+                --exclude "target" \
+                /source/ $WORKSPACE/StarryOS/
+              
+              echo "=== Initializing Yocto environment ==="
+              cd $WORKSPACE
+              source poky/oe-init-build-env build
+              
+              echo "=== Building StarryOS kernel ==="
+              bitbake starry
+              
+              echo "=== Building minimal image ==="
+              bitbake starry-minimal-image
+              
+              echo "=== Running QEMU test ==="
+              timeout 120 bash -c "
+                runqemu starry-minimal-image nographic slirp &
+                QEMU_PID=\$!
+                sleep 60
+                if ps -p \$QEMU_PID > /dev/null; then
+                  echo \"✔ QEMU boot test passed\"
+                  kill \$QEMU_PID 2>/dev/null || true
+                  exit 0
+                else
+                  echo \"❌ QEMU exited unexpectedly\"
+                  exit 1
+                fi
+              " || {
+                echo "❌ Test timed out or failed"
+                exit 1
+              }
+              
+              echo "=== All tests passed ==="
+            '
 
       - name: Cleanup
         if: always()
         run: |
-          # 清理可能残留的 QEMU 进程
-          pkill -f "qemu.*starry" || true
+          # 清理临时构建目录
+          rm -rf /tmp/starry-build-${{ github.run_id }} || true
+          # 清理可能残留的容器
+          docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
