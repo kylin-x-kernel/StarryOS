@@ -104,6 +104,7 @@ jobs:
           pkill -f "runqemu.*starry" 2>/dev/null || true
 
           # 初始化环境（注意：oe-init-build-env 会 cd 到 build/）
+          export BBSERVER=${BBSERVER:-}
           source poky/oe-init-build-env build
 
           bitbake starry
