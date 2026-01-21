@@ -186,7 +186,6 @@ axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_c
 
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
-syscalls = { path = "local_crates/syscalls" }
 tee_raw_sys = { path = "local_crates/tee_raw_sys" }
 mbedtls = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }
 mbedtls-sys-auto = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }

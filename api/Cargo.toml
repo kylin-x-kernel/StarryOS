@@ -81,7 +81,7 @@ static_assertions = "1.1.0"
 
 memoffset = { version = "0.9", default-features = false }
 subtle = { version = "2", default-features = false }
-syscalls = { version = "0.7", default-features = false }
+syscalls = { git = "https://github.com/Starry-OS/syscalls.git", rev = "87f3f64", default-features = false }
 tee_raw_sys = { version = "0.1", optional = true }
 mbedtls = { workspace = true, optional = true }
 mbedtls-sys-auto = { workspace = true, optional = true }
