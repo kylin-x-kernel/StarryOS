@@ -20,76 +20,81 @@ TODO
 
 ## Quick Start
 
-### 1. Clone repo
+### Build with Yocto (Recommended)
+
+StarryOS is designed to be built with the Yocto Project for full embedded Linux system integration.
+
+#### 1. Sync repositories
 
 ```bash
-git clone --recursive https://github.com/Starry-OS/StarryOS.git
-cd StarryOS
+mkdir -p starryos-workspace && cd starryos-workspace
+
+repo init -u https://github.com/kylin-x-kernel/starryos-manifest -m kernel-main.xml
+
+repo sync -j$(nproc)
 ```
 
-Or if you have already cloned it without `--recursive` option:
+#### 2. Build with Yocto
 
 ```bash
-cd StarryOS
-git submodule update --init --recursive
+cd starryos-workspace
+source poky/oe-init-build-env build
+
+# Build StarryOS kernel
+bitbake starry
+
+# Or build complete system image
+bitbake starry-minimal-image
+
+# Or runqemu for starryos
+runqemu starry-minimal-image nographic
 ```
 
-### 2. Install Prerequisites
+**Note:** If the `local.conf.sample` template in `meta-starry/conf/` has been updated, you may need to manually merge the changes into your `build/conf/local.conf`
 
-#### A. Using Docker
+#### 3. Daily development 
 
-We provide a prebuilt Docker image with all dependencies installed.
-
-For users in mainland China, you can use the following image which includes optimizations like Debian packages mirrors and crates.io mirrors:
 
 ```bash
-docker pull docker.cnb.cool/starry-os/arceos-build
-docker run -it --rm -v $(pwd):/workspace -w /workspace docker.cnb.cool/starry-os/arceos-build
+# Sync all repositories to latest commits on their branches (recommended)
+repo sync -c
+
+# Sync all repositories (fetches all branches, slower)
+repo sync
+
+# Sync specific repository only
+repo sync StarryOS
+repo sync arceos
+
+# View status of all repositories
+repo status
+
+# View current branches
+repo branches
+
+# Switch to different manifest (e.g., kernel-tee.xml)
+repo init -m kernel-tee.xml
+repo sync -c
 ```
 
-For other users, you can use the image hosted on GitHub Container Registry:
+### Standalone Build 
+
+If you need to quickly test without Yocto, you can use the standalone build:
+
+#### 1. Install dependencies
 
 ```bash
-docker pull ghcr.io/arceos-org/arceos-build
-docker run -it --rm -v $(pwd):/workspace -w /workspace ghcr.io/arceos-org/arceos-build
+# Rust toolchain
+rustup target add aarch64-unknown-none-softfloat
+
+# QEMU (Debian/Ubuntu)
+sudo apt install qemu-system
+
+# Musl toolchain (optional, for userspace programs)
+# Download from https://github.com/arceos-org/setup-musl/releases
 ```
 
-**Note:** The `--rm` flag will destroy the container instance upon exit. Any changes made inside the container (outside of the mounted `/workspace` volume) will be lost. Please refer to the [Docker documentation](https://docs.docker.com/) for more advanced usage.
-
-#### B. Manual Setup
-
-##### i. Install System Dependencies
-
-This step may vary depending on your operating system. Here is an example based on Debian:
-
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake clang qemu-system
-```
-
-**Note:** Running on LoongArch64 requires QEMU 10. If the QEMU version in your Linux distribution is too old (e.g. Ubuntu), consider building QEMU from [source](https://www.qemu.org/download/).
-
-##### ii. Install Musl Toolchain
-
-1. Download files from [setup-musl releases](https://github.com/arceos-org/setup-musl/releases/tag/prebuilt)
-2. Extract to some path, for example `/opt/riscv64-linux-musl-cross`
-3. Add bin folder to `PATH`, for example:
-
-   ```bash
-   export PATH=/opt/riscv64-linux-musl-cross/bin:$PATH
-   ```
-
-##### iii. Setup Rust toolchain
-
-```bash
-# Install rustup from https://rustup.rs or using your system package manager
-
-# Automatically download components via rustup
-cd StarryOS
-cargo -V
-```
-
-### 3. Prepare rootfs
+#### 2. Prepare rootfs
 
 ```bash
 # Default target: riscv64
@@ -101,7 +106,7 @@ make ARCH=loongarch64 rootfs
 
 This will download rootfs image from [Starry-OS/rootfs](https://github.com/Starry-OS/rootfs/releases) and set up the disk file for running on QEMU.
 
-### 4. Build and run on QEMU
+#### 3. Build and run on QEMU
 
 ```bash
 # Default target: riscv64
@@ -115,7 +120,7 @@ make ARCH=riscv64 run
 make ARCH=loongarch64 run
 ```
 
-Note:
+**Note:**
 
 1. Binary dependencies will be automatically built during `make build`.
 2. You don't have to rerun `build` every time. `run` automatically rebuilds if necessary.
