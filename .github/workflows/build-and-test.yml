@@ -3,10 +3,10 @@ name: Build and Test (Yocto)
 on:
   push:
     branches:
-      - change-workflow
+      - newchangeworkflow
   pull_request:
     branches:
-      - change-workflow
+      - newchangeworkflow
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
