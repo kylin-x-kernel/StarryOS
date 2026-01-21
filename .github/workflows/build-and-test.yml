@@ -20,7 +20,7 @@ env:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, Linux, X64, yean-jiaolong]
+    runs-on: [self-hosted, yean-jiaolong]
     
     steps:
       - name: Checkout code
