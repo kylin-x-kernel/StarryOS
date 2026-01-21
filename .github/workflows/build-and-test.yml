@@ -54,9 +54,17 @@ jobs:
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
               
-              # 复制 build 配置（需要可写）
+              # 创建 build 目录
               mkdir -p $WORKSPACE/build/conf
-              cp -r /host-workspace/build/conf/* $WORKSPACE/build/conf/ 2>/dev/null || true
+              
+              # 复制并修改 bblayers.conf，将路径替换为容器内路径
+              if [ -f /host-workspace/build/conf/bblayers.conf ]; then
+                sed "s|/home/[^/]*/[^/]*|$WORKSPACE|g" /host-workspace/build/conf/bblayers.conf > $WORKSPACE/build/conf/bblayers.conf
+              fi
+              
+              # 复制其他配置文件
+              cp /host-workspace/build/conf/local.conf $WORKSPACE/build/conf/local.conf 2>/dev/null || true
+              cp /host-workspace/build/conf/*.conf $WORKSPACE/build/conf/ 2>/dev/null || true
               
               # 同步 CI 触发的 StarryOS 代码
               echo "Copying StarryOS source code..."
