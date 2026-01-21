@@ -14,7 +14,6 @@ concurrency:
 
 env:
   DOCKER_IMAGE: crops/poky:ubuntu-22.04
-  # 整个workspace路径
   WORKSPACE: /home/yean/code/starryos-workspace
 
 jobs:
@@ -38,10 +37,22 @@ jobs:
             bash -c '
               set -e
               
+              echo "=== Install Required Tools ==="
+              apt-get update -qq
+              apt-get install -y -qq rsync curl > /dev/null 2>&1
+              
+              # 安装repo工具
+              curl -s https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
+              chmod a+x /usr/local/bin/repo
+              
               echo "=== Sync Dependencies (repo sync) ==="
               cd /workspace
+              # 配置git（repo需要）
+              git config --global user.email "ci@example.com"
+              git config --global user.name "CI Bot"
+              git config --global color.ui false
+              
               # repo sync所有依赖，但排除StarryOS主项目
-              # 这会同步arceos、local_crates等到StarryOS目录下
               repo sync -c --no-clone-bundle -j8 || {
                 echo "Warning: repo sync failed, using existing code"
               }
