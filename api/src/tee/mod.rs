@@ -5,6 +5,10 @@ use syscalls::Sysno;
 use tee_raw_sys::TEE_ERROR_NOT_SUPPORTED;
 
 use crate::tee::{
+    tee_cancel::{
+        sys_tee_scn_get_cancellation_flag, sys_tee_scn_mask_cancellation,
+        sys_tee_scn_unmask_cancellation,
+    },
     tee_generic::{sys_tee_scn_log, sys_tee_scn_panic, sys_tee_scn_return},
     tee_inter_ta::{
         sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
@@ -13,6 +17,7 @@ use crate::tee::{
 };
 
 mod protocal;
+mod tee_cancel;
 mod tee_generic;
 mod tee_inter_ta;
 mod tee_property;
@@ -70,6 +75,9 @@ pub fn handle_tee_syscall(sysno: Sysno, uctx: &mut UserContext) -> TeeResult {
             uctx.arg3() as _,
             uctx.arg4() as _,
         ),
+        Sysno::tee_scn_get_cancellation_flag => sys_tee_scn_get_cancellation_flag(uctx.arg0() as _),
+        Sysno::tee_scn_unmask_cancellation => sys_tee_scn_unmask_cancellation(uctx.arg0() as _),
+        Sysno::tee_scn_mask_cancellation => sys_tee_scn_mask_cancellation(uctx.arg0() as _),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
 }
