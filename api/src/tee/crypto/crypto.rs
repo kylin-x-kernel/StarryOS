@@ -9,7 +9,7 @@
 //  - core/crypto/crypto.c
 
 use alloc::boxed::Box;
-use core::default::Default;
+use core::{default::Default, fmt, fmt::Debug};
 
 use tee_raw_sys::*;
 
@@ -94,6 +94,16 @@ impl Default for ecc_keypair {
     }
 }
 
+impl Debug for ecc_keypair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ecc_keypair{{d: {:?}, x: {:?}, y: {:?}, curve: {:#010X?}}}",
+            self.d, self.x, self.y, self.curve
+        )
+    }
+}
+
 impl tee_crypto_ops for ecc_keypair {
     fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> {
         let mut curve = 0;
@@ -146,13 +156,16 @@ impl Eq for ecc_keypair {}
 pub fn crypto_acipher_gen_ecc_key(
     key: &mut ecc_keypair,
     key_size_bits: usize,
-    typ: EccAlgoKeyPair,
+    object_type: u32,
 ) -> TeeResult {
-    let mut key: Box<dyn crypto_ecc_keypair_ops_generate> = match typ {
-        EccAlgoKeyPair::EccCom => Box::new(EccKeypair::<EccComKeyPair>::new(key)),
-        EccAlgoKeyPair::Sm2Pke => Box::new(EccKeypair::<Sm2PkeKeyPair>::new(key)),
-        EccAlgoKeyPair::Sm2Dsa => Box::new(EccKeypair::<Sm2DsaKeyPair>::new(key)),
-        EccAlgoKeyPair::Sm2Kep => Box::new(EccKeypair::<Sm2KepKeyPair>::new(key)),
+    let mut key: Box<dyn crypto_ecc_keypair_ops_generate> = match object_type {
+        TEE_TYPE_ECDSA_KEYPAIR | TEE_TYPE_ECDH_KEYPAIR => {
+            Box::new(EccKeypair::<EccComKeyPair>::new(key))
+        }
+        TEE_TYPE_SM2_PKE_KEYPAIR => Box::new(EccKeypair::<Sm2PkeKeyPair>::new(key)),
+        TEE_TYPE_SM2_DSA_KEYPAIR => Box::new(EccKeypair::<Sm2DsaKeyPair>::new(key)),
+        TEE_TYPE_SM2_KEP_KEYPAIR => Box::new(EccKeypair::<Sm2KepKeyPair>::new(key)),
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
     };
     key.generate(key_size_bits)
 }

@@ -18,6 +18,7 @@ tee_test = []
 tee_test_mock_user_access = []
 tee = [
     "syscalls/tee",
+    "dep:rand_chacha",
     "dep:tee_raw_sys",
     "starry-core/tee",
     "dep:mbedtls",
