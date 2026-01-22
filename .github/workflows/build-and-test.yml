@@ -49,7 +49,7 @@ jobs:
           ln -sfn "${CACHE_DIR}/downloads" "$RUN_DIR/downloads-mirror"
           ln -sfn "${CACHE_DIR}/sstate" "$RUN_DIR/sstate-mirror"
 
-          # 3) 用 PR 覆盖 StarryOS（推荐 rsync，比 cp 更靠谱）
+          # 3) 用 PR 覆盖 StarryOS
           rm -rf "$RUN_DIR/StarryOS"
           mkdir -p "$RUN_DIR/StarryOS"
           rsync -a --delete \
@@ -65,7 +65,7 @@ jobs:
             cp -a "${WORKSPACE_TEMPLATE}/StarryOS/local_crates" "$RUN_DIR/StarryOS/local_crates"
           fi
 
-          # 5) 保证 conf 存在（如果模板里没有 build/conf，你可以在这里生成）
+          # 5) 保证 conf 存在
           mkdir -p "$RUN_DIR/build/conf"
           if [ -f "${WORKSPACE_TEMPLATE}/build/conf/bblayers.conf" ]; then
             cp -a "${WORKSPACE_TEMPLATE}/build/conf/bblayers.conf" "$RUN_DIR/build/conf/bblayers.conf"
