@@ -1,0 +1,165 @@
+name: Build and Test (Yocto)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  HOST_WORKSPACE: /home/yocto
+  WORKSPACE_TEMPLATE: /home/yocto/starryos-workspace
+  # 共享缓存指向已有的 downloads / sstate
+  CACHE_DIR: /home/yocto/yocto-cache
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted]
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare clean run workspace (copy template + overlay PR)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_DIR="/tmp/starry-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "RUN_DIR=$RUN_DIR" >> "$GITHUB_ENV"
+
+          # 1) 每次跑都复制一份模板，避免污染
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'build/tmp-musl' \
+            "${WORKSPACE_TEMPLATE}/" "$RUN_DIR/"
+
+          # 2) 创建独立的缓存目录（写入），并链接共享缓存（只读镜像）
+          mkdir -p "${CACHE_DIR}/downloads" "${CACHE_DIR}/sstate"
+          mkdir -p "$RUN_DIR/downloads" "$RUN_DIR/sstate-cache"
+          
+          # 创建只读镜像的符号链接（BitBake 会通过 PREMIRRORS/SSTATE_MIRRORS 访问）
+          ln -sfn "${CACHE_DIR}/downloads" "$RUN_DIR/downloads-mirror"
+          ln -sfn "${CACHE_DIR}/sstate" "$RUN_DIR/sstate-mirror"
+
+          # 3) 用 PR 覆盖 StarryOS
+          rm -rf "$RUN_DIR/StarryOS"
+          mkdir -p "$RUN_DIR/StarryOS"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'target' \
+            "${GITHUB_WORKSPACE}/" "$RUN_DIR/StarryOS/"
+
+          # 4) 如果 StarryOS 依赖 arceos / local_crates 且 PR 不带，就从模板补齐
+          if [ -d "${WORKSPACE_TEMPLATE}/StarryOS/arceos" ] && [ ! -d "$RUN_DIR/StarryOS/arceos" ]; then
+            cp -a "${WORKSPACE_TEMPLATE}/StarryOS/arceos" "$RUN_DIR/StarryOS/arceos"
+          fi
+          if [ -d "${WORKSPACE_TEMPLATE}/StarryOS/local_crates" ] && [ ! -d "$RUN_DIR/StarryOS/local_crates" ]; then
+            cp -a "${WORKSPACE_TEMPLATE}/StarryOS/local_crates" "$RUN_DIR/StarryOS/local_crates"
+          fi
+
+          # 5) 保证 conf 存在
+          mkdir -p "$RUN_DIR/build/conf"
+          if [ -f "${WORKSPACE_TEMPLATE}/build/conf/bblayers.conf" ]; then
+            cp -a "${WORKSPACE_TEMPLATE}/build/conf/bblayers.conf" "$RUN_DIR/build/conf/bblayers.conf"
+          fi
+          if [ -f "${WORKSPACE_TEMPLATE}/build/conf/local.conf" ]; then
+            cp -a "${WORKSPACE_TEMPLATE}/build/conf/local.conf" "$RUN_DIR/build/conf/local.conf"
+          fi
+
+          # 6) 追加 CI 覆盖项：EXTERNALSRC + 缓存镜像配置
+          {
+            echo ""
+            echo "# --- CI overrides ---"
+            echo "EXTERNALSRC:pn-starry = \"${RUN_DIR}/StarryOS\""
+            echo "EXTERNALSRC_BUILD:pn-starry = \"${RUN_DIR}/StarryOS\""
+            echo ""
+            echo "# 每次跑都使用独立 TMPDIR，避免引用模板里的旧 sysroot"
+            echo "TMPDIR = \"${RUN_DIR}/build/tmp-musl\""
+            echo ""
+            echo "# 写入独立目录（CI 结束后清理）"
+            echo "DL_DIR = \"${RUN_DIR}/downloads\""
+            echo "SSTATE_DIR = \"${RUN_DIR}/sstate-cache\""
+            echo ""
+            echo "# 从共享只读镜像读取已有缓存（避免并发写入冲突）"
+            echo "SSTATE_MIRRORS = \"file://.* file://${RUN_DIR}/sstate-mirror/PATH\""
+            echo "PREMIRRORS:prepend = \"file://.*/.* file://${RUN_DIR}/downloads-mirror/PATH \""
+          } >> "$RUN_DIR/build/conf/local.conf"
+
+          echo "===== local.conf tail ====="
+          tail -n 30 "$RUN_DIR/build/conf/local.conf"
+          echo "==========================="
+
+      - name: Build (bitbake starry + image)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUN_DIR"
+
+          # 清理上次残留 QEMU（更抗并发取消/失败残留）
+          pkill -f "qemu-system-.*starry" 2>/dev/null || true
+          pkill -f "runqemu.*starry" 2>/dev/null || true
+
+          # 初始化环境（注意：oe-init-build-env 会 cd 到 build/）
+          set +u
+          source poky/oe-init-build-env build
+          set -u
+
+          bitbake starry
+          bitbake starry-minimal-image
+
+      - name: QEMU boot smoke test (runqemu)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUN_DIR"
+          set +u
+          source poky/oe-init-build-env build
+          set -u
+
+          # runqemu 有时需要指定 MACHINE/参数；你现在用 slirp + nographic 是 OK 的
+          # 这里用 timeout 控制最长时间；并且给 runqemu 一个更“可杀掉”的方式
+          timeout 180 bash -c '
+            set -e
+            runqemu starry-minimal-image nographic slirp &
+            QEMU_PID=$!
+            echo "QEMU_PID=$QEMU_PID"
+
+            # 给它一点启动时间
+            for i in $(seq 1 90); do
+              if ps -p $QEMU_PID >/dev/null; then
+                sleep 1
+              else
+                echo "❌ QEMU exited early"
+                exit 1
+              fi
+            done
+
+            echo "✔ QEMU stayed alive (smoke pass)"
+            kill $QEMU_PID 2>/dev/null || true
+          '
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # 清理残留进程
+          pkill -f "qemu-system-.*starry" 2>/dev/null || true
+          pkill -f "runqemu.*starry" 2>/dev/null || true
+          
+          # 清理临时工作区（包括符号链接）
+          if [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ]; then
+            rm -rf "$RUN_DIR" || true
+          fi
