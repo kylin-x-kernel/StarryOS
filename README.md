@@ -29,7 +29,7 @@ StarryOS is designed to be built with the Yocto Project for full embedded Linux 
 ```bash
 mkdir -p starryos-workspace && cd starryos-workspace
 
-repo init -u https://github.com/kylin-x-kernel/starryos-manifest -m kernel-main.xml
+repo init -u https://github.com/kylin-x-kernel/starryos-manifest -m base.xml
 
 repo sync -j$(nproc)
 ```
@@ -71,11 +71,8 @@ repo status
 
 # View current branches
 repo branches
-
-# Switch to different manifest (e.g., kernel-tee.xml)
-repo init -m kernel-tee.xml
-repo sync -c
 ```
+more details in Developer.md 
 
 ### Standalone Build 
 
