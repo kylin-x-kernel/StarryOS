@@ -3,24 +3,24 @@ name: Build and Test (Yocto)
 on:
   push:
     branches:
-      - newchangeworkflow
+      - main
   pull_request:
     branches:
-      - newchangeworkflow
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
-  HOST_WORKSPACE: /home/yean/code
-  WORKSPACE_TEMPLATE: /home/yean/code/starryos-workspace
+  HOST_WORKSPACE: /home/yocto
+  WORKSPACE_TEMPLATE: /home/yocto/starryos-workspace
   # 共享缓存指向已有的 downloads / sstate
-  CACHE_DIR: /home/yean/yocto-cache
+  CACHE_DIR: /home/yocto/yocto-cache
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, yean-jiaolong]
+    runs-on: [self-hosted, yocto]
 
     steps:
       - name: Checkout PR code
