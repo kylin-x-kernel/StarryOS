@@ -15,7 +15,8 @@ concurrency:
 env:
   HOST_WORKSPACE: /home/yean/code
   WORKSPACE_TEMPLATE: /home/yean/code/starryos-workspace
-  CACHE_DIR: /home/yean/code/starryos-workspace/build
+  # 共享缓存指向已有的 downloads / sstate
+  CACHE_DIR: /home/yean/yocto-cache
 
 jobs:
   build-and-test:
@@ -41,12 +42,12 @@ jobs:
           cp -a "${WORKSPACE_TEMPLATE}/." "$RUN_DIR/"
 
           # 2) 创建独立的缓存目录（写入），并链接共享缓存（只读镜像）
-          mkdir -p "${CACHE_DIR}/downloads" "${CACHE_DIR}/sstate-cache"
+          mkdir -p "${CACHE_DIR}/downloads" "${CACHE_DIR}/sstate"
           mkdir -p "$RUN_DIR/downloads" "$RUN_DIR/sstate-cache"
           
           # 创建只读镜像的符号链接（BitBake 会通过 PREMIRRORS/SSTATE_MIRRORS 访问）
           ln -sfn "${CACHE_DIR}/downloads" "$RUN_DIR/downloads-mirror"
-          ln -sfn "${CACHE_DIR}/sstate-cache" "$RUN_DIR/sstate-mirror"
+          ln -sfn "${CACHE_DIR}/sstate" "$RUN_DIR/sstate-mirror"
 
           # 3) 用 PR 覆盖 StarryOS（推荐 rsync，比 cp 更靠谱）
           rm -rf "$RUN_DIR/StarryOS"
