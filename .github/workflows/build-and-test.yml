@@ -20,7 +20,7 @@ env:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, yocto]
+    runs-on: [self-hosted]
 
     steps:
       - name: Checkout PR code
