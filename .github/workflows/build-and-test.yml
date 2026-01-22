@@ -39,7 +39,10 @@ jobs:
           # 1) 每次跑都复制一份模板，避免污染
           rm -rf "$RUN_DIR"
           mkdir -p "$RUN_DIR"
-          cp -a "${WORKSPACE_TEMPLATE}/." "$RUN_DIR/"
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'build/tmp-musl' \
+            "${WORKSPACE_TEMPLATE}/" "$RUN_DIR/"
 
           # 2) 创建独立的缓存目录（写入），并链接共享缓存（只读镜像）
           mkdir -p "${CACHE_DIR}/downloads" "${CACHE_DIR}/sstate"
