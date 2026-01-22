@@ -89,7 +89,7 @@ jobs:
             echo ""
             echo "# 从共享只读镜像读取已有缓存（避免并发写入冲突）"
             echo "SSTATE_MIRRORS = \"file://.* file://${RUN_DIR}/sstate-mirror/PATH\""
-            echo "PREMIRRORS:prepend = \"file://.*/.* file://${RUN_DIR}/downloads-mirror/PATH \\\\n\""
+            echo "PREMIRRORS:prepend = \"file://.*/.* file://${RUN_DIR}/downloads-mirror/PATH \""
           } >> "$RUN_DIR/build/conf/local.conf"
 
           echo "===== local.conf tail ====="
