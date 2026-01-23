@@ -2757,7 +2757,7 @@ dependencies = [
 [[package]]
 name = "syscalls"
 version = "0.7.0"
-source = "git+https://github.com/Starry-OS/syscalls.git?rev=87f3f64#87f3f64de19c9e9cd50e09022db6c26f35ae3507"
+source = "git+https://github.com/Starry-OS/syscalls.git?rev=cceea97#cceea97c1c8a43c041a5f5285872a409adbbd9d6"
 
 [[package]]
 name = "tee_raw_sys"

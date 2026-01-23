@@ -75,6 +75,8 @@ use test::test_framework::{TestDescriptor, TestRunner};
 #[cfg(feature = "tee_test")]
 use test::test_framework_basic::TestResult;
 
+#[cfg(feature = "tee_test")]
+use crate::tee::test::sys_tee_scn_test;
 use crate::tee::{
     inter_ta::{
         sys_tee_scn_close_ta_session, sys_tee_scn_invoke_ta_command, sys_tee_scn_open_ta_session,
@@ -169,6 +171,9 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg3() as _,
             _uctx.arg4() as _,
         ),
+
+        #[cfg(feature = "tee_test")]
+        Sysno::tee_scn_test => sys_tee_scn_test(),
 
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
     }
