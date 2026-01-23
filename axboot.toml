@@ -1,0 +1,11 @@
+# axplat-bootloader config
+kernel_paths = ["StarryOS_x86-csv.elf"]
+
+# Physical load address for raw binaries
+kernel_base_paddr = "0x0150_0000"
+
+# High-half virtual address offset
+phys_virt_offset = "0xffff_8000_0000_0000"
+
+# Multiboot magic passed in RDI
+multiboot_magic = "0x2bad_b002"

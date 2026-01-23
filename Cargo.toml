@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["api", "core"]
+members = ["api", "core", "local_crates/axplat-bootloader"]
 exclude = ["arceos"]
 
 [workspace.package]

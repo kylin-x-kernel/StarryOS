@@ -60,7 +60,11 @@ crosvm:
 	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=crosvm MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
 
 x86_csv:
-	$(MAKE) --debug=v ARCH=x86_64 APP_FEATURES=x86_csv MYPLAT=axplat-x86-csv BUS=pci LOG=warn build
+	$(MAKE) --debug=v ARCH=x86_64 APP_FEATURES=x86_csv MYPLAT=axplat-x86-csv BUS=pci build
+
+boot:
+	cargo build --manifest-path local_crates/axplat-bootloader/Cargo.toml --target x86_64-unknown-uefi --release
+	cp target/x86_64-unknown-uefi/release/axplat-bootloader.efi BOOTX64.EFI
 
 dice:
 	$(MAKE) --debug=v ARCH=aarch64 APP_FEATURES=dice MYPLAT=axplat-aarch64-crosvm-virt BUS=pci LOG=warn build
