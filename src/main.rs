@@ -44,3 +44,6 @@ extern crate axplat_riscv64_visionfive2;
 
 #[cfg(feature = "crosvm")]
 extern crate axplat_aarch64_crosvm_virt;
+
+#[cfg(feature = "x86_csv")]
+extern crate axplat_x86_csv;

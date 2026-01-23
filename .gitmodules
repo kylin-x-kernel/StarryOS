@@ -31,3 +31,6 @@
 	path = local_crates/page_table_multiarch
 	url = https://github.com/kylin-x-kernel/page_table_multiarch.git
 	branch = dev
+[submodule "local_crates/axplat-x86-csv"]
+	path = local_crates/axplat-x86-csv
+	url = https://github.com/kylin-x-kernel/axplat-x86-csv.git

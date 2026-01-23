@@ -43,7 +43,8 @@ axinput = { path = "arceos/modules/axinput" }
 axlog = { path = "arceos/modules/axlog" }
 axmm = { path = "arceos/modules/axmm" }
 axnet = { path = "arceos/modules/axnet" }
-axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt"}
+axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt" }
+axplat-x86-csv = { path = "local_crates/axplat-x86-csv" }
 axruntime = { path = "arceos/modules/axruntime" }
 axsync = { path = "arceos/modules/axsync" }
 axtask = { path = "arceos/modules/axtask" }
@@ -130,6 +131,18 @@ crosvm = [
     "axfeat/fs-times",
     "starry-api/dev-log",
 ]
+x86_csv = [
+    "dep:axplat-x86-csv",
+    "pci",
+    "smp",
+    "starry-api/dev-log",
+    "axfeat/display",
+    "axfeat/input",
+    "starry-api/input",
+
+    "axfeat/vsock",
+    "starry-api/vsock",
+]
 
 # Stubs
 pci = ["axfeat/bus-pci"]
@@ -166,22 +179,27 @@ workspace = true
 optional = true
 features = ["irq", "fp-simd", "smp", "rtc"]
 
+[dependencies.axplat-x86-csv]
+workspace = true
+optional = true
+features = ["irq", "fp-simd", "smp", "rtc"]
+
 [patch.crates-io]
-axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
 axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
-axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
-axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch="dev"}
-axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch="dev"}
-axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch="dev"}
-percpu = { git = "https://github.com/arceos-org/percpu", rev = "89c8a54"}
+axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+percpu = { git = "https://github.com/arceos-org/percpu", rev = "89c8a54" }
 
 
 fdtree_rs = { path = "local_crates/fdtree-rs" }
-arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git",branch="main" }
-kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main"}
+arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
+kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main" }
 
 [patch."https://github.com/arceos-org/axcpu.git"]
-axcpu = { git = "https://github.com/kylin-x-kernel/axcpu", branch = "dev"}
+axcpu = { git = "https://github.com/kylin-x-kernel/axcpu", branch = "dev" }
 
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
