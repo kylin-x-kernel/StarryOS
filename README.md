@@ -40,6 +40,14 @@ repo sync -j$(nproc)
 cd starryos-workspace
 source poky/oe-init-build-env build
 
+# 在build/conf/local.conf中，模板是
+#DL_DIR = "/workspace/downloads"
+#SSTATE_DIR = "/workspace/sstate"
+#DL_DIR = "/home/yean/yocto-cache/downloads"
+#SSTATE_DIR = "/home/yean/yocto-cache/sstate"
+#需要进行设置以实现产物复用，本地能跑的可以先在本地跑出产物
+#这里的两套路径上面两行是docker启动的，下面两行是本地直接跑的，这里的路径换成你自己的，最简单就是直接把yean换成你的用户名，写的不对会报错
+#直接改好了取消注释。关于docker启动见.docker文件夹的readme（还没提，今天提上来），如果你自己直接下ubuntu的docker镜像也可以，改好了进行下面。
 # Build StarryOS kernel
 bitbake starry
 
