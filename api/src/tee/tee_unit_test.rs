@@ -14,6 +14,7 @@ pub fn tee_test_unit() {
     use super::{
         common::file_ops::tests_file_ops::TEST_FILE_OPS,
         crypto::crypto_impl::tests_tee_crypto_impl::TEST_TEE_CRYPTO_IMPL,
+        crypto_temp::aes_cbc::tests_aes_cbc::TEST_TEE_AES_CBC,
         fs_dirfile::tests_tee_fs_dirfile::TEST_TEE_FS_DIRFILE,
         fs_htree::tests_fs_htree::TEST_FS_HTREE,
         fs_htree_tests::tests_fs_htree_tests::TEST_FS_HTREE_TESTS,
@@ -47,6 +48,7 @@ pub fn tee_test_unit() {
             TEST_FS_HTREE_TESTS,
             TEST_RNG_SOFTWARE,
             TEST_TEE_CRYPTO_IMPL,
+            TEST_TEE_AES_CBC,
         ]
     );
 

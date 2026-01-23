@@ -1418,7 +1418,8 @@ pub fn init_head_from_data(
     } else {
         let mut heads = [TeeFsHtreeImage::default(); 2];
         for idx in 0..2 {
-            rpc_read_head(storage, 0, &mut heads[idx])?;
+            // Read version idx (0 or 1) of the head, consistent with C implementation
+            rpc_read_head(storage, idx as u8, &mut heads[idx])?;
         }
 
         let idx = get_idx_from_counter(heads[0].counter, heads[1].counter)
