@@ -8,9 +8,10 @@
 // 	- core/include/crypto/crypto.h
 //  - core/crypto/crypto.c
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, format};
 use core::{default::Default, fmt, fmt::Debug};
 
+use mbedtls_sys_auto::mpi_write_binary;
 use tee_raw_sys::*;
 
 use crate::tee::{
@@ -96,11 +97,12 @@ impl Default for ecc_keypair {
 
 impl Debug for ecc_keypair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ecc_keypair{{d: {:?}, x: {:?}, y: {:?}, curve: {:#010X?}}}",
-            self.d, self.x, self.y, self.curve
-        )
+        f.debug_struct("ecc_keypair")
+            .field("d", &self.d)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("curve", &format!("{:#010X?}", self.curve))
+            .finish()
     }
 }
 
@@ -153,6 +155,62 @@ impl PartialEq for ecc_keypair {
 
 impl Eq for ecc_keypair {}
 
+pub struct rsa_keypair {
+    pub e: BigNum, // Public exponent
+    pub d: BigNum, // Private exponent
+    pub n: BigNum, // Modulus
+
+    // Optional CRT parameters (all NULL if unused)
+    pub p: BigNum, // N = pq
+    pub q: BigNum,
+    pub qp: BigNum, // 1/q mod p
+    pub dp: BigNum, // d mod (p-1)
+    pub dq: BigNum, // d mod (q-1)
+}
+
+impl Debug for rsa_keypair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("rsa_keypair")
+            .field("e", &self.e)
+            .field("d", &self.d)
+            .field("n", &self.n)
+            .field("p", &self.p)
+            .field("q", &self.q)
+            .field("qp", &self.qp)
+            .field("dp", &self.dp)
+            .field("dq", &self.dq)
+            .finish()
+    }
+}
+
+impl tee_crypto_ops for rsa_keypair {
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> {
+        Ok(rsa_keypair {
+            e: crypto_bignum_allocate(key_size_bits)?,
+            d: crypto_bignum_allocate(key_size_bits)?,
+            n: crypto_bignum_allocate(key_size_bits)?,
+            p: BigNum::default(),
+            q: BigNum::default(),
+            qp: BigNum::default(),
+            dp: BigNum::default(),
+            dq: BigNum::default(),
+        })
+    }
+
+    fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef<'_>> {
+        match attr_id as u32 {
+            TEE_ATTR_RSA_MODULUS => Ok(CryptoAttrRef::BigNum(&mut self.n)),
+            TEE_ATTR_RSA_PUBLIC_EXPONENT => Ok(CryptoAttrRef::BigNum(&mut self.e)),
+            TEE_ATTR_RSA_PRIVATE_EXPONENT => Ok(CryptoAttrRef::BigNum(&mut self.d)),
+            TEE_ATTR_RSA_PRIME1 => Ok(CryptoAttrRef::BigNum(&mut self.p)),
+            TEE_ATTR_RSA_PRIME2 => Ok(CryptoAttrRef::BigNum(&mut self.q)),
+            TEE_ATTR_RSA_EXPONENT1 => Ok(CryptoAttrRef::BigNum(&mut self.dp)),
+            TEE_ATTR_RSA_EXPONENT2 => Ok(CryptoAttrRef::BigNum(&mut self.dq)),
+            TEE_ATTR_RSA_COEFFICIENT => Ok(CryptoAttrRef::BigNum(&mut self.qp)),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+        }
+    }
+}
 pub fn crypto_acipher_gen_ecc_key(
     key: &mut ecc_keypair,
     key_size_bits: usize,

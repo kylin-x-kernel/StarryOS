@@ -8,3 +8,4 @@
 
 pub mod bignum;
 pub mod ecc;
+pub mod rsa;

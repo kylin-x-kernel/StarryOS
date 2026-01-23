@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2025 KylinSoft Co., Ltd. <https://www.kylinos.cn/>
+// See LICENSES for license details.
+//
+// This file has been created by KylinSoft on 2026.
+
 use mbedtls::{pk::Pk, rng::RngCallback};
 use mbedtls_sys_auto::types::{
     raw_types::{c_int, c_uchar, c_void},
@@ -9,14 +15,31 @@ use rand_chacha::{
 };
 use spin::{Lazy, Mutex};
 
+use crate::tee::TeeResult;
+
 static GLOBAL_TEE_SOFTWARE_RAND: Lazy<Mutex<ChaCha20Rng>> = Lazy::new(|| {
     let seed = axhal::time::current_ticks();
     Mutex::new(ChaCha20Rng::seed_from_u64(seed))
 });
 
-pub fn tee_software_get_rand(output: &mut [u8]) {
+fn tee_software_get_rand(output: &mut [u8]) {
     let mut rand = GLOBAL_TEE_SOFTWARE_RAND.lock();
     rand.fill_bytes(output);
+}
+
+/// read data from crypto RNG to buffer
+///
+/// # Arguments
+/// * `buf` - buffer to store read data
+///
+/// # Returns
+/// * `Ok(())` - success
+/// * `Err(TEE_ERROR_GENERIC)` - error
+/// TODO: Using mbedtls to implement a real RNG
+pub fn crypto_rng_read(buf: &mut [u8]) -> TeeResult {
+    // buf.fill(0);
+    tee_software_get_rand(buf);
+    Ok(())
 }
 
 pub struct TeeSoftwareRng {
