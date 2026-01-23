@@ -5,12 +5,13 @@
 // This file has been created by KylinSoft on 2025.
 
 use alloc::{boxed::Box, vec, vec::Vec};
+use core::mem::size_of;
 
 use mbedtls::hash;
 use static_assertions::const_assert;
 use tee_raw_sys::{
-    TEE_ALG_AES_ECB_NOPAD, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_NOT_IMPLEMENTED, TEE_OperationMode,
-    TEE_UUID,
+    TEE_ALG_AES_ECB_NOPAD, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_GENERIC, TEE_ERROR_NOT_IMPLEMENTED,
+    TEE_OperationMode, TEE_UUID,
 };
 
 use super::{
@@ -125,31 +126,51 @@ pub fn tee_fs_fek_crypt(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
+    // Extract in_key slice before unsafe block
+    let in_key_slice = in_key.ok_or(TEE_ERROR_BAD_PARAMETERS)?;
+
     unsafe {
         if TEE_FS_SSK.is_init == false {
+            error!("tee_fs_fek_crypt: TEE_FS_SSK is not initialized");
             return Err(TEE_ERROR_BAD_PARAMETERS);
         }
 
-        let in_key = in_key.ok_or(TEE_ERROR_BAD_PARAMETERS)?;
+        // Use SSK.key as HMAC key, not in_key_slice (FEK)
+        // Consistent with C implementation: do_hmac(tsk, sizeof(tsk), tee_fs_ssk.key, TEE_FS_KM_SSK_SIZE, uuid, sizeof(*uuid))
+        // Create a slice from the static mut key to avoid creating a shared reference to mutable static
+        let ssk_key_slice = core::slice::from_raw_parts(
+            core::ptr::addr_of!(TEE_FS_SSK.key) as *const u8,
+            TEE_FS_KM_SSK_SIZE,
+        );
 
         if let Some(uuid) = uuid {
             let uuid_bytes = core::slice::from_raw_parts(
                 (uuid as *const TEE_UUID) as *const u8,
                 size_of::<TEE_UUID>(),
             );
-            do_hmac(&mut tsk, in_key, uuid_bytes)?;
+            do_hmac(&mut tsk, ssk_key_slice, uuid_bytes)?;
         } else {
             let dummy = [0u8, 1];
-            do_hmac(&mut tsk, in_key, &dummy)?;
+            do_hmac(&mut tsk, ssk_key_slice, &dummy)?;
         }
     }
     let _ = match crypto_cipher_alloc_ctx(TEE_ALG_AES_ECB_NOPAD) {
         Ok(mut ctx) => {
-            let _ = ctx.init(mode, Some(&tsk), None, None);
-            let _ = ctx.update(true, in_key, Some(&mut dst_key));
+            ctx.init(mode, Some(&tsk), None, None).inspect_err(|_| {
+                error!("tee_fs_fek_crypt: ctx.init failed");
+            })?;
+            ctx.update(true, Some(in_key_slice), Some(&mut dst_key))
+                .inspect_err(|_| {
+                    error!("tee_fs_fek_crypt: ctx.update failed");
+                })?;
             ctx.finalize();
             if let Some(out_key) = out_key {
                 out_key.copy_from_slice(&dst_key);
+                tee_debug!(
+                    "tee_fs_fek_crypt: in_key: {:?}, out_key: {:?}",
+                    hex::encode(in_key_slice),
+                    hex::encode(out_key)
+                );
             }
         }
         Err(e) => return e,

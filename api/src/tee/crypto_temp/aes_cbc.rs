@@ -6,39 +6,14 @@
 
 use alloc::boxed::Box;
 
+use mbedtls_sys_auto::{
+    AES_DECRYPT, AES_ENCRYPT, aes_context, aes_crypt_cbc, aes_free, aes_init, aes_setkey_dec,
+    aes_setkey_enc,
+};
 use tee_raw_sys::{TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_BAD_STATE, TEE_OperationMode};
 
 use super::crypto_temp::{CryptoCipherCtx, CryptoCipherOps};
-use crate::tee::{TeeResult, common::array, utee_defines::TEE_AES_BLOCK_SIZE};
-
-// aes_context is defined in  rust-mbedtls
-// use mbedtls::aes_context;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct aes_context;
-pub fn aes_init(_ctx: *mut aes_context) {
-    // TODO: 实现 AES 初始化
-    // 避免未实现的功能被调用暂时返回，
-}
-pub fn aes_setkey_enc(_ctx: *mut aes_context, _key: *const u8, _keybits: u32) -> i32 {
-    0
-}
-pub fn aes_crypt_cbc(
-    _ctx: *mut aes_context,
-    _mode: i32,
-    _length: usize,
-    _iv: *mut u8,
-    _input: *const u8,
-    _output: *mut u8,
-) -> i32 {
-    0
-}
-
-#[allow(dead_code)]
-pub fn aes_free(_ctx: *mut aes_context) {}
-
-pub const AES_ENCRYPT: i32 = 1;
-pub const AES_DECRYPT: i32 = 0;
+use crate::tee::{TeeResult, common::array, utee_defines::TEE_AES_BLOCK_SIZE, utils::slice_fmt};
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -56,6 +31,13 @@ fn mbed_aes_cbc_init(
     key2: Option<&[u8]>,
     iv: Option<&[u8]>,
 ) -> TeeResult {
+    tee_debug!(
+        "mbed_aes_cbc_init: mode: {:?}, key1: {:?}, key2: {:?}, iv: {:?}",
+        mode,
+        key1,
+        key2,
+        iv
+    );
     let (key1_ptr, key1_len) = array::get_const_ptr_and_len(key1);
     let (_key2_ptr, _key2_len) = array::get_const_ptr_and_len(key2);
     let (_iv_ptr, _iv_len) = array::get_const_ptr_and_len(iv);
@@ -68,16 +50,16 @@ fn mbed_aes_cbc_init(
         ctx.iv.copy_from_slice(iv);
     }
 
-    aes_init(&mut ctx.aes_ctx);
+    unsafe { aes_init(&mut ctx.aes_ctx) };
 
     let mbed_res = match mode {
         TEE_OperationMode::TEE_MODE_ENCRYPT => {
             ctx.mbed_mode = AES_ENCRYPT;
-            aes_setkey_enc(&mut ctx.aes_ctx, key1_ptr, key1_len as u32 * 8)
+            unsafe { aes_setkey_enc(&mut ctx.aes_ctx, key1_ptr, key1_len as u32 * 8) }
         }
         TEE_OperationMode::TEE_MODE_DECRYPT => {
             ctx.mbed_mode = AES_DECRYPT;
-            aes_setkey_enc(&mut ctx.aes_ctx, key1_ptr, key1_len as u32 * 8)
+            unsafe { aes_setkey_dec(&mut ctx.aes_ctx, key1_ptr, key1_len as u32 * 8) }
         }
         _ => {
             return Err(TEE_ERROR_BAD_PARAMETERS);
@@ -100,14 +82,22 @@ fn mbed_aes_cbc_update(
     let (data_ptr, data_len) = array::get_const_ptr_and_len(data);
     let (dst_ptr, _dst_len) = array::get_mut_ptr_and_len(dst);
 
-    let mbed_res = aes_crypt_cbc(
-        &mut ctx.aes_ctx,
+    tee_debug!(
+        "mbed_aes_cbc_update: mode: {:?}, data_len: {:?}, dst_len: {:?}",
         ctx.mbed_mode,
         data_len,
-        ctx.iv.as_mut_ptr(),
-        data_ptr,
-        dst_ptr,
+        _dst_len
     );
+    let mbed_res = unsafe {
+        aes_crypt_cbc(
+            &mut ctx.aes_ctx,
+            ctx.mbed_mode,
+            data_len,
+            ctx.iv.as_mut_ptr(),
+            data_ptr,
+            dst_ptr,
+        )
+    };
 
     if mbed_res != 0 {
         return Err(TEE_ERROR_BAD_STATE);
@@ -117,7 +107,7 @@ fn mbed_aes_cbc_update(
 }
 
 fn mbed_aes_cbc_final(ctx: &mut MbedAesCbcCtx) {
-    aes_free(&mut ctx.aes_ctx as *mut aes_context);
+    unsafe { aes_free(&mut ctx.aes_ctx as *mut aes_context) };
 }
 
 // optee_os, the context is allocated by function crypto_aes_ecb_alloc_ctx, so need free it manually.
@@ -171,10 +161,54 @@ impl CryptoCipherCtx for MbedAesCbcCtx {
     fn alloc_cipher_ctx() -> Result<Box<Self::Context>, TeeResult> {
         let ctx = MbedAesCbcCtx {
             mbed_mode: 0,
-            aes_ctx: aes_context,
+            aes_ctx: aes_context::default(),
             iv: [0; TEE_AES_BLOCK_SIZE],
         };
 
         Ok(Box::new(ctx))
+    }
+}
+
+#[cfg(feature = "tee_test")]
+pub mod tests_aes_cbc {
+    use hashbrown::hash_map::Keys;
+
+    //-------- test framework import --------
+    //-------- local tests import --------
+    use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
+
+    test_fn! {
+        using TestResult;
+
+        fn test_tee_aes_cbc_init_update_final() {
+            // test encrypt
+            let plaintext = [1u8; 16];
+            let iv = [3u8; 16];
+            let Key = [2u8; 16];
+            let mut ciphertext = [0u8; 16];
+            let mut ctx = MbedAesCbcCtx::alloc_cipher_ctx().expect("Failed to allocate AES CBC context");
+            let _ = ctx.init(TEE_OperationMode::TEE_MODE_ENCRYPT, Some(&Key), None, Some(&iv)).expect("Failed to initialize AES CBC context");
+            let _ = ctx.update(true, Some(&plaintext), Some(&mut ciphertext)).expect("Failed to update AES CBC context");
+            ctx.finalize();
+            tee_debug!("ciphertext: {:?}", slice_fmt(&ciphertext));
+            // test decrypt
+            let mut decrypted_text = [0u8; 16];
+            let _ = ctx.init(TEE_OperationMode::TEE_MODE_DECRYPT, Some(&Key), None, Some(&iv)).expect("Failed to initialize AES CBC context");
+            let _ = ctx.update(true, Some(&ciphertext), Some(&mut decrypted_text)).expect("Failed to update AES CBC context");
+            ctx.finalize();
+            tee_debug!("decrypted_text: {:?}", slice_fmt(&decrypted_text));
+            assert_eq!(decrypted_text, plaintext);
+        }
+    }
+
+    tests_name! {
+        TEST_TEE_AES_CBC;
+        //------------------------
+        test_tee_aes_cbc_init_update_final,
     }
 }
