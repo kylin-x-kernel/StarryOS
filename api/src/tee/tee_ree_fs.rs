@@ -116,20 +116,6 @@ impl Default for TeeFsDir {
     }
 }
 
-/// read data from crypto RNG to buffer
-///
-/// # Arguments
-/// * `buf` - buffer to store read data
-///
-/// # Returns
-/// * `Ok(())` - success
-/// * `Err(TEE_ERROR_GENERIC)` - error
-/// TODO: Using mbedtls to implement a real RNG
-pub fn crypto_rng_read(buf: &mut [u8]) -> TeeResult {
-    buf.fill(0);
-    Ok(())
-}
-
 fn pos_to_block_num(position: usize) -> usize {
     position >> BLOCK_SHIFT
 }

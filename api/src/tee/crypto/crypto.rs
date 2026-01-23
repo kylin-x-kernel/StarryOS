@@ -8,14 +8,18 @@
 // 	- core/include/crypto/crypto.h
 //  - core/crypto/crypto.c
 
-use alloc::boxed::Box;
-use core::default::Default;
+use alloc::{boxed::Box, format};
+use core::{default::Default, fmt, fmt::Debug};
 
+use mbedtls_sys_auto::mpi_write_binary;
 use tee_raw_sys::*;
 
 use crate::tee::{
     TeeResult,
-    crypto::crypto_impl::crypto_ecc_keypair_ops,
+    crypto::crypto_impl::{
+        EccAlgoKeyPair, EccComKeyPair, EccKeypair, Sm2DsaKeyPair, Sm2KepKeyPair, Sm2PkeKeyPair,
+        crypto_ecc_keypair_ops, crypto_ecc_keypair_ops_generate,
+    },
     libmbedtls::{
         bignum::{BigNum, crypto_bignum_allocate},
         ecc::{EcdOps, Sm2DsaOps, Sm2KepOps, Sm2PkeOps},
@@ -76,7 +80,7 @@ pub struct ecc_keypair {
     pub y: BigNum,
     pub curve: u32,
     // TODO: add ops
-    pub ops: Box<dyn crypto_ecc_keypair_ops>,
+    // pub ops: Box<dyn crypto_ecc_keypair_ops>,
 }
 
 impl Default for ecc_keypair {
@@ -86,8 +90,19 @@ impl Default for ecc_keypair {
             x: BigNum::default(),
             y: BigNum::default(),
             curve: 0,
-            ops: Box::new(EcdOps),
+            // ops: Box::new(EcdOps),
         }
+    }
+}
+
+impl Debug for ecc_keypair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ecc_keypair")
+            .field("d", &self.d)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("curve", &format!("{:#010X?}", self.curve))
+            .finish()
     }
 }
 
@@ -117,7 +132,7 @@ impl tee_crypto_ops for ecc_keypair {
             x: crypto_bignum_allocate(key_size_bits)?,
             y: crypto_bignum_allocate(key_size_bits)?,
             curve,
-            ops,
+            // ops,
         })
     }
 
@@ -139,6 +154,79 @@ impl PartialEq for ecc_keypair {
 }
 
 impl Eq for ecc_keypair {}
+
+pub struct rsa_keypair {
+    pub e: BigNum, // Public exponent
+    pub d: BigNum, // Private exponent
+    pub n: BigNum, // Modulus
+
+    // Optional CRT parameters (all NULL if unused)
+    pub p: BigNum, // N = pq
+    pub q: BigNum,
+    pub qp: BigNum, // 1/q mod p
+    pub dp: BigNum, // d mod (p-1)
+    pub dq: BigNum, // d mod (q-1)
+}
+
+impl Debug for rsa_keypair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("rsa_keypair")
+            .field("e", &self.e)
+            .field("d", &self.d)
+            .field("n", &self.n)
+            .field("p", &self.p)
+            .field("q", &self.q)
+            .field("qp", &self.qp)
+            .field("dp", &self.dp)
+            .field("dq", &self.dq)
+            .finish()
+    }
+}
+
+impl tee_crypto_ops for rsa_keypair {
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> {
+        Ok(rsa_keypair {
+            e: crypto_bignum_allocate(key_size_bits)?,
+            d: crypto_bignum_allocate(key_size_bits)?,
+            n: crypto_bignum_allocate(key_size_bits)?,
+            p: BigNum::default(),
+            q: BigNum::default(),
+            qp: BigNum::default(),
+            dp: BigNum::default(),
+            dq: BigNum::default(),
+        })
+    }
+
+    fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef<'_>> {
+        match attr_id as u32 {
+            TEE_ATTR_RSA_MODULUS => Ok(CryptoAttrRef::BigNum(&mut self.n)),
+            TEE_ATTR_RSA_PUBLIC_EXPONENT => Ok(CryptoAttrRef::BigNum(&mut self.e)),
+            TEE_ATTR_RSA_PRIVATE_EXPONENT => Ok(CryptoAttrRef::BigNum(&mut self.d)),
+            TEE_ATTR_RSA_PRIME1 => Ok(CryptoAttrRef::BigNum(&mut self.p)),
+            TEE_ATTR_RSA_PRIME2 => Ok(CryptoAttrRef::BigNum(&mut self.q)),
+            TEE_ATTR_RSA_EXPONENT1 => Ok(CryptoAttrRef::BigNum(&mut self.dp)),
+            TEE_ATTR_RSA_EXPONENT2 => Ok(CryptoAttrRef::BigNum(&mut self.dq)),
+            TEE_ATTR_RSA_COEFFICIENT => Ok(CryptoAttrRef::BigNum(&mut self.qp)),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+        }
+    }
+}
+pub fn crypto_acipher_gen_ecc_key(
+    key: &mut ecc_keypair,
+    key_size_bits: usize,
+    object_type: u32,
+) -> TeeResult {
+    let mut key: Box<dyn crypto_ecc_keypair_ops_generate> = match object_type {
+        TEE_TYPE_ECDSA_KEYPAIR | TEE_TYPE_ECDH_KEYPAIR => {
+            Box::new(EccKeypair::<EccComKeyPair>::new(key))
+        }
+        TEE_TYPE_SM2_PKE_KEYPAIR => Box::new(EccKeypair::<Sm2PkeKeyPair>::new(key)),
+        TEE_TYPE_SM2_DSA_KEYPAIR => Box::new(EccKeypair::<Sm2DsaKeyPair>::new(key)),
+        TEE_TYPE_SM2_KEP_KEYPAIR => Box::new(EccKeypair::<Sm2KepKeyPair>::new(key)),
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
+    };
+    key.generate(key_size_bits)
+}
 
 // The crypto context used by the crypto_hash_*() functions
 pub(crate) struct CryptoHashContext {

@@ -10,6 +10,10 @@ pub(crate) fn tee_u32_to_big_endian(x: u32) -> u32 {
     x.to_be()
 }
 
+pub(crate) fn tee_u32_from_big_endian(x: u32) -> u32 {
+    u32::from_be(x)
+}
+
 /// Gets the class of a given algorithm
 pub(crate) fn tee_alg_get_class(algo: u32) -> u32 {
     if algo == TEE_ALG_SM2_PKE {

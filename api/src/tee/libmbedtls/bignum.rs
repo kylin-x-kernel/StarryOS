@@ -128,7 +128,7 @@ pub fn crypto_bignum_compare(a: &BigNum, b: &BigNum) -> Ordering {
 /// from: BigNum
 /// to: mutable byte slice
 /// Returns: TeeResult
-pub fn crypto_bignum_bn2bin(from: &BigNum, to: &mut [u8]) -> TeeResult<()> {
+pub fn crypto_bignum_bn2bin(from: &BigNum, to: &mut [u8]) -> TeeResult {
     let a = from.to_binary().map_err(|_| TEE_ERROR_GENERIC)?;
     to[..a.len()].copy_from_slice(&a);
     Ok(())
@@ -139,7 +139,7 @@ pub fn crypto_bignum_bn2bin(from: &BigNum, to: &mut [u8]) -> TeeResult<()> {
 /// from: byte slice
 /// to: mutable BigNum
 /// Returns: TeeResult
-pub fn crypto_bignum_bin2bn(from: &[u8], to: &mut BigNum) -> TeeResult<()> {
+pub fn crypto_bignum_bin2bn(from: &[u8], to: &mut BigNum) -> TeeResult {
     *to = BigNum::from_mpi(Mpi::from_binary(from).map_err(|_| TEE_ERROR_BAD_PARAMETERS)?);
     Ok(())
 }
@@ -149,6 +149,10 @@ pub fn crypto_bignum_bin2bn(from: &[u8], to: &mut BigNum) -> TeeResult<()> {
 /// FIXME: Add try_clone for Mpi in mbedtls-rs
 pub fn crypto_bignum_copy(to: &mut BigNum, from: &BigNum) {
     to.clone_from(from);
+}
+
+pub fn crypto_bignum_copy_from_mpi(to: &mut BigNum, from: *const mpi) {
+    unsafe { mpi_copy(to.as_mpi_mut().into(), from) };
 }
 
 /// Allocate a big number with specified size in bits

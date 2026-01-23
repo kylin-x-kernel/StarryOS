@@ -29,8 +29,9 @@ use crate::tee::{
     crypto_temp::crypto_temp::{
         crypto_hash_alloc_ctx, crypto_hash_final, crypto_hash_init, crypto_hash_update,
     },
+    rng_software::crypto_rng_read,
     tee_fs_key_manager::{TEE_FS_KM_FEK_SIZE, tee_fs_fek_crypt},
-    tee_ree_fs::{BLOCK_SIZE, TeeFsFdAux, TeeFsHtreeStorageOps, crypto_rng_read},
+    tee_ree_fs::{BLOCK_SIZE, TeeFsFdAux, TeeFsHtreeStorageOps},
     utee_defines::TEE_ALG,
     utils::slice_fmt,
 };

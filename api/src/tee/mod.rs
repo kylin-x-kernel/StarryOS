@@ -27,6 +27,7 @@ mod panic;
 mod property;
 mod protocol;
 mod ree_fs_rpc;
+mod rng_software;
 mod tee_fs;
 mod tee_misc;
 mod tee_obj;
