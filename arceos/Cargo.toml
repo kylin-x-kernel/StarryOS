@@ -62,14 +62,14 @@ axdriver = { path = "../local_crates/axdriver" }
 axfs = { path = "../local_crates/axfs" }
 axhal = { path = "../local_crates/axhal" }
 axinput = { path = "../local_crates/axinput" }
-axipi = { path = "modules/axipi" }
-axlog = { path = "modules/axlog" }
-axmm = { path = "modules/axmm" }
-axnet = { path = "modules/axnet" }
-axruntime = { path = "modules/axruntime" }
-axsync = { path = "modules/axsync" }
-axtask = { path = "modules/axtask" }
-axwatchdog = { path = "modules/axwatchdog" }
+axipi = { path = "../local_crates/axipi" }
+axlog = { path = "../local_crates/axlog" }
+axmm = { path = "../local_crates/axmm" }
+axnet = { path = "../local_crates/axnet" }
+axruntime = { path = "../local_crates/axruntime" }
+axsync = { path = "../local_crates/axsync" }
+axtask = { path = "../local_crates/axtask" }
+axwatchdog = { path = "../local_crates/axwatchdog" }
 
 allocator = { git = "https://github.com/arceos-org/allocator.git", tag = "v0.1.2", features = [
     "axerrno",

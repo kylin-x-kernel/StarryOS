@@ -22,7 +22,7 @@ categories = ["os", "no-std"]
 documentation = "https://arceos-org.github.io/arceos"
 
 [workspace.dependencies]
-axfeat = { path = "arceos/api/axfeat", features = [
+axfeat = { path = "local_crates/axfeat", features = [
     "alloc-slab",
     "fp-simd",
     "fs-ext4",
@@ -44,13 +44,16 @@ axdma = { path = "local_crates/axdma" }
 axfs = { path = "local_crates/axfs" }
 axhal = { path = "local_crates/axhal" }
 axinput = { path = "local_crates/axinput" }
-axlog = { path = "arceos/modules/axlog" }
-axmm = { path = "arceos/modules/axmm" }
-axnet = { path = "arceos/modules/axnet" }
+axipi = { path = "local_crates/axipi" }
+axlog = { path = "local_crates/axlog" }
+axmm = { path = "local_crates/axmm" }
+axnet = { path = "local_crates/axnet" }
 axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt"}
-axruntime = { path = "arceos/modules/axruntime" }
-axsync = { path = "arceos/modules/axsync" }
-axtask = { path = "arceos/modules/axtask" }
+axruntime = { path = "local_crates/axruntime" }
+axsync = { path = "local_crates/axsync" }
+axtask = { path = "local_crates/axtask" }
+
+axwatchdog = { path = "local_crates/axwatchdog" }
 
 axbacktrace = "0.1"
 axerrno = "0.2"
@@ -107,6 +110,9 @@ axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", b
 axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
 axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
 axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
+enum_dispatch = "0.3"
+ctor_bare = "0.2"
+lock_api = { version = "0.4", default-features = false }
 
 [package]
 name = "starry"
