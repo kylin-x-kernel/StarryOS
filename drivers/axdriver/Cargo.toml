@@ -5,7 +5,7 @@ edition.workspace = true
 authors = [
     "Yuekai Jia <equation618@gmail.com>",
     "ChengXiang Qi <kuangjux@outlook.com>",
-    "KylinSoft Co., Ltd. <https://www.kylinos.cn/>"
+    "KylinSoft Co., Ltd. <https://www.kylinos.cn/>",
 ]
 description = "ArceOS device drivers"
 license.workspace = true
@@ -50,14 +50,14 @@ default = ["bus-pci"]
 axalloc = { workspace = true, optional = true }
 axconfig = { workspace = true, optional = true }
 # axdma = { workspace = true, optional = true }
-axdriver_base = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git" , branch = "dev" }
-axdriver_block = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev", optional = true }
-axdriver_display = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev", optional = true }
-axdriver_input = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git",branch = "dev", optional = true }
-axdriver_net = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev", optional = true }
-axdriver_pci = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev", optional = true }
-axdriver_vsock = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev",  optional = true }
-axdriver_virtio = { git = "https://github.com/kylin-x-kernel/axdriver_crates.git", branch = "dev",  optional = true }
+axdriver_base = { workspace = true }
+axdriver_block = { workspace = true, optional = true }
+axdriver_display = { workspace = true, optional = true }
+axdriver_input = { workspace = true, optional = true }
+axdriver_net = { workspace = true, optional = true }
+axdriver_pci = { workspace = true, optional = true }
+axdriver_vsock = { workspace = true, optional = true }
+axdriver_virtio = { workspace = true, optional = true }
 axerrno = { workspace = true, optional = true }
 axhal = { workspace = true, optional = true }
 axklib = { workspace = true, optional = true }

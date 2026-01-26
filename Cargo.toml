@@ -112,3 +112,13 @@ chrono = { version = "0.4", default-features = false }
 enum_dispatch = "0.3"
 ctor_bare = "0.2"
 lock_api = { version = "0.4", default-features = false }
+
+# Driver Crates
+axdriver_base = { path = "drivers/axdriver_base" }
+axdriver_block = { path = "drivers/axdriver_block" }
+axdriver_display = { path = "drivers/axdriver_display" }
+axdriver_input = { path = "drivers/axdriver_input" }
+axdriver_net = { path = "drivers/axdriver_net" }
+axdriver_pci = { path = "drivers/axdriver_pci" }
+axdriver_vsock = { path = "drivers/axdriver_vsock" }
+axdriver_virtio = { path = "drivers/axdriver_virtio" }
