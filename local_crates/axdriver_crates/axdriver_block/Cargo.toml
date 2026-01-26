@@ -1,0 +1,26 @@
+[package]
+name = "axdriver_block"
+edition.workspace = true
+description = "Common traits and types for block storage drivers"
+documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_block"
+keywords = ["arceos", "driver", "blk"]
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[features]
+bcm2835-sdhci = ["dep:bcm2835-sdhci"]
+ramdisk = []
+ramdisk-static = []
+sdmmc = ["dep:simple-sdmmc"]
+ahci = ["dep:simple-ahci"]
+
+[dependencies]
+axdriver_base = { workspace = true }
+bcm2835-sdhci = { git = "https://github.com/lhw2002426/bcm2835-sdhci.git", rev = "e974f16", optional = true }
+log = { workspace = true }
+simple-sdmmc = { git = "https://github.com/Starry-OS/simple-sdmmc.git", rev = "9e6420c", optional = true }
+simple-ahci = { git = "https://github.com/Starry-OS/simple-ahci.git", rev = "36d0979", optional = true }

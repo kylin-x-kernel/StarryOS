@@ -1,0 +1,27 @@
+[package]
+name = "axdriver_net"
+edition.workspace = true
+authors = [
+    "Yuekai Jia <equation618@gmail.com>",
+    "ChengXiang Qi <kuangjux@outlook.com>",
+]
+description = "Common traits and types for network device (NIC) drivers"
+documentation = "https://arceos-org.github.io/axdriver_crates/axdriver_net"
+keywords = ["arceos", "driver", "nic"]
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+ixgbe = ["dep:ixgbe-driver"]
+fxmac = ["dep:fxmac_rs"]
+
+[dependencies]
+axdriver_base = { workspace = true }
+fxmac_rs = { git = "https://github.com/elliott10/fxmac_rs.git", rev = "0dbc3916", optional = true }
+ixgbe-driver = { git = "https://github.com/KuangjuX/ixgbe-driver.git", rev = "8e5eb74", optional = true }
+log = { workspace = true }
+spin = "0.9"

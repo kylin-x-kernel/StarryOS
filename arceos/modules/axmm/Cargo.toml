@@ -1,0 +1,31 @@
+[package]
+name = "axmm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "ArceOS virtual memory management module"
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/arceos-org/arceos/tree/main/modules/axmm"
+documentation = "https://arceos-org.github.io/arceos/axmm/index.html"
+
+[features]
+default = []
+copy = ["page_table_multiarch/copy-from"]
+
+[dependencies]
+axalloc = { workspace = true }
+axconfig = { workspace = true }
+axerrno = { workspace = true }
+axfs = { workspace = true }
+axfs-ng-vfs = { workspace = true }
+axhal = { workspace = true, features = ["paging"] }
+axsync = { workspace = true }
+axtask = { workspace = true }
+enum_dispatch = { workspace = true }
+kspin = { workspace = true }
+lazyinit = { workspace = true }
+log = { workspace = true }
+memory_addr = { workspace = true }
+memory_set = { version = "0.4", features = ["axerrno"] }
+page_table_multiarch = { workspace = true, optional = true }

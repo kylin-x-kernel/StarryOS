@@ -1,0 +1,20 @@
+[package]
+name = "fdtree_rs"
+version = "0.1.0"
+edition = "2024"
+authors = [
+    "Weikang Guo <guoweikang.kernel@gmail.com>", 
+    "KylinSoft Co., Ltd. <https://www.kylinos.cn/>"
+    ]
+description = "A pure-Rust #![no_std] crate for parsing Linux Flattened Devicetrees"
+license = "Apache-2.0"
+keywords = [
+    "devicetree",
+    "fdt",
+    "dt",
+	"linux",
+]
+
+documentation = "https://github.com/Free-Developers-Alliance-LYK/fdtree-rs"
+
+[dependencies]

@@ -1,0 +1,121 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "modules/axalloc",
+    "modules/axconfig",
+    "modules/axdisplay",
+    "modules/axdma",
+    "modules/axdriver",
+    "modules/axfs",
+    "modules/axhal",
+    "modules/axinput",
+    "modules/axipi",
+    "modules/axlog",
+    "modules/axmm",
+    "modules/axnet",
+    "modules/axruntime",
+    "modules/axsync",
+    "modules/axtask",
+
+    "api/axfeat",
+    "api/arceos_api",
+    "api/arceos_posix_api",
+
+    "ulib/axstd",
+    "ulib/axlibc",
+
+    "examples/helloworld",
+    "examples/helloworld-myplat",
+    "examples/httpclient",
+    "examples/httpserver",
+    "examples/shell",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+authors = [
+    "Yuekai Jia <equation618@gmail.com>",
+    "KylinSoft Co., Ltd. <https://www.kylinos.cn/>"
+    ]
+license = "Apache-2.0"
+homepage = "https://github.com/arceos-org/arceos"
+documentation = "https://arceos-org.github.io/arceos"
+repository = "https://github.com/arceos-org/arceos"
+keywords = ["arceos", "kernel"]
+categories = ["os", "no-std"]
+
+[workspace.dependencies]
+axstd = { path = "ulib/axstd" }
+axlibc = { path = "ulib/axlibc" }
+
+arceos_api = { path = "api/arceos_api" }
+arceos_posix_api = { path = "api/arceos_posix_api" }
+axfeat = { path = "api/axfeat" }
+
+axalloc = { path = "modules/axalloc" }
+axconfig = { path = "modules/axconfig" }
+axdisplay = { path = "modules/axdisplay" }
+axdma = { path = "modules/axdma" }
+axdriver = { path = "modules/axdriver" }
+axfs = { path = "modules/axfs" }
+axhal = { path = "modules/axhal" }
+axinput = { path = "modules/axinput" }
+axipi = { path = "modules/axipi" }
+axlog = { path = "modules/axlog" }
+axmm = { path = "modules/axmm" }
+axnet = { path = "modules/axnet" }
+axruntime = { path = "modules/axruntime" }
+axsync = { path = "modules/axsync" }
+axtask = { path = "modules/axtask" }
+axwatchdog = { path = "modules/axwatchdog" }
+
+allocator = { git = "https://github.com/arceos-org/allocator.git", tag = "v0.1.2", features = [
+    "axerrno",
+] }
+axbacktrace = "0.1"
+axdriver_base = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_block = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_display = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_input = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_net = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_pci = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_virtio = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axdriver_vsock = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.2-dev.0" }
+axerrno = "0.2"
+axfs-ng-vfs = "0.1"
+axio = "0.3.0-pre.1"
+axklib = { git = "https://github.com/arceos-hypervisor/axklib.git" } # FIXME: pin to a specific commit or tag
+axpoll = "0.1"
+bindgen = "0.72"
+cfg-if = "1.0"
+chrono = { version = "0.4", default-features = false }
+crate_interface = "0.1.4"
+ctor_bare = "0.2"
+enum_dispatch = "0.3"
+event-listener = { version = "5.4.0", default-features = false }
+kernel_guard = "0.1"
+kspin = "0.1"
+lazyinit = "0.2"
+lazy_static = { version = "1.5", features = ["spin_no_std"] }
+lock_api = { version = "0.4", default-features = false }
+log = "0.4"
+memory_addr = "0.4"
+percpu = "0.2"
+scope-local = "0.1"
+spin = "0.10"
+hashbrown = "0.16"
+
+page_table_multiarch = { git = "https://github.com/kylin-x-kernel/page_table_multiarch.git", branch = "dev", features = [
+    "axerrno",
+] }
+axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-aarch64-bsta1000b = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-aarch64-raspi = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-aarch64-phytium-pi = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
+axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}

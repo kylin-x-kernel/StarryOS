@@ -1,0 +1,75 @@
+# Architecture identifier.
+arch = "aarch64"                                # str
+# Platform identifier.
+platform = "aarch64-crosvm-virt"                  # str
+# Platform package.
+package = "axplat-aarch64-crosvm-virt"            # str
+
+#
+# Platform configs
+#
+[plat]
+# Number of CPUs.
+cpu-num = 2                         # uint
+# Base address of the whole physical memory.
+phys-memory-base = 0x8000_0000      # uint
+# Size of the whole physical memory. (2G)
+phys-memory-size = 0x8000_0000       # uint
+# Base physical address of the kernel image.
+kernel-base-paddr = 0x8008_0000     # uint
+# Base virtual address of the kernel image.
+kernel-base-vaddr = "0xffff000080080000"     # uint
+# Linear mapping offset, for quick conversions between physical and virtual
+# addresses.
+phys-virt-offset = "0xffff_0000_0000_0000"      # uint
+# Offset of bus address and phys address. some boards, the bus address is
+# different from the physical address.
+phys-bus-offset = 0                             # uint
+# Kernel address space base.
+kernel-aspace-base = "0xffff_0000_0000_0000"    # uint
+# Kernel address space size.
+kernel-aspace-size = "0x0000_ffff_ffff_f000"    # uint
+# Stack size on bootstrapping. (256K)
+boot-stack-size = 0x40000                       # uint
+
+# PSCI
+psci-method = "hvc"             # str
+
+#
+# Device specifications
+#
+[devices]
+# MMIO ranges with format (`base_paddr`, `size`).
+mmio-ranges = [
+    [0x3f8, 0x1000],               # UART
+    [0x2000, 0x1000],      # PL030 RTC
+    [0x3ffb_0000, 0x20_0000],      # GICV3 MMIO
+    [0x7000_0000, 0x200_0000],     # PCI memory ranges (ranges 1: 32-bit MMIO space)
+    [0x7200_0000, 0x100_0000],    # PCIe ECAM space
+]                                  # [(uint, uint)]
+
+# Base physical address of the PCIe ECAM space.
+pci-ecam-base = 0x7200_0000  # uint
+# End PCI bus number (`bus-range` property in device tree).
+pci-bus-end = 0x00              # uint
+# PCI device memory ranges (`ranges` property in device tree).
+pci-ranges = [
+    #[0x3ef_f0000, 0x1_0000],            # PIO space
+    [0x7000_0000, 0x200_0000],         # 32-bit MMIO space
+    #[0x80_0000_0000, 0x80_0000_0000],   # 64-bit MMIO space
+]  							# [(uint, uint)]
+# 16650 UART Address
+uart-paddr = 0x3f8        # uint
+# UART IRQ number (SPI, 1)
+uart-irq = 32                # uint
+# Timer interrupt num (PPI, physical timer).
+timer-irq = 30                  # uint
+# IPI interrupt num
+ipi-irq = 1                   # uint
+
+# GIC V3 Addresses
+gicd-paddr = 0x3fff_0000     # uint
+gicr-paddr = 0x3ffb_0000     # uint
+
+# RTC (PL030) Address
+rtc-paddr = 0x2000          # uint

@@ -1,0 +1,16 @@
+[package]
+name = "tee_raw_sys"
+version = "0.1.0"
+edition = "2024"
+authors = ["Weikang Guo <guoweikang.kernel@gmail.com>"]
+description = "A Tee raw sys for kernel"
+license = "Apache-2.0"
+keywords = [
+    "tee",
+    "kernel",
+    "nostd",
+]
+
+documentation = "https://github.com/kylin-x-kernel/tee_raw_sys.git"
+
+[dependencies]
