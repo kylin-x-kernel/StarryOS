@@ -60,7 +60,7 @@ mod user_ta;
 mod utils;
 mod uuid;
 mod vm;
-use core::arch::asm;
+use core::{arch::asm, ffi::c_uint};
 
 use axerrno::{AxError, AxResult};
 use axhal::uspace::UserContext;
@@ -83,10 +83,16 @@ use crate::tee::{
     },
     panic::sys_tee_scn_panic,
     property::{sys_tee_scn_get_property, sys_tee_scn_get_property_name_to_index},
+    tee_svc_cryp::{
+        syscall_cryp_obj_alloc, syscall_cryp_obj_close, syscall_cryp_obj_copy,
+        syscall_cryp_obj_get_attr, syscall_cryp_obj_get_info, syscall_cryp_obj_populate,
+        syscall_cryp_obj_reset, syscall_cryp_obj_restrict_usage,
+    },
     tee_svc_cryp2::sys_tee_scn_hash_final,
     // tee_svc_cryp::sys_tee_scn_hash_init
     tee_svc_cryp2::sys_tee_scn_hash_init,
     tee_svc_cryp2::sys_tee_scn_hash_update,
+    tee_svc_storage::{syscall_storage_obj_create, syscall_storage_obj_open},
     tee_time::{sys_tee_scn_get_time, sys_tee_scn_set_ta_time, sys_tee_scn_wait},
 };
 
@@ -172,6 +178,67 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
             _uctx.arg4() as _,
         ),
 
+        Sysno::tee_scn_cryp_obj_get_info => {
+            syscall_cryp_obj_get_info(_uctx.arg0() as _, _uctx.arg1() as _)
+        }
+
+        Sysno::tee_scn_cryp_obj_restrict_usage => {
+            syscall_cryp_obj_restrict_usage(_uctx.arg0() as _, _uctx.arg1() as _)
+        }
+
+        Sysno::tee_scn_cryp_obj_get_attr => syscall_cryp_obj_get_attr(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+        ),
+
+        Sysno::tee_scn_cryp_obj_alloc => {
+            syscall_cryp_obj_alloc(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_cryp_obj_close => syscall_cryp_obj_close(_uctx.arg0() as _),
+
+        Sysno::tee_scn_cryp_obj_reset => syscall_cryp_obj_reset(_uctx.arg0() as _),
+
+        Sysno::tee_scn_cryp_obj_populate => {
+            syscall_cryp_obj_populate(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_cryp_obj_copy => syscall_cryp_obj_copy(_uctx.arg0() as _, _uctx.arg1() as _),
+
+        Sysno::tee_scn_storage_obj_open => syscall_storage_obj_open(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+            _uctx.arg4() as _,
+        ),
+
+        Sysno::tee_scn_storage_obj_create => {
+            let len: usize;
+            let obj_ptr: *mut c_uint;
+
+            unsafe {
+                asm!(
+                    "mov {len}, x6",
+                    "mov {obj}, x7",
+                    len = out(reg) len,
+                    obj = out(reg) obj_ptr,
+                    options(nostack, preserves_flags),
+                );
+            }
+            syscall_storage_obj_create(
+                _uctx.arg0() as _,
+                _uctx.arg1() as _,
+                _uctx.arg2() as _,
+                _uctx.arg3() as _,
+                _uctx.arg4() as _,
+                _uctx.arg5() as _,
+                len as _,
+                obj_ptr as _,
+            )
+        }
         #[cfg(feature = "tee_test")]
         Sysno::tee_scn_test => sys_tee_scn_test(),
 

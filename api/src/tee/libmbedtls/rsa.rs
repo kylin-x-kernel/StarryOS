@@ -38,6 +38,7 @@ pub fn crypto_acipher_gen_rsa_key(key: &mut rsa_keypair, key_size: usize) -> Tee
         );
     }
     e = tee_u32_from_big_endian(e);
+    tee_debug!("crypto_acipher_gen_rsa_key get e: {:?}", e);
 
     let mut rng = TeeSoftwareRng::new();
     let pk = Pk::generate_rsa(&mut rng, key_size as u32, e);

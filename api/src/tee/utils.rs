@@ -61,10 +61,14 @@ pub fn roundup_u<
 }
 
 pub fn slice_fmt(data: &[u8]) -> String {
+    let min_len: usize = 32;
     let len = data.len();
-    let show_len = len.min(16);
+    let show_len = len.min(min_len);
 
-    format!("len: 0x{:X}, ", len,) + "data: " + &hex::encode_upper(&data[..show_len]) + "..."
+    format!("len: 0x{:X}, ", len,)
+        + "data: "
+        + &hex::encode_upper(&data[..show_len])
+        + if len > min_len { "..." } else { "" }
 }
 
 #[cfg(feature = "tee_test")]
