@@ -151,10 +151,10 @@ OBJCOPY ?= rust-objcopy --binary-architecture=$(ARCH)
 GDB ?= gdb
 
 # Paths
-OUT_DIR ?= $(APP)
+OUT_DIR ?= $(PWD)
 LD_SCRIPT ?= $(TARGET_DIR)/$(TARGET)/$(MODE)/linker_$(PLAT_NAME).lds
 
-APP_NAME := $(shell basename $(APP))
+APP_NAME := xkernel
 OUT_ELF := $(OUT_DIR)/$(APP_NAME)_$(PLAT_NAME).elf
 OUT_BIN := $(patsubst %.elf,%.bin,$(OUT_ELF))
 OUT_UIMG := $(patsubst %.elf,%.uimg,$(OUT_ELF))
