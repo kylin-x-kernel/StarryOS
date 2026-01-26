@@ -61,13 +61,9 @@
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "dyn")]
-extern crate alloc;
-
 #[macro_use]
 mod macros;
 
-#[cfg(not(feature = "dyn"))]
 mod bus;
 mod drivers;
 mod dummy;
@@ -76,27 +72,20 @@ mod structs;
 #[cfg(feature = "virtio")]
 mod virtio;
 
-#[cfg(feature = "ixgbe")]
-mod ixgbe;
-
-#[cfg(feature = "dyn")]
-mod dyn_drivers;
-
-#[cfg(feature = "dyn")]
-pub use dyn_drivers::setup;
+// #[cfg(feature = "ixgbe")]
+// mod ixgbe;
 
 pub mod prelude;
 
 #[allow(unused_imports)]
 use self::prelude::*;
-pub use self::structs::{AxDeviceContainer, AxDeviceEnum};
-
 #[cfg(feature = "block")]
 pub use self::structs::AxBlockDevice;
 #[cfg(feature = "display")]
 pub use self::structs::AxDisplayDevice;
 #[cfg(feature = "net")]
 pub use self::structs::AxNetDevice;
+pub use self::structs::{AxDeviceContainer, AxDeviceEnum};
 
 /// A structure that contains all device drivers, organized by their category.
 #[derive(Default)]
@@ -123,34 +112,23 @@ impl AllDevices {
     ///
     /// See the [crate-level documentation](crate) for more details.
     pub const fn device_model() -> &'static str {
-        if cfg!(feature = "dyn") {
-            "dyn"
-        } else {
-            "static"
-        }
+        "static"
     }
 
     /// Probes all supported devices.
     fn probe(&mut self) {
-        #[cfg(feature = "dyn")]
-        for dev in dyn_drivers::probe_all_devices() {
-            self.add_device(dev);
-        }
-        #[cfg(not(feature = "dyn"))]
-        {
-            for_each_drivers!(type Driver, {
-                if let Some(dev) = Driver::probe_global() {
-                    info!(
-                        "registered a new {:?} device: {:?}",
-                        dev.device_type(),
-                        dev.device_name(),
-                    );
-                    self.add_device(dev);
-                }
-            });
+        for_each_drivers!(type Driver, {
+            if let Some(dev) = Driver::probe_global() {
+                info!(
+                    "registered a new {:?} device: {:?}",
+                    dev.device_type(),
+                    dev.device_name(),
+                );
+                self.add_device(dev);
+            }
+        });
 
-            self.probe_bus_devices();
-        }
+        self.probe_bus_devices();
     }
 
     /// Adds one device into the corresponding container, according to its device category.

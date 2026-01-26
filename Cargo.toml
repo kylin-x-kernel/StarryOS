@@ -17,6 +17,9 @@ authors = [
 ]
 homepage = "https://github.com/arceos-org/arceos"
 repository = "https://github.com/arceos-org/starry-next"
+keywords = ["arceos", "kernel"]
+categories = ["os", "no-std"]
+documentation = "https://arceos-org.github.io/arceos"
 
 [workspace.dependencies]
 axfeat = { path = "arceos/api/axfeat", features = [
@@ -33,13 +36,14 @@ axfeat = { path = "arceos/api/axfeat", features = [
     "uspace",
 ] }
 
-axalloc = { path = "arceos/modules/axalloc" }
-axconfig = { path = "arceos/modules/axconfig" }
-axdisplay = { path = "arceos/modules/axdisplay" }
-axdriver = { path = "arceos/modules/axdriver" }
-axfs = { path = "arceos/modules/axfs" }
-axhal = { path = "arceos/modules/axhal" }
-axinput = { path = "arceos/modules/axinput" }
+axalloc = { path = "local_crates/axalloc" }
+axconfig = { path = "local_crates/axconfig" }
+axdisplay = { path = "local_crates/axdisplay" }
+axdriver = { path = "local_crates/axdriver" }
+axdma = { path = "local_crates/axdma" }
+axfs = { path = "local_crates/axfs" }
+axhal = { path = "local_crates/axhal" }
+axinput = { path = "local_crates/axinput" }
 axlog = { path = "arceos/modules/axlog" }
 axmm = { path = "arceos/modules/axmm" }
 axnet = { path = "arceos/modules/axnet" }
@@ -79,6 +83,30 @@ starry-vm = "0.2"
 
 starry-core = { path = "./core" }
 starry-api = { path = "./api" }
+
+# Arceos
+allocator = { git = "https://github.com/arceos-org/allocator.git", tag = "v0.1.2", features = [
+    "axerrno",
+] }
+axklib = { git = "https://github.com/arceos-hypervisor/axklib.git" } # FIXME: pin to a specific commit or tag
+log = "0.4"
+percpu = "0.2"
+lazyinit = "0.2"
+crate_interface = "0.1.4"
+chrono = { version = "0.4", default-features = false }
+axplat = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+kernel_guard = "0.1"
+page_table_multiarch = { git = "https://github.com/kylin-x-kernel/page_table_multiarch.git", branch = "dev", features = [
+    "axerrno",
+] }
+axplat-aarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-aarch64-bsta1000b = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-aarch64-raspi = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-aarch64-phytium-pi = { git = "https://github.com/arceos-org/axplat_crates.git", tag = "dev-v03" }
+axplat-x86-pc = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
+axplat-riscv64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev"}
+axplat-loongarch64-qemu-virt = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
+axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_crates.git" , branch = "dev"}
 
 [package]
 name = "starry"

@@ -5,7 +5,6 @@
 macro_rules! register_net_driver {
     ($driver_type:ty, $device_type:ty) => {
         /// The unified type of the NIC devices.
-        #[cfg(not(feature = "dyn"))]
         pub type AxNetDevice = $device_type;
     };
 }
@@ -13,7 +12,6 @@ macro_rules! register_net_driver {
 macro_rules! register_block_driver {
     ($driver_type:ty, $device_type:ty) => {
         /// The unified type of the NIC devices.
-        #[cfg(not(feature = "dyn"))]
         pub type AxBlockDevice = $device_type;
     };
 }
@@ -21,7 +19,6 @@ macro_rules! register_block_driver {
 macro_rules! register_display_driver {
     ($driver_type:ty, $device_type:ty) => {
         /// The unified type of the NIC devices.
-        #[cfg(not(feature = "dyn"))]
         pub type AxDisplayDevice = $device_type;
     };
 }
@@ -29,7 +26,6 @@ macro_rules! register_display_driver {
 macro_rules! register_input_driver {
     ($driver_type:ty, $device_type:ty) => {
         /// The unified type of the NIC devices.
-        #[cfg(not(feature = "dyn"))]
         pub type AxInputDevice = $device_type;
     };
 }
@@ -37,7 +33,6 @@ macro_rules! register_input_driver {
 macro_rules! register_vsock_driver {
     ($driver_type:ty, $device_type:ty) => {
         /// The unified type of the NIC devices.
-        #[cfg(not(feature = "dyn"))]
         pub type AxVsockDevice = $device_type;
     };
 }
