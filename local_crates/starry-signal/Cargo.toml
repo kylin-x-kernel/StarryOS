@@ -16,7 +16,7 @@ bitflags = "2.6"
 cfg-if = "1"
 derive_more = { version = "2.0", default-features = false, features = ["full"] }
 event-listener = { version = "5.4", default-features = false }
-kspin = "0.1"
+kspin = { workspace = true }
 linux-raw-sys = { version = "0.11", default-features = false, features = [
     "general",
     "no_std",

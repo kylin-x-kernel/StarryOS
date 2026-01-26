@@ -84,13 +84,14 @@ axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt" 
 # Third-Party Crates
 arm-gic = { path = "local_crates/arm-gic" }
 fdtree_rs = { path = "local_crates/fdtree-rs" }
+kspin = { path = "local_crates/kspin" }
+kernel_guard = { path = "local_crates/kernel_guard" }
 bitflags = "2.10"
 bytemuck = { version = "1.23", features = ["unsound_ptr_pod_impl"] }
 cfg-if = "1.0"
 event-listener = { version = "5.4.0", default-features = false }
 extern-trait = "0.2"
 hashbrown = "0.16"
-kspin = "0.1"
 lazy_static = { version = "1.5", features = ["spin_no_std"] }
 linkme = "0.3.33"
 linux-raw-sys = { version = "0.11", default-features = false, features = [
@@ -108,7 +109,6 @@ percpu = "0.2"
 lazyinit = "0.2"
 crate_interface = "0.1.4"
 chrono = { version = "0.4", default-features = false }
-kernel_guard = "0.1"
 enum_dispatch = "0.3"
 ctor_bare = "0.2"
 lock_api = { version = "0.4", default-features = false }

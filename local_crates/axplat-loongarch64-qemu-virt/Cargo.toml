@@ -19,7 +19,7 @@ smp = ["axplat/smp", "kspin/smp"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, optional = true }
-kspin = "0.1"
+kspin = { workspace = true }
 lazyinit = "0.2"
 log = "0.4"
 loongArch64 = "0.2.4"

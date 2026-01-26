@@ -9,10 +9,10 @@ license = "Apache-2.0"
 repository = "https://github.com/Starry-OS/starry-process"
 
 [dependencies]
-kspin = "0.1"
+kspin = { workspace = true }
 lazyinit = "0.2.1"
 weak-map = "0.1"
 
 [dev-dependencies]
 ctor = "0.4.1"
-kspin = { version = "0.1", features = ["smp"] }
+kspin = { workspace = true, features = ["smp"] }

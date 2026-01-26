@@ -19,7 +19,7 @@ smp = ["axplat/smp", "kspin/smp"]
 reboot-on-system-off = []
 
 [dependencies]
-kspin = "0.1"
+kspin = { workspace = true }
 log = "0.4"
 bitflags = "2.6"
 lazyinit = "0.2"
