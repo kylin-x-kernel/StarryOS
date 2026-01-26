@@ -17,7 +17,7 @@ documentation = "https://kylin-x-kernel.github.io/kylin-x-kernel"
 
 [workspace.dependencies]
 # Arceos Modules
-axfeat = { path = "local_crates/axfeat", features = [
+axfeat = { path = "api/axfeat", features = [
     "alloc-slab",
     "fp-simd",
     "fs-ext4",
@@ -31,61 +31,61 @@ axfeat = { path = "local_crates/axfeat", features = [
     "uspace",
 ] }
 
-axalloc = { path = "local_crates/axalloc" }
-axconfig = { path = "local_crates/axconfig" }
-axdisplay = { path = "local_crates/axdisplay" }
-axdriver = { path = "local_crates/axdriver" }
-axdma = { path = "local_crates/axdma" }
-axfs = { path = "local_crates/axfs" }
-axhal = { path = "local_crates/axhal" }
-axinput = { path = "local_crates/axinput" }
-axipi = { path = "local_crates/axipi" }
-axlog = { path = "local_crates/axlog" }
-axmm = { path = "local_crates/axmm" }
-axnet = { path = "local_crates/axnet" }
-axruntime = { path = "local_crates/axruntime" }
-axsync = { path = "local_crates/axsync" }
-axtask = { path = "local_crates/axtask" }
-axwatchdog = { path = "local_crates/axwatchdog" }
-axcpu = { path = "local_crates/axcpu" }
+axalloc = { path = "mm/axalloc" }
+axconfig = { path = "util/axconfig" }
+axdisplay = { path = "io/axdisplay" }
+axdriver = { path = "drivers/axdriver" }
+axdma = { path = "io/axdma" }
+axfs = { path = "fs/axfs" }
+axhal = { path = "arch/axhal" }
+axinput = { path = "io/axinput" }
+axipi = { path = "arch/axipi" }
+axlog = { path = "util/axlog" }
+axmm = { path = "mm/axmm" }
+axnet = { path = "net/axnet" }
+axruntime = { path = "core/axruntime" }
+axsync = { path = "core/axsync" }
+axtask = { path = "core/axtask" }
+axwatchdog = { path = "io/axwatchdog" }
+axcpu = { path = "arch/axcpu" }
 
 # Arceos Crates
-allocator = { path = "local_crates/allocator", features = ["axerrno"] }
-axklib = { path = "local_crates/axklib" } # FIXME: pin to a specific commit or tag
-page_table_multiarch = { path = "local_crates/page_table_multiarch", features = [
+allocator = { path = "mm/allocator", features = ["axerrno"] }
+axklib = { path = "util/axklib" } # FIXME: pin to a specific commit or tag
+page_table_multiarch = { path = "mm/page_table_multiarch", features = [
     "axerrno",
 ] }
-page_table_entry = { path = "local_crates/page_table_entry" }
-axbacktrace = { path = "local_crates/axbacktrace" }
-axerrno = { path = "local_crates/axerrno" }
-axfs-ng-vfs = { path = "local_crates/axfs-ng-vfs" }
-axio = { path = "local_crates/axio" }
-axpoll = { path = "local_crates/axpoll" }
-memory_addr = { path = "local_crates/memory_addr" }
-memory_set = { path = "local_crates/memory_set" }
+page_table_entry = { path = "mm/page_table_entry" }
+axbacktrace = { path = "util/axbacktrace" }
+axerrno = { path = "util/axerrno" }
+axfs-ng-vfs = { path = "fs/axfs-ng-vfs" }
+axio = { path = "io/axio" }
+axpoll = { path = "core/axpoll" }
+memory_addr = { path = "mm/memory_addr" }
+memory_set = { path = "mm/memory_set" }
 
 # Starry Modules
-starry-signal = { version = "0.2", path = "local_crates/starry-signal" }
-starry-core = { path = "local_crates/starry-core" }
-starry-api = { path = "local_crates/starry-api" }
-starry-process = { path = "local_crates/starry-process" }
-starry-vm = { path = "local_crates/starry-vm" }
+starry-signal = { version = "0.2", path = "process/starry-signal" }
+starry-core = { path = "api/starry-core" }
+starry-api = { path = "api/starry-api" }
+starry-process = { path = "process/starry-process" }
+starry-vm = { path = "process/starry-vm" }
 
 # Platform Abstraction Layer
-axplat = { path = "local_crates/axplat" }
-axplat-macros = { path = "local_crates/axplat-macros" }
-axplat-aarch64-qemu-virt = { path = "local_crates/axplat-aarch64-qemu-virt" }
-axplat-x86-pc = { path = "local_crates/axplat-x86-pc" }
-axplat-riscv64-qemu-virt = { path = "local_crates/axplat-riscv64-qemu-virt" }
-axplat-loongarch64-qemu-virt = { path = "local_crates/axplat-loongarch64-qemu-virt" }
-axplat-aarch64-peripherals = { path = "local_crates/axplat-aarch64-peripherals", default-features = false }
-axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt" }
+axplat = { path = "arch/axplat" }
+axplat-macros = { path = "arch/axplat-macros" }
+axplat-aarch64-qemu-virt = { path = "arch/axplat-aarch64-qemu-virt" }
+axplat-x86-pc = { path = "arch/axplat-x86-pc" }
+axplat-riscv64-qemu-virt = { path = "arch/axplat-riscv64-qemu-virt" }
+axplat-loongarch64-qemu-virt = { path = "arch/axplat-loongarch64-qemu-virt" }
+axplat-aarch64-peripherals = { path = "arch/axplat-aarch64-peripherals", default-features = false }
+axplat-aarch64-crosvm-virt = { path = "arch/axplat-aarch64-crosvm-virt" }
 
 # Third-Party Crates
-arm-gic = { path = "local_crates/arm-gic" }
-fdtree_rs = { path = "local_crates/fdtree-rs" }
-kspin = { path = "local_crates/kspin" }
-kernel_guard = { path = "local_crates/kernel_guard" }
+arm-gic = { path = "drivers/arm-gic" }
+fdtree_rs = { path = "fs/fdtree-rs" }
+kspin = { path = "util/kspin" }
+kernel_guard = { path = "util/kernel_guard" }
 bitflags = "2.10"
 bytemuck = { version = "1.23", features = ["unsound_ptr_pod_impl"] }
 cfg-if = "1.0"
