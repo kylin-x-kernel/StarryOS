@@ -23,7 +23,7 @@ pmu = ["irq", "axplat/pmu"]
 log = "0.4"
 page_table_entry = "0.5"
 axconfig-macros = "0.2"
-axplat-aarch64-peripherals = { version = "0.3.0", path = "../axplat-aarch64-peripherals" }
+axplat-aarch64-peripherals = { workspace = true, default-features = false, features = ["gicv2"]}
 axcpu = { workspace = true }
 axplat = { workspace = true }
 

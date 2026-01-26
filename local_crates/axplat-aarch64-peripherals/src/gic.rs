@@ -66,7 +66,7 @@ pub fn set_trigger(irq_num: usize, edge: bool) {
 pub fn set_enable(irq: usize, enabled: bool) {
     trace!("GIC set enable: {irq} {enabled}");
     let intid = unsafe { IntId::raw(irq as u32) };
-    let mut gic = GIC.lock();
+    let gic = GIC.lock();
     gic.set_irq_enable(intid, enabled);
     if !intid.is_private() {
         gic.set_cfg(intid, Trigger::Edge);

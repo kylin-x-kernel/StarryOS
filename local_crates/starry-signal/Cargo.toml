@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Starry-OS/starry-signal"
 
 [dependencies]
-axcpu = { version = "0.3", features = [
+axcpu = { features = [
     "uspace",
 ], workspace = true }
 bitflags = "2.6"

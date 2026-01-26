@@ -30,7 +30,7 @@ arm-el2 = []
 
 [dependencies]
 axbacktrace = "0.1"
-axplat = { version = "0.3.0", features = ["irq"]}
+axplat = { workspace = true, features = ["irq"]}
 linkme = "0.3"
 log = "0.4"
 cfg-if = "1.0"

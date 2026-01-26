@@ -28,15 +28,12 @@ kspin = "0.1"
 dw_apb_uart = "0.1"
 axcpu = { workspace = true }
 axplat = { version = "0.3.0", git = "https://github.com/kylin-x-kernel/axplat_crates.git", branch = "dev" }
-axplat-aarch64-peripherals = { version="0.3", features = ["gicv3"], workspace = true }
+axplat-aarch64-peripherals = { workspace = true, default-features = false, features = ["gicv3"] }
 aarch64-cpu = "10.0"
-fdtree_rs = "0.1.0"
+fdtree_rs = { workspace = true }
 spin = "0.9"
 lazyinit = "0.2"
-arm-gic =  "0.1.0"
-
-[patch.crates-io]
-arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
+arm-gic.workspace = true
 
 [package.metadata.docs.rs]
 targets = ["aarch64-unknown-none"]
