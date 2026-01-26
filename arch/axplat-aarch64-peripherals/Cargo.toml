@@ -13,7 +13,7 @@ repository.workspace = true
 
 [features]
 irq = ["axplat/irq"]
-default = ["gicv2"]
+default = []
 gicv2 = ["irq"]
 gicv3 = ["irq"]
 pmr = []

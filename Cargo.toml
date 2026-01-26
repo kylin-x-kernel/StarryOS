@@ -112,6 +112,3 @@ chrono = { version = "0.4", default-features = false }
 enum_dispatch = "0.3"
 ctor_bare = "0.2"
 lock_api = { version = "0.4", default-features = false }
-
-[patch.crates-io]
-kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main" }
