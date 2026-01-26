@@ -60,7 +60,7 @@ use super::{
     },
     user_mode_ctx_struct::user_mode_ctx,
     user_ta::user_ta_ctx,
-    utils::{bit, bit32},
+    utils::{bit, bit32, slice_fmt},
     vm::vm_check_access_rights,
 };
 use crate::{mm::vm_load_string, tee, tee::libmbedtls::bignum::BigNum};
@@ -348,8 +348,10 @@ pub enum TeeCryptObj {
 impl Debug for TeeCryptObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TeeCryptObj::rsa_keypair(_) => write!(f, "TeeCryptObj::rsa_keypair"),
-            TeeCryptObj::ecc_keypair(_) => write!(f, "TeeCryptObj::ecc_keypair"),
+            TeeCryptObj::rsa_keypair(key) => write!(f, "TeeCryptObj::rsa_keypair:{:#?}", key),
+            TeeCryptObj::ecc_keypair(keypair) => {
+                write!(f, "TeeCryptObj::ecc_keypair:{:#?}", keypair)
+            }
             TeeCryptObj::ecc_public_key(_) => write!(f, "TeeCryptObj::ecc_public_key"),
             TeeCryptObj::obj_secret(_) => write!(f, "TeeCryptObj::obj_secret"),
             TeeCryptObj::None => write!(f, "TeeCryptObj::None"),
@@ -424,6 +426,7 @@ impl tee_crypto_ops for TeeCryptObj {
 
     fn get_attr_by_id(&mut self, attr_id: c_ulong) -> TeeResult<CryptoAttrRef<'_>> {
         match self {
+            TeeCryptObj::rsa_keypair(key) => key.get_attr_by_id(attr_id),
             TeeCryptObj::ecc_public_key(key) => key.get_attr_by_id(attr_id),
             TeeCryptObj::ecc_keypair(keypair) => keypair.get_attr_by_id(attr_id),
             TeeCryptObj::obj_secret(secret) => secret.get_attr_by_id(attr_id),
@@ -921,6 +924,28 @@ pub struct tee_cryp_obj_type_props {
     pub num_type_attrs: u8,
     pub type_attrs: &'static [tee_cryp_obj_type_attrs],
 }
+
+impl Debug for tee_cryp_obj_type_props {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "tee_cryp_obj_type_props{{obj_type: {:#06X?}, min_size: {:#04X?}, max_size: {:#04X?}, \
+             alloc_size: {:#04X?}, quanta: {:#03X?}, num_type_attrs: {:#03X?}, type_attrs.id: \
+             {:X?}}}",
+            self.obj_type,
+            self.min_size,
+            self.max_size,
+            self.alloc_size,
+            self.quanta,
+            self.num_type_attrs,
+            self.type_attrs
+                .iter()
+                .map(|attr| attr.attr_id)
+                .collect::<Vec<_>>()
+        )
+    }
+}
+
 #[repr(C)]
 pub(crate) struct tee_cryp_obj_secret {
     pub key_size: u32,
@@ -930,10 +955,23 @@ pub(crate) struct tee_cryp_obj_secret {
     // 	uint8_t data[alloc_size]
     // key_size must never exceed alloc_size
 }
-#[derive(Debug)]
 pub struct tee_cryp_obj_secret_wrapper {
     ptr: NonNull<tee_cryp_obj_secret>,
     pub layout: Layout,
+}
+
+impl Debug for tee_cryp_obj_secret_wrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "tee_cryp_obj_secret_wrapper{{ptr: {:#010X?}, layout: {:#?}}}, key: {:#?}, \
+             alloc_size: {:#06X?}",
+            self.ptr.as_ptr(),
+            self.layout,
+            slice_fmt(self.key()),
+            self.secret().alloc_size
+        )
+    }
 }
 
 impl tee_cryp_obj_secret_wrapper {
@@ -983,6 +1021,13 @@ impl tee_cryp_obj_secret_wrapper {
         let data_ptr =
             unsafe { (self.ptr.as_ptr() as *const u8).add(size_of::<tee_cryp_obj_secret>()) };
         unsafe { slice::from_raw_parts(data_ptr, s.alloc_size as usize) }
+    }
+
+    pub fn key(&self) -> &[u8] {
+        let s = self.secret();
+        let data_ptr =
+            unsafe { (self.ptr.as_ptr() as *const u8).add(size_of::<tee_cryp_obj_secret>()) };
+        unsafe { slice::from_raw_parts(data_ptr, s.key_size as usize) }
     }
 
     pub fn set_secret_data(&mut self, data: &[u8]) -> TeeResult {
@@ -1229,17 +1274,34 @@ pub fn tee_obj_set_type(
     Ok(0)
 }
 
+/// Allocate a new object
+///
+/// # Arguments
+/// * `obj_type` - the type of the object
+/// * `max_key_size` - the maximum key size of the object
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub(crate) fn syscall_cryp_obj_alloc(
     obj_type: c_ulong,
     max_key_size: c_ulong,
-) -> TeeResult<tee_obj_id_type> {
-    let mut obj = tee_obj::default();
+    obj: *mut c_uint,
+) -> TeeResult {
+    let mut o = tee_obj::default();
 
-    tee_obj_set_type(&mut obj, obj_type as _, max_key_size as _)?;
-    let obj_id = tee_obj_add(obj)?;
-    Ok(obj_id)
+    tee_obj_set_type(&mut o, obj_type as _, max_key_size as _)?;
+    let obj_id: c_uint = tee_obj_add(o)? as c_uint;
+
+    copy_to_user_struct(unsafe { &mut *obj }, &obj_id)?;
+
+    Ok(())
 }
 
+/// Close an object
+///
+/// # Arguments
+/// * `obj_id` - the object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn syscall_cryp_obj_close(obj_id: c_ulong) -> TeeResult {
     {
         let o = tee_obj_get(obj_id as tee_obj_id_type)?;
@@ -1869,6 +1931,13 @@ fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResul
     Ok(())
 }
 
+/// Get the information of the object
+///
+/// # Arguments
+/// * `obj_id` - the object id
+/// * `info` - the information to store the object information
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -> TeeResult {
     let info = unsafe { &mut *info };
 
@@ -1940,15 +2009,33 @@ pub fn syscall_cryp_obj_restrict_usage(obj_id: c_ulong, usage: c_ulong) -> TeeRe
     Ok(())
 }
 
+/// Get the attribute of the object
+///
+/// # Arguments
+/// * `obj_id` - the object id
+/// * `attr_id` - the attribute id
+/// * `buffer` - the buffer to store the attribute
+/// * `size` - the size of the attribute
+/// # Returns
+/// * `TeeResult` - the result of the operation
 pub fn syscall_cryp_obj_get_attr(
     obj_id: c_ulong,
     attr_id: c_ulong,
-    buffer: &mut [u8],
-    size: &mut u64,
-) -> TeeResult<u32> {
+    buffer: *mut c_void,
+    size: *mut c_ulong,
+) -> TeeResult {
     let mut obj_usage = 0;
     let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
     let mut o = o_arc.lock();
+    let size: &mut c_ulong = unsafe {
+        debug_assert!(!size.is_null());
+        &mut *size
+    };
+    let buffer: &mut [u8] = unsafe {
+        debug_assert!(!buffer.is_null());
+        let len = *size;
+        core::slice::from_raw_parts_mut(buffer as *mut u8, len as usize)
+    };
 
     if o.info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED == 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
@@ -1988,7 +2075,7 @@ pub fn syscall_cryp_obj_get_attr(
         attr_ref.to_user(buffer, size)?;
     }
 
-    Ok(TEE_SUCCESS)
+    Ok(())
 }
 
 pub fn tee_obj_attr_clear(o: &mut tee_obj) -> TeeResult {
@@ -2005,12 +2092,16 @@ pub fn tee_obj_attr_clear(o: &mut tee_obj) -> TeeResult {
     Ok(())
 }
 
-/// copy in attributes from user space to kernel space
+/// Copy in attributes from user space to kernel space
+/// If use memref attribute, the attr.content.memref.buffer will be the pointer to the memory in user space,
+/// later, in functions like from_user, we need to copy the memory from user space to kernel space.
 ///
-/// _uctx: user_ta_ctx, not used now
-/// usr_attrs: user space attributes
-/// attrs: kernel space attributes
-/// return: TeeResult
+/// # Arguments
+/// * `_uctx` - user_ta_ctx, not used now
+/// * `usr_attrs` - user space attributes
+/// * `attrs` - kernel space attributes
+/// # Returns
+/// * `TeeResult` - the result of the operation
 fn copy_in_attrs(
     _uctx: &mut user_ta_ctx,
     usr_attrs: &[utee_attribute],
@@ -2044,6 +2135,11 @@ fn copy_in_attrs(
             attrs[n].content.memref.size = len as usize;
         }
     }
+    tee_debug!(
+        "copy_in_attrs: usr_attrs: {:#?}, attrs: {:#?}",
+        usr_attrs,
+        attrs
+    );
     Ok(())
 }
 
@@ -2180,7 +2276,17 @@ fn tee_svc_cryp_obj_populate_type(
 
     for attr in attrs {
         // find attribute index in type properties
+        tee_debug!(
+            "tee_svc_cryp_obj_populate_type, find attribute index: attr_id: {:06X?}, type_props: \
+             {:#?}",
+            attr.attributeID,
+            type_props
+        );
         idx = tee_svc_cryp_obj_find_type_attr_idx(attr.attributeID, type_props);
+        tee_debug!(
+            "tee_svc_cryp_obj_populate_type, attribute index: {:#X?}",
+            idx
+        );
         // attribute not defined in current object type
         if idx < 0 {
             return Err(TEE_ERROR_ITEM_NOT_FOUND);
@@ -2259,7 +2365,23 @@ fn tee_svc_cryp_obj_populate_type(
     Ok(())
 }
 
-pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) -> TeeResult {
+/// Populate a transient object
+///
+/// # Arguments
+/// * `obj_id` - the object id
+/// * `user_attrs` - the user attributes
+/// * `attr_count` - the number of attributes
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_cryp_obj_populate(
+    obj_id: c_ulong,
+    user_attrs: *mut utee_attribute,
+    attr_count: c_ulong,
+) -> TeeResult {
+    let usr_attrs: &[utee_attribute] = unsafe {
+        core::slice::from_raw_parts(user_attrs as *const utee_attribute, attr_count as usize)
+    };
+
     let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
     let mut o = o_arc.lock();
 
@@ -2289,7 +2411,14 @@ pub fn syscall_cryp_obj_populate(obj_id: c_ulong, usr_attrs: &[utee_attribute]) 
     Ok(())
 }
 
-pub fn syscall_cryp_obj_copy(dst: tee_obj_id_type, src: tee_obj_id_type) -> TeeResult {
+/// Copy an object from source to destination
+///
+/// # Arguments
+/// * `dst` - the destination object id
+/// * `src` - the source object id
+/// # Returns
+/// * `TeeResult` - the result of the operation
+pub fn syscall_cryp_obj_copy(dst: c_ulong, src: c_ulong) -> TeeResult {
     let dst_o_arc = tee_obj_get(dst as tee_obj_id_type)?;
     let mut dst_o = dst_o_arc.lock();
     let src_o_arc = tee_obj_get(src as tee_obj_id_type)?;
@@ -2366,6 +2495,7 @@ pub fn tee_svc_obj_generate_key_rsa(
     params: &[TEE_Attribute],
     object_type: u32,
 ) -> TeeResult {
+    tee_debug!("tee_svc_obj_generate_key_rsa: params: {:#?}", params);
     tee_svc_cryp_obj_populate_type(o, type_props, params)?;
 
     if o.attr.is_empty() {
@@ -2378,6 +2508,7 @@ pub fn tee_svc_obj_generate_key_rsa(
         _ => return Err(TEE_ERROR_BAD_STATE),
     };
 
+    tee_debug!("tee_svc_obj_generate_key_rsa: pub_exp: {:X?}", pub_exp);
     if pub_exp != 0 {
         check_pub_rsa_key(&rsa_key.e)?;
     } else {
@@ -2468,8 +2599,11 @@ pub fn syscall_obj_generate_key(
         core::slice::from_raw_parts(usr_params as *const utee_attribute, param_count as usize)
     };
     copy_in_attrs(&mut user_ta_ctx::default(), usr_attrs_slice, &mut attrs)?;
-
-    tee_svc_cryp_check_attr(attr_usage::ATTR_USAGE_GENERATE_KEY, type_props, &attrs)?;
+    tee_svc_cryp_check_attr(attr_usage::ATTR_USAGE_GENERATE_KEY, type_props, &attrs).inspect_err(
+        |e| {
+            tee_debug!("tee_svc_cryp_check_attr error: {:X?}", e);
+        },
+    )?;
 
     let mut o_guard = o.lock();
     let object_type = o_guard.info.objectType;
@@ -2528,12 +2662,17 @@ pub fn syscall_obj_generate_key(
                 key_size as _,
                 &attrs,
                 object_type,
-            )?;
+            )
+            .inspect_err(|e| {
+                tee_debug!("tee_svc_obj_generate_key_rsa error: {:X?}", e);
+            })?;
         }
         TEE_TYPE_DSA_KEYPAIR => {
+            // mbedtls do not support DSA key generation
             todo!()
         }
         TEE_TYPE_DH_KEYPAIR => {
+            // mbedtls do not support DH key generation
             todo!()
         }
         TEE_TYPE_ECDSA_KEYPAIR
@@ -2566,6 +2705,43 @@ pub fn syscall_obj_generate_key(
     o_guard.info.objectSize = key_size as _;
     o_guard.info.handleFlags |= TEE_HANDLE_FLAG_INITIALIZED;
     Ok(())
+}
+
+#[cfg(feature = "tee_test")]
+fn long2byte(value: u64, ch: &mut [u8]) -> u32 {
+    // Convert value to big-endian byte array
+    // Store valid bytes from the beginning of the array (ch[0..len])
+    // Example: e = 65539 (0x00010003) -> ch[0..3] = [0x01, 0x00, 0x03], len = 3
+    if value == 0 {
+        return 0;
+    }
+
+    // Calculate the number of bytes needed
+    let mut num_bytes = 0;
+    let mut temp = value;
+    while temp > 0 {
+        num_bytes += 1;
+        temp >>= 8;
+    }
+
+    // Store bytes from most significant to least significant, starting at ch[0]
+    let mut temp = value;
+    for i in (0..num_bytes).rev() {
+        ch[i] = (temp & 0xff) as u8;
+        temp >>= 8;
+    }
+
+    num_bytes as u32
+}
+
+#[cfg(feature = "tee_test")]
+fn tee_init_ref_attribute(attr: &mut utee_attribute, attributeID: u32, buffer: &[u8], length: u32) {
+    if (attributeID & TEE_ATTR_FLAG_VALUE) != 0 {
+        panic!("attributeID is value attribute");
+    }
+    attr.attribute_id = attributeID;
+    attr.a = buffer.as_ptr() as u64;
+    attr.b = length as u64;
 }
 
 #[cfg(feature = "tee_test")]
@@ -2984,7 +3160,9 @@ pub mod tests_tee_svc_cryp {
         using TestResult;
 
         fn test_syscall_cryp_obj_alloc() {
-            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256).unwrap();
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256, &mut obj_id);
+            assert!(result.is_ok());
             let obj_arc = tee_obj_get(obj_id as tee_obj_id_type).unwrap();
             let obj = obj_arc.lock();
             assert_eq!(obj.info.objectType, TEE_TYPE_ECDSA_PUBLIC_KEY);
@@ -3002,7 +3180,9 @@ pub mod tests_tee_svc_cryp {
         using TestResult;
 
         fn test_syscall_cryp_obj_get_attr() {
-            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256).unwrap();
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_ECDSA_PUBLIC_KEY as _, 256, &mut obj_id);
+            assert!(result.is_ok());
             let mut buffer: [u8; 8] = [1; 8];
             let mut size: u64 = 8;
             // TODO: need to implement syscall_cryp_obj_get_attr
@@ -3019,13 +3199,14 @@ pub mod tests_tee_svc_cryp {
 
         fn test_syscall_cryp_generate_key_ecc_keypair() {
             // alloc sm2 key pair
-            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_SM2_DSA_KEYPAIR as _, 256);
-            assert!(obj_id.is_ok());
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM2_DSA_KEYPAIR as _, 256, &mut obj_id);
+            assert!(result.is_ok());
             // sm2 no need usr_params
-            let result = syscall_obj_generate_key(obj_id.unwrap() as c_ulong, 256, core::ptr::null(), 0);
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 256, core::ptr::null(), 0);
             assert!(result.is_ok());
             // get attr from obj
-            let obj_arc = tee_obj_get(obj_id.unwrap() as tee_obj_id_type);
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
             assert!(obj_arc.is_ok());
             let obj_arc = obj_arc.unwrap();
             let obj = obj_arc.lock();
@@ -3047,37 +3228,111 @@ pub mod tests_tee_svc_cryp {
         }
     }
 
+    // Helper function to test RSA keypair generation and verification
+    fn test_rsa_keypair(key_size: usize, e: u64) -> TestResult {
+        let mut e_bytes: [u8; 8] = [0; 8];
+        let mut usr_params: [utee_attribute; 1] = [utee_attribute::default(); 1];
+
+        let (mut usr_params, param_count) = {
+            if e == 0 {
+                (core::ptr::null(), 0)
+            } else {
+                let e_len = long2byte(e, &mut e_bytes);
+                tee_init_ref_attribute(
+                    &mut usr_params[0],
+                    TEE_ATTR_RSA_PUBLIC_EXPONENT as u32,
+                    &e_bytes[..e_len as usize],
+                    e_len,
+                );
+                (usr_params.as_ptr(), 1)
+            }
+        };
+
+        let mut obj_id: c_uint = 0;
+        let result = syscall_cryp_obj_alloc(TEE_TYPE_RSA_KEYPAIR as _, key_size as _, &mut obj_id);
+        assert!(result.is_ok());
+
+        let result =
+            syscall_obj_generate_key(obj_id as c_ulong, key_size as _, usr_params, param_count);
+        assert!(result.is_ok());
+        // get attr from obj
+        let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+        assert!(obj_arc.is_ok());
+        let obj_arc = obj_arc.unwrap();
+        let obj = obj_arc.lock();
+        assert_eq!(obj.info.objectType, TEE_TYPE_RSA_KEYPAIR);
+        assert_eq!(obj.info.maxObjectSize, key_size as u32);
+        assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+        assert_eq!(obj.attr.len(), 1);
+        assert!(matches!(obj.attr[0], TeeCryptObj::rsa_keypair(_)));
+        // get rsa_keypair from obj
+        let rsa_keypair = match &obj.attr[0] {
+            TeeCryptObj::rsa_keypair(rsa_keypair) => rsa_keypair,
+            _ => panic!("rsa_keypair not found"),
+        };
+        assert_eq!(rsa_keypair.n.byte_length().unwrap(), key_size / 8);
+        // print the keypai exponent
+        tee_debug!("rsa_keypair: {:#?}", rsa_keypair);
+
+        // test rsa_keypair.e equals to the exponent
+        if e != 0 {
+            assert_eq!(rsa_keypair.e.as_mpi(), &Mpi::new(e as i64).unwrap());
+        } else {
+            assert_eq!(rsa_keypair.e.as_mpi(), &Mpi::new(65537 as i64).unwrap());
+        }
+
+        TestResult::Ok
+    }
+
     test_fn! {
         using TestResult;
-
         fn test_syscall_cryp_generate_key_rsa() {
-            // alloc rsa key pair
-            let obj_id = syscall_cryp_obj_alloc(TEE_TYPE_RSA_KEYPAIR as _, 2048);
-            assert!(obj_id.is_ok());
-            // rsa no need usr_params
-            let result = syscall_obj_generate_key(obj_id.unwrap() as c_ulong, 2048, core::ptr::null(), 0);
-            assert!(result.is_ok());
-            // get attr from obj
-            let obj_arc = tee_obj_get(obj_id.unwrap() as tee_obj_id_type);
-            assert!(obj_arc.is_ok());
-            let obj_arc = obj_arc.unwrap();
-            let obj = obj_arc.lock();
-            assert_eq!(obj.info.objectType, TEE_TYPE_RSA_KEYPAIR);
-            assert_eq!(obj.info.maxObjectSize, 2048);
-            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
-            assert_eq!(obj.attr.len(), 1);
-            assert!(matches!(obj.attr[0], TeeCryptObj::rsa_keypair(_)));
-            // get rsa_keypair from obj
-            let rsa_keypair = match &obj.attr[0] {
-                TeeCryptObj::rsa_keypair(rsa_keypair) => rsa_keypair,
-                _ => panic!("rsa_keypair not found"),
-            };
-            assert_eq!(rsa_keypair.n.byte_length().unwrap(), 2048 / 8);
-            // print the keypai exponent
-            tee_debug!("rsa_keypair: {:#?}", rsa_keypair);
+            // step1: test without usr_params (use default exponent 65537)
+            if let TestResult::Failed = test_rsa_keypair(2048, 0) {
+                return TestResult::Failed;
+            }
+            // step2: test with custom exponent
+            if let TestResult::Failed = test_rsa_keypair(2048, 65539) {
+                return TestResult::Failed;
+            }
+            // step3: test with custom exponent 65537
+            if let TestResult::Failed = test_rsa_keypair(2048, 65537) {
+                return TestResult::Failed;
+            }
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_syscall_cryp_generate_key_sm4() {
+            // alloc sm4 key
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+            // assert!(obj_id != 0);
+            // sm4 no need usr_params
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+            // get attr from obj
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let obj = obj_arc.lock();
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+            // get sm4_key from obj
+            let sm4_key = match &obj.attr[0] {
+                TeeCryptObj::obj_secret(obj_secret) => obj_secret,
+                _ => panic!("sm4_key not found"),
+            };
+            assert_eq!(sm4_key.secret().key_size, 128/8);
+            tee_debug!("sm4_key: {:#?}", &obj.attr[0]);
+        }
+    }
     test_fn! {
         using TestResult;
 
@@ -3135,23 +3390,24 @@ pub mod tests_tee_svc_cryp {
     tests_name! {
         TEST_TEE_SVC_CRYP;
         //------------------------
-        // test_tee_svc_cryp_utils,
-        // test_tee_svc_find_type_props,
-        // test_op_attr_secret_value_from_user,
-        // test_op_attr_secret_value_to_user,
-        // test_op_attr_secret_value_to_binary,
-        // test_op_u32_from_binary_helper,
-        // test_op_attr_value_to_user,
-        // test_op_attr_value_from_binary,
-        // test_tee_obj_set_type,
-        // test_cryptoattrref_u32,
-        // test_cryptoattrref_bignum,
-        // test_secret_value,
-        // test_syscall_cryp_obj_alloc,
-        // test_syscall_cryp_obj_get_attr,
-        // test_copy_in_attrs,
+        test_tee_svc_cryp_utils,
+        test_tee_svc_find_type_props,
+        test_op_attr_secret_value_from_user,
+        test_op_attr_secret_value_to_user,
+        test_op_attr_secret_value_to_binary,
+        test_op_u32_from_binary_helper,
+        test_op_attr_value_to_user,
+        test_op_attr_value_from_binary,
+        test_tee_obj_set_type,
+        test_cryptoattrref_u32,
+        test_cryptoattrref_bignum,
+        test_secret_value,
+        test_syscall_cryp_obj_alloc,
+        test_syscall_cryp_obj_get_attr,
+        test_copy_in_attrs,
         test_syscall_cryp_generate_key_ecc_keypair,
         test_syscall_cryp_generate_key_rsa,
+        test_syscall_cryp_generate_key_sm4,
         test_mpi_write_binary,
     }
 }
