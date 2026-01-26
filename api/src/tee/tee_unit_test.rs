@@ -24,6 +24,7 @@ pub fn tee_test_unit() {
         tee_pobj::tests_tee_pobj::TEST_TEE_POBJ, tee_ree_fs::tests_tee_ree_fs::TEST_TEE_REE_FS,
         tee_session::tests_tee_session::TEST_TEE_SESSION,
         tee_svc_cryp::tests_tee_svc_cryp::TEST_TEE_SVC_CRYP,
+        tee_svc_cryp2::tests_cryp::TEST_TEE_CRYP,
         tee_svc_storage::tests_tee_svc_storage::TEST_TEE_SVC_STORAGE,
         user_access::tests_user_access::TEST_USER_ACCESS, utils::tests_utils::TEST_TEE_UTILS,
     };
@@ -49,6 +50,7 @@ pub fn tee_test_unit() {
             TEST_RNG_SOFTWARE,
             TEST_TEE_CRYPTO_IMPL,
             TEST_TEE_AES_CBC,
+            TEST_TEE_CRYP,
         ]
     );
 

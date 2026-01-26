@@ -27,7 +27,12 @@ use core::{
 
 use axerrno::{AxError, AxResult};
 use lazy_static::lazy_static;
-use mbedtls::{cipher::raw::Cipher, hash::Md, pk::Pk};
+use mbedtls::{
+    cipher::raw::Cipher,
+    hash::{Hmac, Md},
+    pk::Pk,
+};
+use spin::Mutex;
 use tee_raw_sys::{libc_compat::size_t, *};
 
 use super::{
@@ -44,7 +49,10 @@ use super::{
     },
     libutee::{
         tee_api_objects::TEE_USAGE_DEFAULT,
-        utee_defines::{tee_alg_get_class, tee_alg_get_main_alg, tee_u32_to_big_endian},
+        utee_defines::{
+            TEE_CHAIN_MODE_XTS, tee_alg_get_chain_mode, tee_alg_get_class, tee_alg_get_main_alg,
+            tee_u32_to_big_endian,
+        },
     },
     memtag::memtag_strip_tag_vaddr,
     tee_obj::{tee_obj, tee_obj_add, tee_obj_get, tee_obj_id_type},
@@ -76,13 +84,14 @@ use super::{
 };
 use crate::{
     mm::vm_load_string,
-    tee,
     tee::{
-        TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384, TEE_ALG_SHA3_512, TEE_ALG_SHAKE128,
-        TEE_ALG_SHAKE256, TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
+        self, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384, TEE_ALG_SHA3_512,
+        TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ERROR_NODE_DISABLED, TEE_TYPE_CONCAT_KDF_Z,
+        TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
         libmbedtls::bignum::BigNum,
         memtag::{memtag_strip_tag, memtag_strip_tag_const},
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
+        tee_svc_cryp::{CryptoAttrRef, TeeCryptObjAttrOps, tee_crypto_ops},
     },
 };
 
@@ -115,7 +124,7 @@ pub const ATTR_OPS_INDEX_448: u32 = 4;
 /// * `Initialized` - The cryptographic operation has been properly initialized and is ready for use
 /// * `Uninitialized` - The cryptographic operation has not been initialized yet
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum CrypState {
+pub(crate) enum CrypState {
     Initialized = 0,
     Uninitialized,
 }
@@ -150,18 +159,19 @@ pub(crate) struct TeeCrypState {
     // pub link: Option<NonNull<TeeCrypState<'a>>>,
     pub algo: u32,
     pub mode: TEE_OperationMode,
-    pub key1: tee_obj_id_type, // vaddr_t is typically usize in Rust
-    pub key2: tee_obj_id_type,
+    pub key1: u32,
+    pub key2: u32,
     pub ctx: CrypCtx,
     pub ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
     pub state: CrypState,
-    pub id: usize,
+    pub id: u32,
 }
 
 pub(crate) enum CrypCtx {
     CipherCtx(Cipher),
     HashCtx(Md),
     AsyCtx(Pk),
+    HmacCtx(Hmac),
     Others,
 }
 
@@ -213,38 +223,6 @@ impl TeeCrypObjSecret {
             )
         }
     }
-}
-
-/// Retrieves a cryptographic state from the session's list of states
-///
-/// This function searches for a cryptographic state identified by `state_id` in the
-/// list of states associated with the provided session. If found, it returns the
-/// state as a mutable reference in the result.
-///
-/// # Arguments
-/// * `sess` - Reference to the session containing the cryptographic states
-/// * `state_id` - Virtual address identifier for the state to retrieve
-///
-/// # Returns
-/// * `Ok(Option<&mut TeeCrypState>)` - Returns Some with reference to found state if found,
-///   or None if not found
-/// * `Err(TEE_Result)` - Error code if the operation fails (TEE_ERROR_BAD_PARAMETERS if not found)
-fn tee_svc_cryp_get_state<'a>(
-    // sess: &'a TsSession<'a>
-    sess: &'a mut Vec<TeeCrypState>,
-    state_id: usize,
-) -> TeeResult<&'a mut TeeCrypState> {
-    // Iterate through the list of cryptographic states
-    // Get the user TA context from the session
-    for s in sess.iter_mut() {
-        if state_id == s.id {
-            // Found the state, return it wrapped in Some
-            return Ok(s);
-        }
-    }
-
-    // State not found in the list, return error
-    Err(TEE_ERROR_BAD_PARAMETERS)
 }
 
 /// Check if algorithm is an XOF (Extendable Output Function)
@@ -468,30 +446,6 @@ pub(crate) fn sys_tee_scn_hash_init(_state: usize, _iv: usize, _iv_len: usize) -
     Ok(())
 }
 
-#[cfg(feature = "tee_test")]
-pub mod tests_tee_svc_cryp {
-    use zerocopy::IntoBytes;
-
-    //-------- local tests import --------
-    use super::*;
-    //-------- test framework import --------
-    use crate::tee::TestDescriptor;
-    use crate::{assert, assert_eq, assert_ne, tee::TestResult, test_fn, tests, tests_name};
-
-    test_fn! {
-        using TestResult;
-        fn test_tee_svc_cryp_utils() {
-            assert_eq!(1, 1); // buffer remains unchanged
-        }
-    }
-
-    tests_name! {
-        TEST_TEE_SVC_CRYP;
-        //------------------------
-        test_tee_svc_cryp_utils,
-    }
-}
-
 fn translate_compat_algo(algo: u32) -> u32 {
     match algo {
         TEE_ALG_ECDSA_P192 => TEE_ALG_ECDSA_SHA1,
@@ -628,4 +582,212 @@ fn tee_svc_cryp_check_key_type(o: &tee_obj, algo: u32, mode: TEE_OperationMode) 
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
     Ok(())
+}
+
+// 创建一个TeeCrypState
+pub fn syscall_cryp_state_alloc(
+    algo: u32,
+    mode: TEE_OperationMode,
+    key1: Option<u32>,
+    key2: Option<u32>,
+    state: &mut u32,
+) -> TeeResult {
+    let mut cs = TeeCrypState::default();
+    let mut cs_id: u32 = 0;
+    let mut res: TeeResult = Ok(());
+
+    // 判断密钥对象是否存在，并取出密钥对象
+    let mut o1_ok = false;
+    let mut o2_ok = false;
+    if let Some(key1) = key1 {
+        let obj1 = tee_obj_get(key1 as tee_obj_id_type);
+        o1_ok = obj1.is_ok();
+        if o1_ok {
+            let o1 = obj1.unwrap();
+            if o1.lock().busy {
+                return Err(TEE_ERROR_BUSY);
+            }
+            o1.lock().busy = true;
+            cs.key1 = o1.lock().info.objectId;
+            tee_svc_cryp_check_key_type(&*o1.lock(), algo, mode)?;
+        }
+    }
+
+    if let Some(key2) = key2 {
+        let obj2 = tee_obj_get(key2 as tee_obj_id_type);
+        o2_ok = obj2.is_ok();
+        if o2_ok {
+            let o2 = obj2.unwrap();
+            if o2.lock().busy {
+                return Err(TEE_ERROR_BUSY);
+            }
+            o2.lock().busy = true;
+            cs.key2 = o2.lock().info.objectId;
+            tee_svc_cryp_check_key_type(&*o2.lock(), algo, mode)?;
+        }
+    }
+
+    // 判断密钥是否符合算法要求
+    match tee_alg_get_class(algo) {
+        TEE_OPERATION_CIPHER => {
+            if ((tee_alg_get_chain_mode(algo) == TEE_CHAIN_MODE_XTS && (!o1_ok || !o2_ok))
+                || (tee_alg_get_chain_mode(algo) != TEE_CHAIN_MODE_XTS && (!o1_ok || o2_ok)))
+            {
+                return Err(TEE_ERROR_NODE_DISABLED);
+            }
+        }
+        TEE_OPERATION_AE => {
+            if !o1_ok || o2_ok {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        }
+        TEE_OPERATION_MAC => {
+            if !o1_ok || o2_ok {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        }
+        TEE_OPERATION_DIGEST => {
+            if o1_ok || o2_ok {
+                return Err(TEE_ERROR_NODE_DISABLED);
+            }
+        }
+        TEE_OPERATION_ASYMMETRIC_CIPHER | TEE_OPERATION_ASYMMETRIC_SIGNATURE => {
+            if !o1_ok || o2_ok {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            }
+        }
+        TEE_OPERATION_KEY_DERIVATION => {
+            if algo == TEE_ALG_SM2_KEP {
+                if !o1_ok || !o2_ok {
+                    return Err(TEE_ERROR_BAD_PARAMETERS);
+                }
+            } else {
+                if !o1_ok || o2_ok {
+                    return Err(TEE_ERROR_BAD_PARAMETERS);
+                }
+            }
+        }
+        _ => {
+            return Err(TEE_ERROR_NOT_SUPPORTED);
+        }
+    }
+
+    with_tee_session_ctx_mut(|ctx| {
+        let vacant = ctx.cryp_state.vacant_entry();
+        let id = vacant.key();
+        let cs_id = id as u32;
+        cs.id = cs_id;
+        cs.algo = algo;
+        cs.mode = mode;
+        *state = cs_id;
+
+        // 插入TeeCrypState
+        let arc_cs = Arc::new(Mutex::new(cs));
+        let _ = vacant.insert(arc_cs);
+        Ok(())
+    });
+    Ok(())
+}
+
+// 复制一个TeeCrypState
+pub fn syscall_cryp_state_copy(_dst_id: u32, _src_id: u32) -> TeeResult {
+    // TODO:需要改动mbedtls，后续再进行实现
+    // with_tee_session_ctx_mut(|ctx|{
+    // let cs_dst = tee_cryp_state_get(dst_id)?;
+    // let cs_src = tee_cryp_state_get(src_id)?;
+    //
+    // if (cs_dst.lock().algo != cs_src.lock().algo || cs_dst.lock().mode != cs_src.lock().mode) {
+    // return Err(TEE_ERROR_BAD_PARAMETERS);
+    // }
+    //
+    // cs_dst.lock().ctx = cs_src.lock().ctx.clone();
+    // cs_dst.lock().state = cs_src.lock().state;
+    // cs_dst.lock().ctx_finalize = cs_src.lock().ctx_finalize;
+    // Ok(())
+    // })?;
+    Ok(())
+}
+
+// 删除一个TeeCrypState
+pub fn syscall_cryp_state_free(id: u32) -> TeeResult {
+    cryp_state_free(id)
+}
+
+// 根据id获取一个TeeCrypState
+pub fn tee_cryp_state_get(id: u32) -> TeeResult<Arc<Mutex<TeeCrypState>>> {
+    with_tee_session_ctx(|ctx| match ctx.cryp_state.get(id as _) {
+        Some(cs) => Ok(Arc::clone(&cs)),
+        None => Err(TEE_ERROR_ITEM_NOT_FOUND),
+    })
+}
+
+// 根据id删除一个TeeCrypState
+fn cryp_state_free(id: u32) -> TeeResult {
+    with_tee_session_ctx_mut(|ctx| {
+        if let Some(cs) = ctx.cryp_state.try_remove(id as usize) {
+            tee_debug!("Remove cryp state {}", id);
+            return Ok(());
+        } else {
+            tee_debug!("Remove cryp state failed");
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+    })?;
+    Ok(())
+}
+
+#[cfg(feature = "tee_test")]
+pub mod tests_cryp {
+    //-------- test framework import --------
+    //-------- local tests import --------
+    use super::*;
+    use crate::{
+        assert, assert_eq, assert_ne,
+        tee::{TestDescriptor, TestResult},
+        test_fn, tests, tests_name,
+    };
+
+    test_fn! {
+        using TestResult;
+
+        fn test_cryp_state(){
+            let mut state1: u32 = 0;
+            let mut state2: u32 = 0;
+            let mut test_obj = tee_obj::default();
+            let id = tee_obj_add(test_obj).unwrap() as u32;
+            syscall_cryp_state_alloc(TEE_ALG_SM3, TEE_OperationMode::TEE_MODE_DIGEST, None, None, &mut state1).unwrap();
+            syscall_cryp_state_alloc(TEE_ALG_AES_ECB_NOPAD, TEE_OperationMode::TEE_MODE_DECRYPT, Some(id), None, &mut state2).unwrap();
+
+            let cs1 = tee_cryp_state_get(state1).unwrap();
+            let guard1 = cs1.lock();
+            assert_eq!(guard1.id, state1);
+            assert_eq!(guard1.algo, TEE_ALG_SM3);
+            assert!(guard1.mode == TEE_OperationMode::TEE_MODE_DIGEST);
+            drop(guard1);
+
+            let cs2 = tee_cryp_state_get(state2).unwrap();
+            let guard2 = cs2.lock();
+            assert_eq!(guard2.id, state2);
+            assert_eq!(guard2.algo, TEE_ALG_AES_ECB_NOPAD);
+            assert!(guard2.mode == TEE_OperationMode::TEE_MODE_DECRYPT);
+            drop(guard2);
+
+            syscall_cryp_state_free(state1).unwrap();
+            syscall_cryp_state_free(state2).unwrap();
+
+            match tee_cryp_state_get(state1) {
+                Err(e) => assert_eq!(e, TEE_ERROR_ITEM_NOT_FOUND),
+                Ok(_) => panic!("Expected error, but got Ok"),
+            }
+            match tee_cryp_state_get(state2) {
+                Err(e) => assert_eq!(e, TEE_ERROR_ITEM_NOT_FOUND),
+                Ok(_) => panic!("Expected error, but got Ok"),
+            }
+        }
+    }
+
+    tests_name! {
+        TEST_TEE_CRYP;
+        //------------------------
+        test_cryp_state
+    }
 }

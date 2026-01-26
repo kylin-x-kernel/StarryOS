@@ -8,10 +8,16 @@
 // 	- core/include/crypto/crypto.h
 //  - core/crypto/crypto.c
 
-use alloc::{boxed::Box, format};
+use alloc::{boxed::Box, format, sync::Arc};
 use core::{default::Default, fmt, fmt::Debug};
 
+use mbedtls::{
+    cipher::raw::CipherType,
+    hash::{Hmac, Md, Type as MdType},
+    pk::Type as PkType,
+};
 use mbedtls_sys_auto::mpi_write_binary;
+use spin::Mutex;
 use tee_raw_sys::*;
 
 use crate::tee::{
@@ -25,7 +31,8 @@ use crate::tee::{
         ecc::{EcdOps, Sm2DsaOps, Sm2KepOps, Sm2PkeOps},
     },
     tee_obj::tee_obj_id_type,
-    tee_svc_cryp::{CryptoAttrRef, tee_crypto_ops},
+    tee_svc_cryp::{CryptoAttrRef, tee_cryp_obj_secret_wrapper, tee_crypto_ops},
+    tee_svc_cryp2::{CrypCtx, TeeCrypState},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -387,10 +394,4 @@ pub(crate) fn crypto_mac_free(ctx: impl CryptoMacCtx) {
 pub(crate) fn crypto_mac_copy_state(ctx: &mut dyn CryptoMacCtx, src_ctx: &dyn CryptoMacCtx) {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
     ctx.copy_state(src_ctx)
-}
-
-// Main hash context allocation function
-pub(crate) fn crypto_hash_alloc_ctx(_algo: u32) -> TeeResult {
-    // TODO
-    Ok(())
 }
