@@ -8,6 +8,6 @@ keywords = ["arceos", "kernel"]
 categories = ["os", "no-std"]
 
 [dependencies]
-axerrno = "0.1"
-memory_addr = "0.4"
+axerrno = {workspace = true}
+memory_addr = { workspace = true }
 trait-ffi = "0.2"

@@ -16,7 +16,7 @@ alloc = []
 default = []
 
 [dependencies]
-axerrno = "0.2"
+axerrno = {workspace = true}
 heapless = "0.9"
 memchr = { version = "2", default-features = false }
 

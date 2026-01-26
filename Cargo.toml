@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = []
+members = ["entry"]
 exclude = ["kylin-x-kernel"]
 
 [workspace.package]
@@ -56,18 +56,20 @@ page_table_multiarch = { path = "local_crates/page_table_multiarch", features = 
     "axerrno",
 ] }
 page_table_entry = { path = "local_crates/page_table_entry" }
-axbacktrace = "0.1"
-axerrno = "0.2"
-axfs-ng-vfs = "0.1"
+axbacktrace = { path = "local_crates/axbacktrace" }
+axerrno = { path = "local_crates/axerrno" }
+axfs-ng-vfs = { path = "local_crates/axfs-ng-vfs" }
 axio = { path = "local_crates/axio" }
-axpoll = "0.1"
+axpoll = { path = "local_crates/axpoll" }
+memory_addr = { path = "local_crates/memory_addr" }
+memory_set = { path = "local_crates/memory_set" }
 
 # Starry Modules
 starry-signal = { version = "0.2", path = "local_crates/starry-signal" }
 starry-core = { path = "local_crates/starry-core" }
 starry-api = { path = "local_crates/starry-api" }
-starry-process = "0.2"
-starry-vm = "0.2"
+starry-process = { path = "local_crates/starry-process" }
+starry-vm = { path = "local_crates/starry-vm" }
 
 # Platform Abstraction Layer
 axplat = { path = "local_crates/axplat" }
@@ -82,8 +84,6 @@ axplat-aarch64-crosvm-virt = { path = "local_crates/axplat-aarch64-crosvm-virt" 
 # Third-Party Crates
 arm-gic = { path = "local_crates/arm-gic" }
 fdtree_rs = { path = "local_crates/fdtree-rs" }
-
-
 bitflags = "2.10"
 bytemuck = { version = "1.23", features = ["unsound_ptr_pod_impl"] }
 cfg-if = "1.0"
@@ -100,7 +100,6 @@ linux-raw-sys = { version = "0.11", default-features = false, features = [
     "prctl",
     "system",
 ] }
-memory_addr = "0.4"
 scope-local = "0.1"
 slab = { version = "0.4.9", default-features = false }
 spin = "0.10"
@@ -114,88 +113,5 @@ enum_dispatch = "0.3"
 ctor_bare = "0.2"
 lock_api = { version = "0.4", default-features = false }
 
-[package]
-name = "starry"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-homepage.workspace = true
-repository.workspace = true
-
-[features]
-default = []
-tee = ["starry-api/tee", "starry-core/tee"]
-tee_test = ["tee", "starry-api/tee_test"]
-qemu = [
-    "axfeat/display",
-    "axfeat/input",
-    "starry-api/input",
-
-    "axfeat/vsock",
-    "starry-api/vsock",
-
-    "axfeat/defplat",
-    "axfeat/bus-pci",
-
-    # auxilary features
-    "axfeat/fs-times",
-    "starry-api/dev-log",
-]
-smp = ["axfeat/smp"]
-
-# vf2 = ["dep:axplat-riscv64-visionfive2", "axfeat/driver-sdmmc"]
-dice = ["crosvm", "starry-api/dice"]
-crosvm = [
-    "axfeat/display",
-    "axfeat/input",
-    "starry-api/input",
-
-    "axfeat/vsock",
-    "starry-api/vsock",
-
-    "axfeat/crosvm",
-    "dep:axplat-aarch64-crosvm-virt",
-    "pci",
-
-    "smp",
-
-    # auxilary features
-    "axfeat/fs-times",
-    "starry-api/dev-log",
-]
-
-# Stubs
-pci = ["axfeat/bus-pci"]
-mmio = ["axfeat/bus-mmio"]
-
-[dependencies]
-axdriver.workspace = true
-axerrno.workspace = true
-axfeat.workspace = true
-axfs.workspace = true
-axhal.workspace = true
-axlog.workspace = true
-axruntime.workspace = true
-axsync.workspace = true
-axtask.workspace = true
-cfg-if.workspace = true
-linkme.workspace = true
-linux-raw-sys.workspace = true
-starry-process.workspace = true
-starry-signal.workspace = true
-
-starry-core.workspace = true
-starry-api.workspace = true
-
-[dependencies.axplat-aarch64-crosvm-virt]
-workspace = true
-optional = true
-features = ["irq", "fp-simd", "smp", "rtc"]
-
 [patch.crates-io]
 kernel_guard = { git = "https://github.com/kylin-x-kernel/kernel_guard", branch = "main" }
-
-[package.metadata.vendor-filter]
-platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
-all-features = true

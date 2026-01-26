@@ -18,7 +18,7 @@ nmi = ["irq"]
 pmu = ["irq"]
 
 [dependencies]
-memory_addr = "0.4"
+memory_addr = { workspace = true }
 bitflags = "2.6"
 crate_interface = "0.1"
 handler_table = { version = "0.1.2", optional = true }

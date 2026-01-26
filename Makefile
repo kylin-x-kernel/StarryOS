@@ -49,7 +49,7 @@ OUT_CONFIG ?= $(PWD)/.axconfig.toml
 UIMAGE ?= n
 
 # App options
-A := $(PWD)
+A := $(PWD)/entry
 APP ?= $(A)
 FEATURES ?=
 APP_FEATURES ?=
@@ -174,6 +174,9 @@ ifeq ($(PLAT_NAME), aarch64-raspi4)
 else ifeq ($(PLAT_NAME), aarch64-bsta1000b)
   include scripts/make/bsta1000b-fada.mk
 endif
+
+ROOTFS_URL = https://github.com/Starry-OS/rootfs/releases/download/20250917
+ROOTFS_IMG = rootfs-$(ARCH).img
 
 rootfs:
 	@if [ ! -f $(ROOTFS_IMG) ]; then \

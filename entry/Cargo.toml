@@ -1,0 +1,82 @@
+[package]
+name = "entry"
+version.workspace = true
+edition.workspace = true
+authors = ["KylinSoft Co., Ltd. <https://www.kylinos.cn/>"]
+description = "X TeeOS Entry Crate"
+license.workspace = true
+homepage.workspace = true
+
+[features]
+default = []
+tee = ["starry-api/tee", "starry-core/tee"]
+tee_test = ["tee", "starry-api/tee_test"]
+qemu = [
+    "axfeat/display",
+    "axfeat/input",
+    "starry-api/input",
+
+    "axfeat/vsock",
+    "starry-api/vsock",
+
+    "axfeat/defplat",
+    "axfeat/bus-pci",
+
+    # auxilary features
+    "axfeat/fs-times",
+    "starry-api/dev-log",
+]
+smp = ["axfeat/smp"]
+
+# vf2 = ["dep:axplat-riscv64-visionfive2", "axfeat/driver-sdmmc"]
+dice = ["crosvm", "starry-api/dice"]
+crosvm = [
+    "axfeat/display",
+    "axfeat/input",
+    "starry-api/input",
+
+    "axfeat/vsock",
+    "starry-api/vsock",
+
+    "axfeat/crosvm",
+    "dep:axplat-aarch64-crosvm-virt",
+    "pci",
+
+    "smp",
+
+    # auxilary features
+    "axfeat/fs-times",
+    "starry-api/dev-log",
+]
+
+# Stubs
+pci = ["axfeat/bus-pci"]
+mmio = ["axfeat/bus-mmio"]
+
+[dependencies]
+axdriver.workspace = true
+axerrno.workspace = true
+axfeat.workspace = true
+axfs.workspace = true
+axhal.workspace = true
+axlog.workspace = true
+axruntime.workspace = true
+axsync.workspace = true
+axtask.workspace = true
+cfg-if.workspace = true
+linkme.workspace = true
+linux-raw-sys.workspace = true
+starry-process.workspace = true
+starry-signal.workspace = true
+
+starry-core.workspace = true
+starry-api.workspace = true
+
+[dependencies.axplat-aarch64-crosvm-virt]
+workspace = true
+optional = true
+features = ["irq", "fp-simd", "smp", "rtc"]
+
+[package.metadata.vendor-filter]
+platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
+all-features = true
