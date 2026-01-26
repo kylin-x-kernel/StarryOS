@@ -11,7 +11,7 @@ repository = "https://github.com/Starry-OS/starry-signal"
 [dependencies]
 axcpu = { version = "0.3", features = [
     "uspace",
-], git = "https://github.com/arceos-org/axcpu.git", tag = "dev-v03" }
+], workspace = true }
 bitflags = "2.6"
 cfg-if = "1"
 derive_more = { version = "2.0", default-features = false, features = ["full"] }

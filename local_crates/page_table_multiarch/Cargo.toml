@@ -1,0 +1,42 @@
+[package]
+name = "page_table_multiarch"
+description = "Generic page table structures for various hardware architectures"
+documentation = "https://docs.rs/page_table_multiarch"
+version = "0.5.7"
+edition = "2024"
+authors = ["Yuekai Jia <equation618@gmail.com>"]
+license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
+homepage = "https://github.com/arceos-org/arceos"
+repository = "https://github.com/arceos-org/page_table_multiarch"
+keywords = ["arceos", "paging", "page-table", "virtual-memory"]
+categories = ["os", "hardware-support", "memory-management", "no-std"]
+rust-version = "1.85"
+
+[features]
+default = []
+axerrno = ["dep:axerrno"]
+copy-from = ["dep:bitmaps"]
+
+[dependencies]
+axerrno = { version = "0.1", optional = true }
+arrayvec = { version = "0.7", default-features = false }
+bitmaps = { version = "3.2", default-features = false, optional = true }
+log = "0.4"
+memory_addr.workspace = true
+page_table_entry.workspace = true
+
+[target.'cfg(any(target_arch = "x86_64", doc, docsrs))'.dependencies]
+x86 = "0.52"
+
+[target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64", doc, docsrs))'.dependencies]
+riscv = { version = "0.14", default-features = false }
+
+[package.metadata.docs.rs]
+rustc-args = ["--cfg", "docsrs"]
+all-features = true
+
+[dev-dependencies]
+# FIXME: use a released version when available
+rand = { version = "0.10.0-rc.5", default-features = false, features = [
+    "small_rng",
+] }
