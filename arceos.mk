@@ -34,14 +34,14 @@
 #     - `GW`: Gateway IPv4 address (default is 10.0.2.2 for QEMU user netdev)
 
 # General options
-ARCH ?= x86_64
+ARCH ?= aarch64
 MYPLAT ?=
 PLAT_CONFIG ?=
 SMP ?=
 MODE ?= release
 LOG ?= warn
 V ?=
-DWARF ?=
+DWARF ?= 
 LTO ?=
 TARGET_DIR ?= $(PWD)/target
 EXTRA_CONFIG ?=
@@ -49,20 +49,20 @@ OUT_CONFIG ?= $(PWD)/.axconfig.toml
 UIMAGE ?= n
 
 # App options
-A ?= examples/helloworld
+A := $(PWD)
 APP ?= $(A)
 FEATURES ?=
 APP_FEATURES ?=
-NO_AXSTD ?= n
+NO_AXSTD ?= y
 
 # QEMU options
-BLK ?= n
+BLK ?= y
 NET ?= n
 GRAPHIC ?= n
 INPUT ?= n
 VSOCK ?= n
 BUS ?= pci
-MEM ?=
+MEM ?= 1g
 ACCEL ?=
 ICOUNT ?= n
 QEMU_ARGS ?=
@@ -78,6 +78,12 @@ VHOST ?= n
 IP ?= 10.0.2.15
 GW ?= 10.0.2.2
 
+export RUSTC_BOOTSTRAP := 1
+export MEMTRACK := n
+ifeq ($(MEMTRACK), y)
+	APP_FEATURES += starry-api/memtrack
+endif
+
 # App type
 ifeq ($(wildcard $(APP)),)
   $(error Application path "$(APP)" is not valid)
@@ -85,7 +91,7 @@ endif
 
 ifneq ($(wildcard $(APP)/Cargo.toml),)
   APP_TYPE := rust
-  AX_LIB ?= axstd
+  AX_LIB ?= axfeat
 else
   APP_TYPE := c
   AX_LIB ?= axlibc
@@ -168,6 +174,18 @@ ifeq ($(PLAT_NAME), aarch64-raspi4)
 else ifeq ($(PLAT_NAME), aarch64-bsta1000b)
   include scripts/make/bsta1000b-fada.mk
 endif
+
+rootfs:
+	@if [ ! -f $(ROOTFS_IMG) ]; then \
+		echo "Image not found, downloading..."; \
+		curl -f -L $(ROOTFS_URL)/$(ROOTFS_IMG).xz -O; \
+		xz -d $(ROOTFS_IMG).xz; \
+	fi
+	@cp $(ROOTFS_IMG) disk.img
+
+img:
+	@echo -e "\033[33mWARN: The 'img' target is deprecated. Please use 'rootfs' instead.\033[0m"
+	@$(MAKE) --no-print-directory rootfs
 
 defconfig:
 	$(call defconfig)
