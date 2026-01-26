@@ -49,6 +49,25 @@ crosvm = [
     "starry-api/dev-log",
 ]
 
+x86_csv = [
+    "axfeat/display",
+    "axfeat/input",
+    "starry-api/input",
+
+    "axfeat/vsock",
+    "starry-api/vsock",
+
+    "axfeat/crosvm",
+    "dep:axplat-x86-csv",
+    "pci",
+
+    "smp",
+
+    # auxilary features
+    "axfeat/fs-times",
+    "starry-api/dev-log",
+]
+
 # Stubs
 pci = ["axfeat/bus-pci"]
 mmio = ["axfeat/bus-mmio"]
@@ -73,6 +92,11 @@ starry-core.workspace = true
 starry-api.workspace = true
 
 [dependencies.axplat-aarch64-crosvm-virt]
+workspace = true
+optional = true
+features = ["irq", "fp-simd", "smp", "rtc"]
+
+[dependencies.axplat-x86-csv]
 workspace = true
 optional = true
 features = ["irq", "fp-simd", "smp", "rtc"]

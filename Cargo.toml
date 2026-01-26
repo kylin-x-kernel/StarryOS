@@ -76,6 +76,7 @@ axplat = { path = "arch/axplat" }
 axplat-macros = { path = "arch/axplat-macros" }
 axplat-aarch64-qemu-virt = { path = "arch/axplat-aarch64-qemu-virt" }
 axplat-x86-pc = { path = "arch/axplat-x86-pc" }
+axplat-x86-csv = { path = "arch/axplat-x86-csv" }
 axplat-riscv64-qemu-virt = { path = "arch/axplat-riscv64-qemu-virt" }
 axplat-loongarch64-qemu-virt = { path = "arch/axplat-loongarch64-qemu-virt" }
 axplat-aarch64-peripherals = { path = "arch/axplat-aarch64-peripherals", default-features = false }
