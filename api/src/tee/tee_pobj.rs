@@ -319,6 +319,11 @@ pub fn tee_pobj_create_final(po: &mut tee_pobj) {
 pub fn tee_pobj_release(obj: Arc<RwLock<tee_pobj>>) -> TeeResult {
     let _guard = POBJS_MUTEX.lock();
     let mut obj_guard = obj.write();
+    tee_debug!(
+        "tee_pobj_release: obj.refcnt from: {:?} to: {:?}",
+        obj_guard.refcnt,
+        obj_guard.refcnt - 1
+    );
     obj_guard.refcnt -= 1;
     if obj_guard.refcnt == 0 {
         // remove the pobj from the collection POBJS

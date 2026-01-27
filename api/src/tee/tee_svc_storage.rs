@@ -364,9 +364,9 @@ pub fn syscall_storage_obj_open(
         tee_debug!("syscall_storage_obj_open: step 3 : tee_svc_storage_read_head");
         with_pobj_usage_lock(pobj_flags, || -> TeeResult {
             // TODO: implement call tee_svc_storage_read_head();
-            tee_svc_storage_read_head(&mut o_arc.lock());
+            tee_svc_storage_read_head(&mut o_arc.lock())
             // check if need call tee_obj_close()
-            Ok(())
+            // Ok(())
         })?;
 
         // copy obj_id to user space
@@ -377,7 +377,10 @@ pub fn syscall_storage_obj_open(
     match obj_open {
         Err(err) => {
             if err != TEE_ERROR_CORRUPT_OBJECT {
-                tee_obj_close(tee_obj_id)?;
+                let _ = tee_obj_close(tee_obj_id).inspect_err(|e| {
+                    error!("tee_obj_close failed: {:X?}", e);
+                });
+                return Err(err);
             }
         }
         _ => {}
@@ -781,30 +784,43 @@ fn convert_error(mut e: u32) -> u32 {
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn syscall_storage_obj_del(obj_id: c_ulong) -> TeeResult {
+    tee_debug!("syscall_storage_obj_del: obj_id: {:X?}", obj_id);
     let o = tee_obj_get(obj_id)?;
-    let o_guard = o.lock();
 
-    if (o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE_META == 0) {
-        return Err(TEE_ERROR_ACCESS_CONFLICT);
-    }
+    // check permission and get necessary information, then release o_guard immediately
+    let (pobj_arc, fops) = {
+        let o_guard = o.lock();
 
-    // 检查 pobj 是否存在且 obj_id 不为空
-    let pobj_arc = o_guard.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?;
-    {
-        let pobj_guard = pobj_arc.read();
-        if pobj_guard.obj_id.is_empty() {
-            return Err(TEE_ERROR_BAD_STATE);
+        if (o_guard.info.handleFlags & TEE_DATA_FLAG_ACCESS_WRITE_META == 0) {
+            return Err(TEE_ERROR_ACCESS_CONFLICT);
         }
-    }
 
-    let fops = {
-        let pobj_guard = pobj_arc.read();
-        pobj_guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+        // check if pobj exists and obj_id is not empty
+        let pobj_arc = o_guard.pobj.as_ref().ok_or(TEE_ERROR_BAD_STATE)?.clone();
+        {
+            let pobj_guard = pobj_arc.read();
+            if pobj_guard.obj_id.is_empty() {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+        }
+
+        let fops = {
+            let pobj_guard = pobj_arc.read();
+            pobj_guard.fops.ok_or(TEE_ERROR_BAD_STATE)?
+        };
+
+        // clone pobj_arc and get fops before releasing o_guard
+        (pobj_arc, fops)
     };
 
+    // now it is safe to get the write lock of pobj, because o_guard is released
     let mut pobj_guard = pobj_arc.write();
     let res = (fops.remove)(&mut pobj_guard);
 
+    // release pobj_guard
+    drop(pobj_guard);
+
+    // now it is safe to call tee_obj_close, because all locks are released
     let _ = tee_obj_close(obj_id as u32);
 
     res
