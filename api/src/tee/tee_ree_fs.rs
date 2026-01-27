@@ -45,9 +45,10 @@ use super::{
     tee_api_defines_extensions::{TEE_STORAGE_PRIVATE_REE, TEE_STORAGE_PRIVATE_RPMB},
     tee_fs::tee_fs_dirent,
     tee_pobj::tee_pobj,
-    user_access::copy_to_user,
+    user_access::{copy_from_user, copy_to_user},
     utils::roundup_u,
 };
+use crate::tee::utils::slice_fmt;
 
 pub type tee_file_handle = TeeFsFd;
 
@@ -447,6 +448,14 @@ fn out_of_place_write(
     buf_user: &[u8],
     len: usize,
 ) -> TeeResult {
+    tee_debug!(
+        "out_of_place_write: fdp.fd: {:?}, pos: {:?}, len: {:?}, buf_core: {:?}, buf_user: {:?}",
+        fdp.fd,
+        pos,
+        len,
+        slice_fmt(&buf_core),
+        slice_fmt(&buf_user)
+    );
     // It doesn't make sense to call this function if nothing is to be
     // written. This also guards against end_block_num getting an
     // unexpected value when pos == 0 and len == 0.
@@ -490,7 +499,7 @@ fn out_of_place_write(
             let buf_offset = buf_user.len() - remain_bytes;
             let src_slice = &buf_user[buf_offset..buf_offset + size_to_write];
             let dst_slice = &mut block[offset..offset + size_to_write];
-            copy_to_user(dst_slice, src_slice, size_to_write)?;
+            copy_from_user(dst_slice, src_slice, size_to_write)?;
         } else {
             // 如果buf为空，填充0
             block[offset..offset + size_to_write].fill(0);
@@ -651,6 +660,11 @@ pub fn ree_fs_write_primitive(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
+    tee_debug!(
+        "ree_fs_write_primitive: file_size: {:?}, pos: {:?}",
+        file_size,
+        pos
+    );
     if (file_size as usize) < pos {
         ree_fs_ftruncate_internal(fdp, pos)?;
     }
@@ -998,6 +1012,7 @@ pub fn ree_fs_write(
     len: usize,
 ) -> TeeResult {
     debug_assert!(!buf_core.is_empty() || !buf_user.is_empty());
+    tee_debug!("ree_fs_write: fh: {:?}, pos: {:?}, len: {:?}", fh, pos, len);
 
     let _guard = REE_FS_MUTEX.lock();
     let dirh_ptr = get_dirh()?;
@@ -1005,13 +1020,21 @@ pub fn ree_fs_write(
         assert!(!dirh_ptr.is_null());
         &mut *dirh_ptr
     };
+    tee_debug!("ree_fs_write: dirh: {:?}", dirh_ptr);
 
     let ret = (|| -> TeeResult {
-        ree_fs_write_primitive(fh, pos, buf_core, buf_user, len)?;
-        tee_fs_htree_sync_to_storage(&mut fh.ht, Some(&mut fh.dfh.hash))?;
-
-        tee_fs_dirfile_update_hash(dirh, &mut fh.dfh)?;
-        commit_dirh_writes(dirh)?;
+        ree_fs_write_primitive(fh, pos, buf_core, buf_user, len).inspect_err(|e| {
+            error!("ree_fs_write: write primitive failed: {:#010X}", e);
+        })?;
+        tee_fs_htree_sync_to_storage(&mut fh.ht, Some(&mut fh.dfh.hash)).inspect_err(|e| {
+            error!("ree_fs_write: sync to storage failed: {:#010X}", e);
+        })?;
+        tee_fs_dirfile_update_hash(dirh, &mut fh.dfh).inspect_err(|e| {
+            error!("ree_fs_write: update hash failed: {:#010X}", e);
+        })?;
+        commit_dirh_writes(dirh).inspect_err(|e| {
+            error!("ree_fs_write: commit writes failed: {:#010X}", e);
+        })?;
 
         Ok(())
     })();
@@ -1346,7 +1369,7 @@ pub mod tests_tee_ree_fs {
     use super::*;
     use crate::{
         assert, assert_eq, assert_ne,
-        tee::{TestDescriptor, TestResult, tee_fs_key_manager::tee_fs_init_key_manager},
+        tee::{TestDescriptor, TestResult},
         test_fn, tests, tests_name,
     };
 
@@ -1474,10 +1497,6 @@ pub mod tests_tee_ree_fs {
             // use crate::fs_htree::TEE_FS_HTREE_HASH_SIZE;
             // use crate::tee_api_types::TeeUuid;
             // use crate::tee_ree_fs::{ree_fs_open_primitive, ree_fs_read_primitive, ree_fs_write_primitive};
-
-            // 初始化密钥管理器
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
 
             // 创建测试用的 UUID 和 DFH
             let uuid = TEE_UUID {

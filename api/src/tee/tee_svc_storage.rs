@@ -301,6 +301,15 @@ pub fn syscall_storage_obj_open(
     flags: c_ulong,
     obj: *mut c_uint,
 ) -> TeeResult {
+    tee_debug!(
+        "syscall_storage_obj_open: storage_id: {:X?}, object_id: {:?}, object_id_len: {:X?}, \
+         flags: {:X?}, obj: {:X?}",
+        storage_id,
+        object_id,
+        object_id_len,
+        flags,
+        obj
+    );
     let valid_flags: c_ulong = (TEE_DATA_FLAG_ACCESS_READ
         | TEE_DATA_FLAG_ACCESS_WRITE
         | TEE_DATA_FLAG_ACCESS_WRITE_META
