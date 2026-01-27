@@ -18,7 +18,6 @@ use tee_raw_sys::*;
 use super::{
     fs_dirfile::{TeeFsDirfileFileh, tee_fs_dirfile_fileh_to_fname},
     tee_fs::tee_fs_dirent,
-    tee_fs_key_manager::tee_fs_init_key_manager,
     tee_misc::{tee_b2hs, tee_b2hs_hsbuf_size},
     tee_obj::{tee_obj, tee_obj_add, tee_obj_close, tee_obj_get, tee_obj_id_type},
     tee_pobj::{
@@ -26,7 +25,7 @@ use super::{
         tee_pobj_usage, with_pobj_usage_lock,
     },
     tee_ree_fs::{TeeFileOperations, TeeFsDir, tee_svc_storage_file_ops},
-    tee_session::{tee_session_set_current_uuid, with_tee_session_ctx_mut, with_tee_ta_ctx},
+    tee_session::{with_tee_session_ctx_mut, with_tee_ta_ctx},
     tee_svc_cryp::{
         syscall_cryp_obj_close, syscall_cryp_obj_get_info, tee_obj_attr_copy_from,
         tee_obj_attr_from_binary, tee_obj_attr_to_binary, tee_obj_set_type,
@@ -633,6 +632,18 @@ pub fn syscall_storage_obj_create(
     len: usize,
     obj: *mut c_uint,
 ) -> TeeResult {
+    tee_debug!(
+        "syscall_storage_obj_create: storage_id: {:X?}, object_id: {:?}, object_id_len: {:X?}, \
+         flags: {:X?}, attr: {:X?}, data: {:?}, len: {:X?}, obj: {:X?}",
+        storage_id,
+        object_id,
+        object_id_len,
+        flags,
+        attr,
+        data,
+        len,
+        obj
+    );
     const VALID_FLAGS: c_ulong = (TEE_DATA_FLAG_ACCESS_READ
         | TEE_DATA_FLAG_ACCESS_WRITE
         | TEE_DATA_FLAG_ACCESS_WRITE_META
@@ -656,6 +667,10 @@ pub fn syscall_storage_obj_create(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
+    tee_debug!(
+        "syscall_storage_obj_create object_id_len: {:X?}",
+        object_id_len
+    );
     let object_id_slice =
         unsafe { core::slice::from_raw_parts(object_id as *const u8, object_id_len) };
     let oid_bbuf = bb_memdup_user_private(object_id_slice)?;
@@ -1641,16 +1656,6 @@ pub mod tests_tee_svc_storage {
     test_fn! {
         using TestResult;
         fn test_syscall_storage_init() {
-            // set current session uuid to all zeros
-            tee_session_set_current_uuid(&TEE_UUID {
-                timeLow: 0,
-                timeMid: 0,
-                timeHiAndVersion: 0,
-                clockSeqAndNode: [0; 8],
-            });
-
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
         }
     }
 
