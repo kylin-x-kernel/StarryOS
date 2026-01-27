@@ -86,13 +86,19 @@ use crate::tee::{
     tee_svc_cryp::{
         syscall_cryp_obj_alloc, syscall_cryp_obj_close, syscall_cryp_obj_copy,
         syscall_cryp_obj_get_attr, syscall_cryp_obj_get_info, syscall_cryp_obj_populate,
-        syscall_cryp_obj_reset, syscall_cryp_obj_restrict_usage,
+        syscall_cryp_obj_reset, syscall_cryp_obj_restrict_usage, syscall_obj_generate_key,
     },
     tee_svc_cryp2::sys_tee_scn_hash_final,
     // tee_svc_cryp::sys_tee_scn_hash_init
     tee_svc_cryp2::sys_tee_scn_hash_init,
     tee_svc_cryp2::sys_tee_scn_hash_update,
-    tee_svc_storage::{syscall_storage_obj_create, syscall_storage_obj_open},
+    tee_svc_storage::{
+        syscall_storage_alloc_enum, syscall_storage_free_enum, syscall_storage_next_enum,
+        syscall_storage_obj_create, syscall_storage_obj_del, syscall_storage_obj_open,
+        syscall_storage_obj_read, syscall_storage_obj_rename, syscall_storage_obj_seek,
+        syscall_storage_obj_trunc, syscall_storage_obj_write, syscall_storage_reset_enum,
+        syscall_storage_start_enum,
+    },
     tee_time::{sys_tee_scn_get_time, sys_tee_scn_set_ta_time, sys_tee_scn_wait},
 };
 
@@ -239,6 +245,55 @@ pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeR
                 obj_ptr as _,
             )
         }
+
+        Sysno::tee_scn_storage_obj_del => syscall_storage_obj_del(_uctx.arg0() as _),
+
+        Sysno::tee_scn_storage_obj_rename => {
+            syscall_storage_obj_rename(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_storage_enum_alloc => syscall_storage_alloc_enum(_uctx.arg0() as _),
+
+        Sysno::tee_scn_storage_enum_free => syscall_storage_free_enum(_uctx.arg0() as _),
+
+        Sysno::tee_scn_storage_enum_reset => syscall_storage_reset_enum(_uctx.arg0() as _),
+
+        Sysno::tee_scn_storage_enum_start => {
+            syscall_storage_start_enum(_uctx.arg0() as _, _uctx.arg1() as _)
+        }
+
+        Sysno::tee_scn_storage_enum_next => syscall_storage_next_enum(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+        ),
+
+        Sysno::tee_scn_storage_obj_read => syscall_storage_obj_read(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+        ),
+
+        Sysno::tee_scn_storage_obj_write => {
+            syscall_storage_obj_write(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_storage_obj_trunc => {
+            syscall_storage_obj_trunc(_uctx.arg0() as _, _uctx.arg1() as _)
+        }
+
+        Sysno::tee_scn_storage_obj_seek => {
+            syscall_storage_obj_seek(_uctx.arg0() as _, _uctx.arg1() as _, _uctx.arg2() as _)
+        }
+
+        Sysno::tee_scn_cryp_obj_generate_key => syscall_obj_generate_key(
+            _uctx.arg0() as _,
+            _uctx.arg1() as _,
+            _uctx.arg2() as _,
+            _uctx.arg3() as _,
+        ),
         #[cfg(feature = "tee_test")]
         Sysno::tee_scn_test => sys_tee_scn_test(),
 

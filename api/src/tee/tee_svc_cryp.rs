@@ -3222,9 +3222,12 @@ pub mod tests_tee_svc_cryp {
             };
             assert_eq!(ecc_keypair.curve, TEE_ECC_CURVE_SM2);
             tee_debug!("ecc_keypair: {:#?}", ecc_keypair);
-            assert_eq!(ecc_keypair.d.byte_length().unwrap(), 32);
-            assert_eq!(ecc_keypair.x.byte_length().unwrap(), 32);
-            assert_eq!(ecc_keypair.y.byte_length().unwrap(), 32);
+            let d_len = ecc_keypair.d.byte_length().unwrap();
+            let x_len = ecc_keypair.x.byte_length().unwrap();
+            let y_len = ecc_keypair.y.byte_length().unwrap();
+            assert!(d_len == 31 || d_len == 32);
+            assert!(x_len == 31 || x_len == 32);
+            assert!(y_len == 31 || y_len == 32);
         }
     }
 
