@@ -115,6 +115,10 @@ qemu = [
 
     # default open tee
     "tee",
+]
+
+qemu_unit_test = [
+    "qemu",
     "tee_test",
 ]
 smp = ["axfeat/smp", "axplat-riscv64-visionfive2?/smp"]
