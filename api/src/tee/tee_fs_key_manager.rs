@@ -7,7 +7,9 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::mem::size_of;
 
+use lazy_static::lazy_static;
 use mbedtls::hash;
+use spin::Mutex;
 use static_assertions::const_assert;
 use tee_raw_sys::{
     TEE_ALG_AES_ECB_NOPAD, TEE_ERROR_BAD_PARAMETERS, TEE_ERROR_GENERIC, TEE_ERROR_NOT_IMPLEMENTED,
@@ -30,6 +32,7 @@ const TEE_FS_KM_CHIP_ID_LENGTH: usize = 32;
 const TEE_FS_KM_TSK_SIZE: usize = TEE_SHA256_HASH_SIZE;
 pub const TEE_FS_KM_FEK_SIZE: usize = 16; /* bytes */
 
+#[derive(Debug, Clone)]
 pub struct TeeFsSsk {
     pub is_init: bool,
     pub key: [u8; TEE_FS_KM_SSK_SIZE],
@@ -37,10 +40,35 @@ pub struct TeeFsSsk {
 
 pub static STRING_FOR_SSK_GEN: &[u8] = b"ONLY_FOR_tee_fs_ssk";
 
-static mut TEE_FS_SSK: TeeFsSsk = TeeFsSsk {
-    is_init: false,
-    key: [0u8; TEE_FS_KM_SSK_SIZE],
-};
+const_assert!(TEE_FS_KM_SSK_SIZE <= HUK_SUBKEY_MAX_LEN);
+
+// Helper function to initialize SSK
+fn init_ssk() -> TeeFsSsk {
+    let mut ssk = TeeFsSsk {
+        is_init: false,
+        key: [0u8; TEE_FS_KM_SSK_SIZE],
+    };
+
+    let res = huk_subkey_derive(HukSubkeyUsage::Ssk, None, &mut ssk.key);
+
+    match res {
+        Ok(_) => {
+            ssk.is_init = true;
+        }
+        Err(_) => {
+            // If initialization fails, keep is_init = false and key filled with zeros
+            ssk.key.fill(0);
+            error!("init_ssk: huk_subkey_derive failed");
+        }
+    }
+
+    tee_debug!("init_ssk: ssk: {:?}", ssk);
+    ssk
+}
+
+lazy_static! {
+    static ref TEE_FS_SSK: Mutex<TeeFsSsk> = Mutex::new(init_ssk());
+}
 
 pub fn crypto_cipher_alloc_ctx(algo: TEE_ALG) -> Result<Box<dyn CryptoCipherOps>, TeeResult> {
     match algo {
@@ -71,33 +99,8 @@ pub fn do_hmac(out_key: &mut [u8], in_key: &[u8], message: &[u8]) -> TeeResult {
 impl TeeFsSsk {
     #[allow(dead_code)]
     fn is_initial(&self) -> bool {
-        unsafe { TEE_FS_SSK.is_init }
+        TEE_FS_SSK.lock().is_init
     }
-}
-#[allow(dead_code)]
-pub fn tee_fs_init_key_manager() -> TeeResult {
-    const_assert!(TEE_FS_KM_SSK_SIZE <= HUK_SUBKEY_MAX_LEN);
-
-    unsafe {
-        // 获取裸指针（指向 u8）
-        let key_ptr = core::ptr::addr_of_mut!(TEE_FS_SSK.key) as *mut u8;
-        // 构造切片
-        let key_slice: &mut [u8] = core::slice::from_raw_parts_mut(key_ptr, TEE_FS_KM_SSK_SIZE);
-        let res = huk_subkey_derive(HukSubkeyUsage::Ssk, None, key_slice);
-
-        match res {
-            Ok(_) => {
-                TEE_FS_SSK.is_init = true;
-            }
-            Err(e) => {
-                // TEE_FS_SSK.key.fill(0);
-                let key_ptr = core::ptr::addr_of_mut!(TEE_FS_SSK.key);
-                (*key_ptr).fill(0);
-                return Err(e);
-            }
-        }
-    }
-    Ok(())
 }
 
 pub fn tee_fs_fek_crypt(
@@ -129,30 +132,27 @@ pub fn tee_fs_fek_crypt(
     // Extract in_key slice before unsafe block
     let in_key_slice = in_key.ok_or(TEE_ERROR_BAD_PARAMETERS)?;
 
-    unsafe {
-        if TEE_FS_SSK.is_init == false {
-            error!("tee_fs_fek_crypt: TEE_FS_SSK is not initialized");
-            return Err(TEE_ERROR_BAD_PARAMETERS);
-        }
+    let ssk = TEE_FS_SSK.lock();
+    if ssk.is_init == false {
+        error!("tee_fs_fek_crypt: TEE_FS_SSK is not initialized");
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
 
-        // Use SSK.key as HMAC key, not in_key_slice (FEK)
-        // Consistent with C implementation: do_hmac(tsk, sizeof(tsk), tee_fs_ssk.key, TEE_FS_KM_SSK_SIZE, uuid, sizeof(*uuid))
-        // Create a slice from the static mut key to avoid creating a shared reference to mutable static
-        let ssk_key_slice = core::slice::from_raw_parts(
-            core::ptr::addr_of!(TEE_FS_SSK.key) as *const u8,
-            TEE_FS_KM_SSK_SIZE,
-        );
+    // Use SSK.key as HMAC key, not in_key_slice (FEK)
+    // Consistent with C implementation: do_hmac(tsk, sizeof(tsk), tee_fs_ssk.key, TEE_FS_KM_SSK_SIZE, uuid, sizeof(*uuid))
+    let ssk_key_slice = &ssk.key[..];
 
-        if let Some(uuid) = uuid {
-            let uuid_bytes = core::slice::from_raw_parts(
+    if let Some(uuid) = uuid {
+        let uuid_bytes = unsafe {
+            core::slice::from_raw_parts(
                 (uuid as *const TEE_UUID) as *const u8,
                 size_of::<TEE_UUID>(),
-            );
-            do_hmac(&mut tsk, ssk_key_slice, uuid_bytes)?;
-        } else {
-            let dummy = [0u8, 1];
-            do_hmac(&mut tsk, ssk_key_slice, &dummy)?;
-        }
+            )
+        };
+        do_hmac(&mut tsk, ssk_key_slice, uuid_bytes)?;
+    } else {
+        let dummy = [0u8, 1];
+        do_hmac(&mut tsk, ssk_key_slice, &dummy)?;
     }
     let _ = match crypto_cipher_alloc_ctx(TEE_ALG_AES_ECB_NOPAD) {
         Ok(mut ctx) => {
