@@ -85,12 +85,22 @@ impl default::Default for tee_obj {
     }
 }
 
+fn obj_inner_to_outer(obj: tee_obj_id_type) -> tee_obj_id_type {
+    (obj + 1) as tee_obj_id_type
+}
+
+fn obj_outer_to_inner(obj: tee_obj_id_type) -> tee_obj_id_type {
+    debug_assert!(obj > 0);
+    (obj - 1) as tee_obj_id_type
+}
+
 pub fn tee_obj_add(mut obj: tee_obj) -> TeeResult<tee_obj_id_type> {
     with_tee_session_ctx_mut(|ctx| {
         // 获取一个可用的 ID
         let vacant = ctx.objects.vacant_entry();
-        let id = vacant.key();
+        let mut id = vacant.key();
 
+        id = obj_inner_to_outer(id as tee_obj_id_type) as usize;
         // 设置 objectId
         obj.info.objectId = id as u32;
 
@@ -104,6 +114,7 @@ pub fn tee_obj_add(mut obj: tee_obj) -> TeeResult<tee_obj_id_type> {
 }
 
 pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<Mutex<tee_obj>>> {
+    let obj_id = obj_outer_to_inner(obj_id);
     with_tee_session_ctx(|ctx| match ctx.objects.get(obj_id as _) {
         Some(obj) => Ok(Arc::clone(&obj)),
         None => Err(TEE_ERROR_ITEM_NOT_FOUND),
@@ -115,6 +126,7 @@ pub fn tee_obj_get(obj_id: tee_obj_id_type) -> TeeResult<Arc<Mutex<tee_obj>>> {
 /// # Arguments
 /// * `obj_id` - the id of the tee_obj
 pub fn tee_obj_delete(obj_id: u32) -> TeeResult<Arc<Mutex<tee_obj>>> {
+    let obj_id = obj_outer_to_inner(obj_id as tee_obj_id_type);
     // remove from session objects
     with_tee_session_ctx_mut(|ctx| -> TeeResult<Arc<Mutex<tee_obj>>> {
         let obj = ctx
@@ -137,7 +149,7 @@ pub fn tee_obj_delete(obj_id: u32) -> TeeResult<Arc<Mutex<tee_obj>>> {
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn tee_obj_close(obj_id: u32) -> TeeResult {
-    let obj = tee_obj_delete(obj_id)?;
+    let obj = tee_obj_delete(obj_id as _)?;
 
     let mut obj_guard = obj.lock();
     if obj_guard.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
