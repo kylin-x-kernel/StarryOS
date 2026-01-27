@@ -32,7 +32,7 @@ use crate::tee::{
     },
     tee_obj::tee_obj_id_type,
     tee_svc_cryp::{CryptoAttrRef, tee_cryp_obj_secret_wrapper, tee_crypto_ops},
-    tee_svc_cryp2::{CrypCtx, TeeCrypState},
+    tee_svc_cryp2::{CrypCtx, CrypState, TeeCrypState},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -280,12 +280,42 @@ pub(crate) fn crypto_hash_copy_state(ctx: &mut dyn CryptoHashCtx, src_ctx: &dyn 
     ctx.copy_state(src_ctx);
 }
 
-pub(crate) fn crypto_hash_init(ctx: &mut dyn CryptoHashCtx) -> TeeResult {
-    ctx.init()
+pub(crate) fn crypto_hash_init(cs: Arc<Mutex<TeeCrypState>>) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let mut md_type: MdType = MdType::None;
+    match algo {
+        TEE_ALG_MD5 => md_type = MdType::Md5,
+        TEE_ALG_SHA1 => md_type = MdType::Sha1,
+        TEE_ALG_SHA224 => md_type = MdType::Sha224,
+        TEE_ALG_SHA256 => md_type = MdType::Sha256,
+        TEE_ALG_SHA384 => md_type = MdType::Sha384,
+        TEE_ALG_SHA512 => md_type = MdType::Sha512,
+        TEE_ALG_SM3 => md_type = MdType::SM3,
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
+    }
+    if let Ok(md) = Md::new(md_type) {
+        cs_guard.ctx = CrypCtx::HashCtx(md);
+        cs_guard.state = CrypState::Initialized;
+        Ok(())
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
 }
 
-pub(crate) fn crypto_hash_update(ctx: &mut dyn CryptoHashCtx, data: &[u8]) -> TeeResult {
-    ctx.update(data)
+pub(crate) fn crypto_hash_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> TeeResult {
+    let mut cs_guard = cs.lock();
+
+    match &mut cs_guard.ctx {
+        CrypCtx::HashCtx(md) => {
+            if let Ok(_) = md.update(data) {
+                Ok(())
+            } else {
+                Err(TEE_ERROR_BAD_PARAMETERS)
+            }
+        }
+        _ => Err(TEE_ERROR_BAD_PARAMETERS),
+    }
 }
 
 pub(crate) fn crypto_hash_final(ctx: &mut dyn CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
@@ -369,13 +399,45 @@ pub(crate) trait CryptoMacCtx {
     fn copy_state(&mut self, ctx: &dyn CryptoMacCtx);
 }
 
-pub(crate) fn crypto_mac_init(ctx: &mut dyn CryptoMacCtx, key: &[u8]) -> TeeResult {
-    return ctx.init(key);
+pub(crate) fn crypto_mac_init(cs: Arc<Mutex<TeeCrypState>>, key: &[u8]) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let mut md_type: MdType = MdType::None;
+
+    match algo {
+        TEE_ALG_HMAC_MD5 => md_type = MdType::Md5,
+        TEE_ALG_HMAC_SHA1 => md_type = MdType::Sha1,
+        TEE_ALG_HMAC_SHA224 => md_type = MdType::Sha224,
+        TEE_ALG_HMAC_SHA256 => md_type = MdType::Sha256,
+        TEE_ALG_HMAC_SHA384 => md_type = MdType::Sha384,
+        TEE_ALG_HMAC_SHA512 => md_type = MdType::Sha512,
+        TEE_ALG_HMAC_SM3 => md_type = MdType::SM3,
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
+    }
+
+    if let Ok(hmac) = Hmac::new(md_type, key) {
+        cs_guard.ctx = CrypCtx::HmacCtx(hmac);
+        cs_guard.state = CrypState::Initialized;
+        Ok(())
+    } else {
+        Err(TEE_ERROR_NOT_IMPLEMENTED)
+    }
 }
 
 // Crypto MAC update
-pub(crate) fn crypto_mac_update(ctx: &mut dyn CryptoMacCtx, data: &[u8]) -> TeeResult {
-    ctx.update(data)
+pub(crate) fn crypto_mac_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> TeeResult {
+    let mut guard = cs.lock();
+
+    match &mut guard.ctx {
+        CrypCtx::HmacCtx(hmac) => {
+            if let Ok(_) = hmac.update(data) {
+                Ok(())
+            } else {
+                Err(TEE_ERROR_BAD_PARAMETERS)
+            }
+        }
+        _ => Err(TEE_ERROR_BAD_PARAMETERS),
+    }
 }
 
 // Crypto MAC finalization

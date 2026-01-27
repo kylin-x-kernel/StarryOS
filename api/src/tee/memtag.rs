@@ -12,6 +12,7 @@ use super::{
     types_ext::*,
     utils::{shift_u32, shift_u64},
 };
+use crate::tee::TeeResult;
 
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "tee_cfg_memtag", target_arch = "aarch64"))] {
@@ -39,9 +40,9 @@ pub fn memtag_strip_tag_vaddr(addr: *const c_void) -> vaddr_t {
 // arg: addr: vaddr_t
 // return: vaddr_t
 #[inline]
-pub(crate) fn memtag_strip_tag(addr: vaddr_t) -> vaddr_t {
+pub(crate) fn memtag_strip_tag() -> TeeResult {
     // In real implementation, this would strip architecture-specific memory tags
-    memtag_strip_tag_vaddr_1(addr)
+    Ok(())
 }
 
 // Strip memory tag from pointer
@@ -68,7 +69,7 @@ fn memtag_strip_tag_vaddr_1(addr: vaddr_t) -> vaddr_t {
 // arg: addr: vaddr_t
 // return: vaddr_t
 #[inline]
-pub(crate) fn memtag_strip_tag_const(addr: vaddr_t) -> vaddr_t {
+pub(crate) fn memtag_strip_tag_const() -> TeeResult {
     // In real implementation, this would strip architecture-specific memory tags
-    memtag_strip_tag_vaddr_1(addr)
+    Ok(())
 }
