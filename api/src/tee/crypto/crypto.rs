@@ -308,11 +308,7 @@ pub(crate) fn crypto_hash_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> T
 
     match &mut cs_guard.ctx {
         CrypCtx::HashCtx(md) => {
-            if let Ok(_) = md.update(data) {
-                Ok(())
-            } else {
-                Err(TEE_ERROR_BAD_PARAMETERS)
-            }
+            md.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
         }
         _ => Err(TEE_ERROR_BAD_PARAMETERS),
     }
@@ -430,11 +426,7 @@ pub(crate) fn crypto_mac_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> Te
 
     match &mut guard.ctx {
         CrypCtx::HmacCtx(hmac) => {
-            if let Ok(_) = hmac.update(data) {
-                Ok(())
-            } else {
-                Err(TEE_ERROR_BAD_PARAMETERS)
-            }
+            hmac.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
         }
         _ => Err(TEE_ERROR_BAD_PARAMETERS),
     }
