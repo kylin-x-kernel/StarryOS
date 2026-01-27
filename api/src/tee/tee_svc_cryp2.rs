@@ -735,6 +735,59 @@ fn cryp_state_free(id: u32) -> TeeResult {
     Ok(())
 }
 
+pub fn syscall_hash_init(id: u32) -> TeeResult {
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+
+    match tee_alg_get_class(algo) {
+        TEE_OPERATION_DIGEST => crypto_hash_init(cs.clone()),
+        TEE_OPERATION_MAC => {
+            let o = tee_obj_get(cs_guard.key1 as tee_obj_id_type)?;
+            let mut o_guard = o.lock();
+            if o_guard.attr.is_empty() {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+
+            // 从tee_obj中读取密钥
+            let mut key_size = 0;
+            if let TeeCryptObj::obj_secret(k) = &o_guard.attr[0] {
+                key_size = k.secret().key_size as u64;
+                let mut key = vec![0u8; key_size as usize];
+                let attr_ref = o_guard.attr[0].get_attr_by_id(0)?;
+                attr_ref.to_user(key.as_mut_slice(), &mut key_size)?;
+                crypto_mac_init(cs.clone(), key.as_slice())
+            } else {
+                Err(TEE_ERROR_BAD_STATE)
+            }
+        }
+        _ => {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+    }
+}
+
+pub fn syscall_hash_update(id: u32, chunk: &[u8]) -> TeeResult {
+    memtag_strip_tag_const()?;
+    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+
+    if cs_guard.state != CrypState::Initialized {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    match tee_alg_get_class(algo) {
+        TEE_OPERATION_DIGEST => crypto_hash_update(cs.clone(), chunk),
+        TEE_OPERATION_MAC => crypto_mac_update(cs.clone(), chunk),
+        _ => {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+    }
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_cryp {
     //-------- test framework import --------
@@ -753,26 +806,42 @@ pub mod tests_cryp {
             let mut state1: u32 = 0;
             let mut state2: u32 = 0;
             let mut test_obj = tee_obj::default();
-            let id = tee_obj_add(test_obj).unwrap() as u32;
-            syscall_cryp_state_alloc(TEE_ALG_SM3, TEE_OperationMode::TEE_MODE_DIGEST, None, None, &mut state1).unwrap();
-            syscall_cryp_state_alloc(TEE_ALG_AES_ECB_NOPAD, TEE_OperationMode::TEE_MODE_DECRYPT, Some(id), None, &mut state2).unwrap();
 
-            let cs1 = tee_cryp_state_get(state1).unwrap();
+            let res = tee_obj_add(test_obj);
+            assert!(res.is_ok());
+            let id = res.unwrap() as u32;
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM3, TEE_OperationMode::TEE_MODE_DIGEST, None, None, &mut state1);
+            assert!(res.is_ok());
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_AES_ECB_NOPAD, TEE_OperationMode::TEE_MODE_DECRYPT, Some(id), None, &mut state2);
+            assert!(res.is_ok());
+
+            let res = tee_cryp_state_get(state1);
+            assert!(res.is_ok());
+            let cs1 = res.unwrap();
+
             let guard1 = cs1.lock();
             assert_eq!(guard1.id, state1);
             assert_eq!(guard1.algo, TEE_ALG_SM3);
             assert!(guard1.mode == TEE_OperationMode::TEE_MODE_DIGEST);
             drop(guard1);
 
-            let cs2 = tee_cryp_state_get(state2).unwrap();
+            let res = tee_cryp_state_get(state2);
+            assert!(res.is_ok());
+            let cs2 = res.unwrap();
+
             let guard2 = cs2.lock();
             assert_eq!(guard2.id, state2);
             assert_eq!(guard2.algo, TEE_ALG_AES_ECB_NOPAD);
             assert!(guard2.mode == TEE_OperationMode::TEE_MODE_DECRYPT);
             drop(guard2);
 
-            syscall_cryp_state_free(state1).unwrap();
-            syscall_cryp_state_free(state2).unwrap();
+            let res = syscall_cryp_state_free(state1);
+            assert!(res.is_ok());
+
+            let res = syscall_cryp_state_free(state2);
+            assert!(res.is_ok());
 
             match tee_cryp_state_get(state1) {
                 Err(e) => assert_eq!(e, TEE_ERROR_ITEM_NOT_FOUND),
