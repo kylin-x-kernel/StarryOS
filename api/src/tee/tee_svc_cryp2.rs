@@ -39,8 +39,10 @@ use super::{
     TeeResult,
     config::CFG_COMPAT_GP10_DES,
     crypto::crypto::{
-        CryptoHashCtx, CryptoMacCtx, crypto_hash_final, crypto_hash_init, crypto_hash_update,
-        crypto_mac_final, crypto_mac_init, crypto_mac_update, ecc_keypair, ecc_public_key,
+        CryptoHashCtx, CryptoMacCtx, crypto_authenc_alloc_ctx, crypto_cipher_alloc_ctx,
+        crypto_hash_alloc_ctx, crypto_hash_final, crypto_hash_init, crypto_hash_update,
+        crypto_mac_alloc_ctx, crypto_mac_final, crypto_mac_init, crypto_mac_update, ecc_keypair,
+        ecc_public_key,
     },
     crypto::{sm3_hash::SM3HashCtx, sm3_hmac::SM3HmacCtx},
     libmbedtls::bignum::{
