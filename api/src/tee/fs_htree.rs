@@ -1932,7 +1932,7 @@ mod tests_htree_basic {
     use super::*;
     use crate::{
         assert, assert_eq, assert_ne,
-        tee::{TestDescriptor, TestResult, tee_fs_key_manager::tee_fs_init_key_manager},
+        tee::{TestDescriptor, TestResult},
         test_fn, tests, tests_name,
     };
 
@@ -2197,9 +2197,6 @@ mod tests_htree_basic {
         using TestResult;
 
         pub fn test_update_verify_root() {
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
-
             let mut ht = TeeFsHtree::default();
             ht.data.uuid = TEE_UUID {
                 timeLow: 1,
@@ -2237,9 +2234,6 @@ mod tests_htree_basic {
         using TestResult;
 
         pub fn test_update_root_multiple_times() {
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
-
             let mut ht = TeeFsHtree::default();
             ht.data.uuid = TEE_UUID {
                 timeLow: 1,
@@ -2277,9 +2271,6 @@ mod tests_htree_basic {
         using TestResult;
 
         pub fn test_verify_root_without_update() {
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
-
             let mut ht = TeeFsHtree::default();
             ht.data.uuid = TEE_UUID {
                 timeLow: 1,
@@ -3034,7 +3025,6 @@ pub mod tests_fs_htree {
         tee::{
             TestDescriptor, TestResult,
             common::file_ops::{FS_MODE_644, FS_OFLAG_DEFAULT},
-            tee_fs_key_manager::tee_fs_init_key_manager,
         },
         test_fn, tests, tests_name,
     };
@@ -3042,8 +3032,6 @@ pub mod tests_fs_htree {
     test_fn! {
         using TestResult;
         fn test_tee_fs_htree_open() {
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
             let mut fd = FileVariant::open("test_fs_htree_open.bin", FS_OFLAG_DEFAULT, FS_MODE_644).unwrap();
 
             let uuid = TEE_UUID { timeLow: 1, timeMid: 2, timeHiAndVersion: 3, clockSeqAndNode: [4; 8] };

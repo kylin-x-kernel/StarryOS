@@ -19,9 +19,7 @@ use super::{
         print_tree_hash, tee_fs_htree_close, tee_fs_htree_open, tee_fs_htree_read_block,
         tee_fs_htree_sync_to_storage, tee_fs_htree_write_block,
     },
-    tee_fs_key_manager::tee_fs_init_key_manager,
     tee_ree_fs::TeeFsHtreeStorageOps,
-    tee_session::tee_session_set_current_uuid,
     utils::shift_u32,
 };
 // The smallest blocks size that can hold two struct
@@ -666,16 +664,6 @@ pub mod tests_fs_htree_tests {
         using TestResult;
 
         fn core_fs_htree_tests() {
-            tee_session_set_current_uuid(&TEE_UUID {
-                timeLow: 0,
-                timeMid: 0,
-                timeHiAndVersion: 0,
-                clockSeqAndNode: [0; 8],
-            });
-
-            let res = tee_fs_init_key_manager();
-            assert!(res.is_ok());
-
             let result = test_write_read(10);
             assert!(result.is_ok());
 

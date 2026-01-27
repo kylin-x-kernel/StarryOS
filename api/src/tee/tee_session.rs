@@ -57,7 +57,7 @@ pub struct tee_session_ctx {
 }
 
 #[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct tee_ta_ctx {
     #[cfg(feature = "tee_test")]
     pub for_test_only: u32,
@@ -66,6 +66,17 @@ pub struct tee_ta_ctx {
     pub uuid: String,
 }
 
+impl Default for tee_ta_ctx {
+    fn default() -> Self {
+        tee_ta_ctx {
+            #[cfg(feature = "tee_test")]
+            for_test_only: 0,
+            session_handle: 0,
+            open_sessions: HashMap::new(),
+            uuid: Uuid::default().to_string(),
+        }
+    }
+}
 impl TeeSessionCtxTrait for tee_session_ctx {
     fn as_any(&self) -> &dyn Any {
         self
@@ -194,14 +205,6 @@ where
 {
     let ta_ctx = TEE_TA_CTX.read();
     f(&*ta_ctx)
-}
-
-#[cfg(feature = "tee_test")]
-pub fn tee_session_set_current_uuid(raw_uuid: &TEE_UUID) -> TeeResult {
-    with_tee_ta_ctx_mut(|ta_ctx| {
-        ta_ctx.uuid = Uuid::from(*raw_uuid).to_string();
-        Ok(())
-    })
 }
 
 #[cfg(feature = "tee_test")]
