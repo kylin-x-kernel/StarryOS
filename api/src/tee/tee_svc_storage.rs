@@ -202,16 +202,19 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
         let mut pobj_guard = o.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?.write();
         tee_debug!("get write lock");
         // open the file, store the file handle in tee_obj.fh
-        o.fh = (fops.open)(&mut *pobj_guard, Some(&mut size)).inspect_err(|e| {
-            error!("open failed: {:X?}", e);
-        })?;
+        o.fh = Some(
+            (fops.open)(&mut *pobj_guard, Some(&mut size)).inspect_err(|e| {
+                error!("open failed: {:X?}", e);
+            })?,
+        );
     }
     tee_debug!("tee_svc_storage_read_head: size: {}", size);
     // read the head
     let mut head = tee_svc_storage_head::zeroed();
     let mut head_slice = bytes_of_mut(&mut head);
     let mut bytes: usize = head_slice.len();
-    (fops.read)(&mut o.fh, 0, head_slice, &mut [], &mut bytes).inspect_err(|e| {
+    let fh = o.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+    (fops.read)(fh, 0, head_slice, &mut [], &mut bytes).inspect_err(|e| {
         if *e == TEE_ERROR_CORRUPT_OBJECT {
             error!("head corrupt");
         }
@@ -244,7 +247,7 @@ fn tee_svc_storage_read_head(o: &mut tee_obj) -> TeeResult {
         // read meta
         bytes = head.attr_size as usize;
         (fops.read)(
-            &mut o.fh,
+            o.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?,
             size_of_val(&head),
             &mut attr,
             &mut [],
@@ -436,19 +439,21 @@ fn tee_svc_storage_init_file(
     head.have_attrs = o.have_attrs;
     let mut pobj_guard = o.pobj.as_mut().ok_or(TEE_ERROR_BAD_STATE)?.write();
     head.objectUsage = pobj_guard.obj_info_usage;
-    o.fh = (fops.create)(
-        &mut pobj_guard,
-        overwrite,
-        bytemuck::bytes_of(&head),
-        &attr,
-        &[],
-        data,
-        data.len(),
-    )
-    .inspect_err(|e| {
-        o.ds_pos = 0;
-        error!("create failed: {:X?}", e);
-    })?;
+    o.fh = Some(
+        (fops.create)(
+            &mut pobj_guard,
+            overwrite,
+            bytemuck::bytes_of(&head),
+            &attr,
+            &[],
+            data,
+            data.len(),
+        )
+        .inspect_err(|e| {
+            o.ds_pos = 0;
+            error!("create failed: {:X?}", e);
+        })?,
+    );
     o.info.dataSize = data.len();
 
     Ok(())
@@ -743,8 +748,7 @@ pub fn syscall_storage_obj_create(
             let error = convert_error(error);
 
             if let Some(mut o) = o {
-                let mut fh = Some(core::mem::take(&mut o.fh));
-                (fops.close)(&mut fh);
+                (fops.close)(&mut o.fh);
                 // o 会在这里 drop
             }
 
@@ -978,7 +982,8 @@ pub fn syscall_storage_obj_read(
         bytes,
         o_guard.info.dataPosition
     );
-    (fops.read)(&mut o_guard.fh, pos_tmp, &mut [], data_slice, &mut bytes).inspect_err(|e| {
+    let fh = o_guard.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+    (fops.read)(fh, pos_tmp, &mut [], data_slice, &mut bytes).inspect_err(|e| {
         if *e == TEE_ERROR_CORRUPT_OBJECT {
             error!("Object corrupt");
             remove_corrupt_obj(&mut o_guard);
@@ -1046,7 +1051,8 @@ pub fn syscall_storage_obj_write(obj: c_ulong, data: *mut c_void, len: usize) ->
         o_guard.info.dataPosition
     );
     let data_slice = unsafe { core::slice::from_raw_parts(data as *const u8, len) };
-    (fops.write)(&mut o_guard.fh, pos_tmp, &[], data_slice, len).inspect_err(|e| {
+    let fh = o_guard.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+    (fops.write)(fh, pos_tmp, &[], data_slice, len).inspect_err(|e| {
         error!("syscall_storage_obj_write: write failed: {:X?}", e);
     })?;
     o_guard.info.dataPosition += len;
@@ -1071,7 +1077,8 @@ pub fn tee_svc_storage_write_usage(o: &mut tee_obj, usage: u32) -> TeeResult {
         )
     };
 
-    (fops.write)(&mut o.fh, pos, usage_slice, &[], usage_slice.len()).inspect_err(|e| {
+    let fh = o.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+    (fops.write)(fh, pos, usage_slice, &[], usage_slice.len()).inspect_err(|e| {
         error!("tee_svc_storage_write_usage: write failed: {:X?}", e);
     })
 }
@@ -1119,7 +1126,8 @@ pub fn syscall_storage_obj_trunc(obj: c_ulong, len: usize) -> TeeResult {
     // call truncate
     let res = {
         let mut o_guard = o.lock();
-        (fops.truncate)(&mut o_guard.fh, offs)
+        let fh = o_guard.fh.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
+        (fops.truncate)(fh, offs)
     };
 
     match res {
@@ -1374,8 +1382,7 @@ pub fn syscall_storage_next_enum(
         if let Some(pobj) = o.pobj.take() {
             let fops = pobj.read().fops.ok_or(TEE_ERROR_BAD_STATE)?;
 
-            let mut fh_opt = Some(o.fh);
-            let _ = (fops.close)(&mut fh_opt);
+            (fops.close)(&mut o.fh);
             let _ = tee_pobj_release(pobj);
         }
     }
