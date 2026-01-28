@@ -1127,7 +1127,7 @@ pub const fn prop(
     }
 }
 
-pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 9] = [
+pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 10] = [
     // AES
     prop(
         TEE_TYPE_AES,
@@ -1170,6 +1170,15 @@ pub static TEE_CRYP_OBJ_PROPS: [tee_cryp_obj_type_props; 9] = [
         8,
         64,
         512,
+        512 / 8,
+        &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
+    ),
+    // HMAC-SM3
+    prop(
+        TEE_TYPE_HMAC_SM3,
+        8,
+        80,
+        1024,
         512 / 8,
         &TEE_CRYP_OBJ_SECRET_VALUE_ATTRS,
     ),
@@ -3305,37 +3314,62 @@ pub mod tests_tee_svc_cryp {
         }
     }
 
+    fn test_syscall_cryp_generate_secret_key(key_type: u32, key_size: usize) -> TestResult {
+        tee_debug!(
+            "test_syscall_cryp_generate_secret_key: key_type: {:?}, key_size: {:?}",
+            key_type,
+            key_size
+        );
+        // alloc sm4 key
+        let mut obj_id: c_uint = 0;
+        let result = syscall_cryp_obj_alloc(key_type as _, key_size as _, &mut obj_id);
+        assert!(result.is_ok());
+        // assert!(obj_id != 0);
+        // secret key no need usr_params
+        let result =
+            syscall_obj_generate_key(obj_id as c_ulong, key_size as _, core::ptr::null(), 0);
+        assert!(result.is_ok());
+        // get attr from obj
+        let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+        assert!(obj_arc.is_ok());
+        let obj_arc = obj_arc.unwrap();
+        let obj = obj_arc.lock();
+        assert_eq!(obj.info.objectType, key_type);
+        assert_eq!(obj.info.maxObjectSize, key_size as u32);
+        assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+        assert_eq!(obj.attr.len(), 1);
+        assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+        // get secret key from obj
+        let secret_key = match &obj.attr[0] {
+            TeeCryptObj::obj_secret(obj_secret) => obj_secret,
+            _ => panic!("secret key not found"),
+        };
+        assert_eq!(secret_key.secret().key_size, (key_size / 8) as u32);
+        tee_debug!("secret key: {:#?}", &obj.attr[0]);
+
+        TestResult::Ok
+    }
+
     test_fn! {
         using TestResult;
 
         fn test_syscall_cryp_generate_key_sm4() {
-            // alloc sm4 key
-            let mut obj_id: c_uint = 0;
-            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
-            assert!(result.is_ok());
-            // assert!(obj_id != 0);
-            // sm4 no need usr_params
-            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
-            assert!(result.is_ok());
-            // get attr from obj
-            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
-            assert!(obj_arc.is_ok());
-            let obj_arc = obj_arc.unwrap();
-            let obj = obj_arc.lock();
-            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
-            assert_eq!(obj.info.maxObjectSize, 128);
-            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
-            assert_eq!(obj.attr.len(), 1);
-            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
-            // get sm4_key from obj
-            let sm4_key = match &obj.attr[0] {
-                TeeCryptObj::obj_secret(obj_secret) => obj_secret,
-                _ => panic!("sm4_key not found"),
-            };
-            assert_eq!(sm4_key.secret().key_size, 128/8);
-            tee_debug!("sm4_key: {:#?}", &obj.attr[0]);
+            if let TestResult::Failed = test_syscall_cryp_generate_secret_key(TEE_TYPE_SM4 as _, 128) {
+                return TestResult::Failed;
+            }
         }
     }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_syscall_cryp_generate_key_hmac_sm3() {
+            if let TestResult::Failed = test_syscall_cryp_generate_secret_key(TEE_TYPE_HMAC_SM3 as _, 128) {
+                return TestResult::Failed;
+            }
+        }
+    }
+
     test_fn! {
         using TestResult;
 
@@ -3411,6 +3445,7 @@ pub mod tests_tee_svc_cryp {
         test_syscall_cryp_generate_key_ecc_keypair,
         test_syscall_cryp_generate_key_rsa,
         test_syscall_cryp_generate_key_sm4,
+        test_syscall_cryp_generate_key_hmac_sm3,
         test_mpi_write_binary,
     }
 }
