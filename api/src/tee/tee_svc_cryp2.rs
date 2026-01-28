@@ -85,13 +85,18 @@ use super::{
 use crate::{
     mm::vm_load_string,
     tee::{
-        self, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384, TEE_ALG_SHA3_512,
-        TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ERROR_NODE_DISABLED, TEE_TYPE_CONCAT_KDF_Z,
-        TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
+        self, TEE_ALG_DES3_CMAC, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384,
+        TEE_ALG_SHA3_512, TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ERROR_NODE_DISABLED,
+        TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD, crypto,
         libmbedtls::bignum::BigNum,
         memtag::{memtag_strip_tag, memtag_strip_tag_const},
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
         tee_svc_cryp::{CryptoAttrRef, TeeCryptObjAttrOps, tee_crypto_ops},
+        utee_defines::{
+            TEE_AES_BLOCK_SIZE, TEE_DES_BLOCK_SIZE, TEE_MD5_HASH_SIZE, TEE_SHA1_HASH_SIZE,
+            TEE_SHA224_HASH_SIZE, TEE_SHA256_HASH_SIZE, TEE_SHA384_HASH_SIZE, TEE_SHA512_HASH_SIZE,
+            TEE_SM3_HASH_SIZE,
+        },
     },
 };
 
@@ -346,8 +351,61 @@ fn process_digest_final(
 /// This function only returns the standard-defined digest size for the algorithm,
 /// without considering any padding or special processing/// Get digest size for algorithm
 fn tee_alg_get_digest_size(algo: u32, size: &mut usize) -> TeeResult {
-    // TODO!
-    unimplemented!("tee_alg_get_digest_size implementation required")
+    match algo {
+        TEE_ALG_MD5 | TEE_ALG_HMAC_MD5 => {
+            *size = TEE_MD5_HASH_SIZE;
+        }
+        TEE_ALG_SHA1 | TEE_ALG_HMAC_SHA1 | TEE_ALG_DSA_SHA1 | TEE_ALG_ECDSA_SHA1 => {
+            *size = TEE_SHA1_HASH_SIZE;
+        }
+        TEE_ALG_SHA224
+        | TEE_ALG_SHA3_224
+        | TEE_ALG_HMAC_SHA224
+        | TEE_ALG_HMAC_SHA3_224
+        | TEE_ALG_DSA_SHA224
+        | TEE_ALG_ECDSA_SHA224 => {
+            *size = TEE_SHA224_HASH_SIZE;
+        }
+        TEE_ALG_SHA256
+        | TEE_ALG_SHA3_256
+        | TEE_ALG_HMAC_SHA256
+        | TEE_ALG_HMAC_SHA3_256
+        | TEE_ALG_DSA_SHA256
+        | TEE_ALG_ECDSA_SHA256 => {
+            *size = TEE_SHA256_HASH_SIZE;
+        }
+        TEE_ALG_SHA384
+        | TEE_ALG_SHA3_384
+        | TEE_ALG_HMAC_SHA384
+        | TEE_ALG_HMAC_SHA3_384
+        | TEE_ALG_ECDSA_SHA384 => {
+            *size = TEE_SHA384_HASH_SIZE;
+        }
+        TEE_ALG_SHA512
+        | TEE_ALG_SHA3_512
+        | TEE_ALG_HMAC_SHA512
+        | TEE_ALG_HMAC_SHA3_512
+        | TEE_ALG_ECDSA_SHA512 => {
+            *size = TEE_SHA512_HASH_SIZE;
+        }
+        TEE_ALG_SM3 | TEE_ALG_HMAC_SM3 => {
+            *size = TEE_SM3_HASH_SIZE;
+        }
+        TEE_ALG_AES_CBC_MAC_NOPAD | TEE_ALG_AES_CBC_MAC_PKCS5 | TEE_ALG_AES_CMAC => {
+            *size = TEE_AES_BLOCK_SIZE;
+        }
+        TEE_ALG_DES_CBC_MAC_NOPAD
+        | TEE_ALG_DES_CBC_MAC_PKCS5
+        | TEE_ALG_DES3_CBC_MAC_NOPAD
+        | TEE_ALG_DES3_CBC_MAC_PKCS5
+        | TEE_ALG_DES3_CMAC => {
+            *size = TEE_DES_BLOCK_SIZE;
+        }
+        _ => {
+            return Err(TEE_ERROR_NOT_SUPPORTED);
+        }
+    }
+    Ok(())
 }
 
 /// Safely writes a u64 value to a user-space pointer
@@ -603,13 +661,14 @@ pub fn syscall_cryp_state_alloc(
         let obj1 = tee_obj_get(key1 as tee_obj_id_type);
         o1_ok = obj1.is_ok();
         if o1_ok {
-            let o1 = obj1.unwrap();
-            if o1.lock().busy {
+            let obj1_arc = obj1.unwrap();
+            let mut o1 = obj1_arc.lock();
+            if o1.busy {
                 return Err(TEE_ERROR_BUSY);
             }
-            o1.lock().busy = true;
-            cs.key1 = o1.lock().info.objectId;
-            tee_svc_cryp_check_key_type(&*o1.lock(), algo, mode)?;
+            o1.busy = true;
+            cs.key1 = o1.info.objectId;
+            tee_svc_cryp_check_key_type(&*o1, algo, mode)?;
         }
     }
 
@@ -617,13 +676,14 @@ pub fn syscall_cryp_state_alloc(
         let obj2 = tee_obj_get(key2 as tee_obj_id_type);
         o2_ok = obj2.is_ok();
         if o2_ok {
-            let o2 = obj2.unwrap();
-            if o2.lock().busy {
+            let obj2_arc = obj2.unwrap();
+            let mut o2 = obj2_arc.lock();
+            if o2.busy {
                 return Err(TEE_ERROR_BUSY);
             }
-            o2.lock().busy = true;
-            cs.key2 = o2.lock().info.objectId;
-            tee_svc_cryp_check_key_type(&*o2.lock(), algo, mode)?;
+            o2.busy = true;
+            cs.key2 = o2.info.objectId;
+            tee_svc_cryp_check_key_type(&*o2, algo, mode)?;
         }
     }
 
@@ -739,24 +799,22 @@ pub fn syscall_hash_init(id: u32) -> TeeResult {
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
     let algo = cs_guard.algo;
+    let key1 = cs_guard.key1;
+    drop(cs_guard);
 
     match tee_alg_get_class(algo) {
         TEE_OPERATION_DIGEST => crypto_hash_init(cs.clone()),
         TEE_OPERATION_MAC => {
-            let o = tee_obj_get(cs_guard.key1 as tee_obj_id_type)?;
+            let o = tee_obj_get(key1 as tee_obj_id_type)?;
             let mut o_guard = o.lock();
             if o_guard.attr.is_empty() {
                 return Err(TEE_ERROR_BAD_STATE);
             }
 
             // 从tee_obj中读取密钥
-            let mut key_size = 0;
             if let TeeCryptObj::obj_secret(k) = &o_guard.attr[0] {
-                key_size = k.secret().key_size as u64;
-                let mut key = vec![0u8; key_size as usize];
-                let attr_ref = o_guard.attr[0].get_attr_by_id(0)?;
-                attr_ref.to_user(key.as_mut_slice(), &mut key_size)?;
-                crypto_mac_init(cs.clone(), key.as_slice())
+                let mut key = k.key();
+                crypto_mac_init(cs.clone(), key)
             } else {
                 Err(TEE_ERROR_BAD_STATE)
             }
@@ -778,6 +836,7 @@ pub fn syscall_hash_update(id: u32, chunk: &[u8]) -> TeeResult {
     if cs_guard.state != CrypState::Initialized {
         return Err(TEE_ERROR_BAD_STATE);
     }
+    drop(cs_guard);
 
     match tee_alg_get_class(algo) {
         TEE_OPERATION_DIGEST => crypto_hash_update(cs.clone(), chunk),
@@ -786,6 +845,52 @@ pub fn syscall_hash_update(id: u32, chunk: &[u8]) -> TeeResult {
             return Err(TEE_ERROR_BAD_PARAMETERS);
         }
     }
+}
+
+pub fn syscall_hash_final(id: u32, chunk: &[u8], hash: &mut [u8]) -> TeeResult<usize> {
+    memtag_strip_tag_const()?;
+    memtag_strip_tag()?;
+    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+
+    if cs_guard.state != CrypState::Initialized {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+    drop(cs_guard);
+
+    let mut hash_size = 0;
+    match tee_alg_get_class(algo) {
+        TEE_OPERATION_DIGEST => {
+            tee_alg_get_digest_size(algo, &mut hash_size)?;
+            if hash.len() < hash_size {
+                return Err(TEE_ERROR_SHORT_BUFFER);
+            }
+
+            if chunk.len() != 0 {
+                crypto_hash_update(cs.clone(), chunk)?;
+            }
+            return crypto_hash_final(cs.clone(), hash);
+        }
+        TEE_OPERATION_MAC => {
+            tee_alg_get_digest_size(algo, &mut hash_size)?;
+            if hash.len() < hash_size {
+                return Err(TEE_ERROR_SHORT_BUFFER);
+            }
+
+            if chunk.len() != 0 {
+                crypto_mac_update(cs.clone(), chunk)?;
+            }
+            return crypto_mac_final(cs.clone(), hash);
+        }
+        _ => {
+            return Err(TEE_ERROR_BAD_PARAMETERS);
+        }
+    }
+
+    Ok(hash_size)
 }
 
 #[cfg(feature = "tee_test")]
@@ -798,6 +903,7 @@ pub mod tests_cryp {
         tee::{TestDescriptor, TestResult},
         test_fn, tests, tests_name,
     };
+    use crate::tee::tee_svc_cryp::{syscall_cryp_obj_alloc, syscall_obj_generate_key};
 
     test_fn! {
         using TestResult;
@@ -854,9 +960,95 @@ pub mod tests_cryp {
         }
     }
 
+    test_fn! {
+        using TestResult;
+
+        fn test_cryp_hash_sm3(){
+            let mut state: u32 = 0;
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM3, TEE_OperationMode::TEE_MODE_DIGEST, None, None, &mut state);
+            assert!(res.is_ok());
+            
+            let res = syscall_hash_init(state);
+            assert!(res.is_ok());
+            
+            let data = b"abc";
+
+            let res = syscall_hash_update(state, &data[..]);
+            assert!(res.is_ok());
+
+            let mut hash: [u8; 32] = [0; 32];
+            let res = syscall_hash_final(state, &[], &mut hash);
+            assert!(res.is_ok());
+            let hash_size = res.unwrap();
+
+            assert_eq!(hash_size, 32);
+            assert_eq!(hash, [0x66, 0xc7, 0xf0, 0xf4, 0x62, 0xee, 0xed, 0xd9, 0xd1, 0xf2, 0xd4, 0x6b, 0xdc, 0x10, 0xe4, 0xe2, 0x41, 0x67,
+                0xc4, 0x87, 0x5c, 0xf2, 0xf7, 0xa2, 0x29, 0x7d, 0xa0, 0x2b, 0x8f, 0x4b, 0xa8, 0xe0]);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+
+        fn test_cryp_hmac_sm3(){
+            let mut state: u32 = 0;
+
+            // 对于hmac来说，key的种类不影响
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let mut obj = obj_arc.lock();
+
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let key = b"abcdefghabcdefgh";
+            let mut secret = tee_cryp_obj_secret_wrapper::new(32);
+            secret.set_secret_data(key as &[u8]);
+            assert_eq!(secret.key(), key);
+
+            let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
+            let _ = core::mem::replace(&mut obj.info.objectType, TEE_TYPE_HMAC_SM3);
+            drop(obj);
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_HMAC_SM3, TEE_OperationMode::TEE_MODE_MAC, Some(obj_id as _), None, &mut state);
+            assert!(res.is_ok());
+
+            let res = syscall_hash_init(state);
+            assert!(res.is_ok());
+            
+            let data = b"abc";
+
+            let res = syscall_hash_update(state, &data[..]);
+            assert!(res.is_ok());
+
+            let mut hash: [u8; 32] = [0; 32];
+            let res = syscall_hash_final(state, &[], &mut hash);
+            assert!(res.is_ok());
+            let hash_size = res.unwrap();
+
+            assert_eq!(hash_size, 32);
+            assert_eq!(hash, [0x99, 0x67, 0xaf, 0x42, 0x68, 0xd7, 0xf6, 0x96, 0x40, 0xca, 0xb9, 0x99, 0x35, 0x18, 0x0f, 
+                0xb3, 0xc6, 0x9b, 0xc5, 0x82, 0xa2, 0xb9, 0x7f, 0xa7, 0x53, 0xb2, 0x6c, 0x58, 0x10, 0xaa, 0xa0, 0x37]);
+
+        }
+    }
+
     tests_name! {
         TEST_TEE_CRYP;
         //------------------------
-        test_cryp_state
+        test_cryp_state,
+        test_cryp_hash_sm3,
+        test_cryp_hmac_sm3,
     }
 }
