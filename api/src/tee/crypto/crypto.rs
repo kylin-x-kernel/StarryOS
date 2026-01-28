@@ -307,16 +307,21 @@ pub(crate) fn crypto_hash_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> T
     let mut cs_guard = cs.lock();
 
     match &mut cs_guard.ctx {
-        CrypCtx::HashCtx(md) => {
-            md.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
-        }
+        CrypCtx::HashCtx(md) => md.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS),
         _ => Err(TEE_ERROR_BAD_PARAMETERS),
     }
 }
 
-pub(crate) fn crypto_hash_final(ctx: &mut dyn CryptoHashCtx, digest: &mut [u8]) -> TeeResult {
-    // Err(TEE_ERROR_NOT_IMPLEMENTED)
-    ctx.r#final(digest)
+pub(crate) fn crypto_hash_final(cs: Arc<Mutex<TeeCrypState>>, hash: &mut [u8]) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+
+    let ctx = core::mem::replace(&mut cs_guard.ctx, CrypCtx::Others);
+
+    if let CrypCtx::HashCtx(md) = ctx {
+        md.finish(hash).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
 }
 
 // Driver-based hash allocation (stub implementation)
@@ -425,17 +430,22 @@ pub(crate) fn crypto_mac_update(cs: Arc<Mutex<TeeCrypState>>, data: &[u8]) -> Te
     let mut guard = cs.lock();
 
     match &mut guard.ctx {
-        CrypCtx::HmacCtx(hmac) => {
-            hmac.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
-        }
+        CrypCtx::HmacCtx(hmac) => hmac.update(data).map_err(|_| TEE_ERROR_BAD_PARAMETERS),
         _ => Err(TEE_ERROR_BAD_PARAMETERS),
     }
 }
 
 // Crypto MAC finalization
-pub(crate) fn crypto_mac_final(ctx: &mut dyn CryptoMacCtx, digest: &mut [u8]) -> TeeResult {
-    // Err(TEE_ERROR_NOT_IMPLEMENTED)
-    ctx.r#final(digest)
+pub(crate) fn crypto_mac_final(cs: Arc<Mutex<TeeCrypState>>, hash: &mut [u8]) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+
+    let ctx = core::mem::replace(&mut cs_guard.ctx, CrypCtx::Others);
+
+    if let CrypCtx::HmacCtx(hmac) = ctx {
+        hmac.finish(hash).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
 }
 
 // Crypto MAC free
