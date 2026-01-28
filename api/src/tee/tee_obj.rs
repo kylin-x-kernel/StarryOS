@@ -48,16 +48,17 @@ pub struct tee_obj {
     pub ds_pos: size_t,
     pub pobj: Option<Arc<RwLock<tee_pobj>>>,
     /// file handle for the pobject
-    pub fh: Box<tee_file_handle>,
+    pub fh: Option<Box<tee_file_handle>>,
 }
 
 impl Debug for tee_obj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fd_dbg = self.fh.as_ref().map(|h| h.fd.fd).unwrap_or(-1);
         write!(
             f,
             "tee_obj{{info: {:?}, busy: {:?}, have_attrs: {:010X?}, attr: {:?}, ds_pos: {:010X?}, \
              pobj: {:?}, fh: {:?}}}",
-            self.info, self.busy, self.have_attrs, self.attr, self.ds_pos, self.pobj, self.fh.fd
+            self.info, self.busy, self.have_attrs, self.attr, self.ds_pos, self.pobj, fd_dbg
         )
     }
 }
@@ -80,7 +81,7 @@ impl default::Default for tee_obj {
             attr: Vec::new(),
             ds_pos: 0,
             pobj: None,
-            fh: Box::new(tee_file_handle::default()),
+            fh: None,
         }
     }
 }
@@ -161,8 +162,8 @@ pub fn tee_obj_close(obj_id: u32) -> TeeResult {
             (fops, pobj_clone)
         };
 
-        // now we can safely mutably borrow obj_guard.fh
-        (fops.close)(&mut Some(core::mem::take(&mut obj_guard.fh)));
+        // now we can safely close the file handle if it was opened
+        (fops.close)(&mut obj_guard.fh);
         tee_pobj_release(pobj_clone)?;
     }
 

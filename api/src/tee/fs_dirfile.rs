@@ -363,6 +363,11 @@ pub fn tee_fs_dirfile_remove(dirh: &mut TeeFsDirfileDirh, dfh: &TeeFsDirfileFile
     }
 
     let file_number = dent.file_number;
+    tee_debug!(
+        "tee_fs_dirfile_remove: dfh.file_number: {:?}, file_number: {:?}",
+        dfh.file_number,
+        file_number
+    );
     core::assert!(dfh.file_number == file_number);
     core::assert!(test_file(dirh, file_number as usize));
 
@@ -380,6 +385,11 @@ pub fn tee_fs_dirfile_update_hash(
     let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
 
     read_dent(dirh, dfh.idx as usize, &mut dent)?;
+    tee_debug!(
+        "tee_fs_dirfile_update_hash: dent.file_number: {:?}, dfh.file_number: {:?}",
+        dent.file_number,
+        dfh.file_number
+    );
     core::assert!(dent.file_number == dfh.file_number);
     core::assert!(test_file(dirh, dent.file_number as usize));
 

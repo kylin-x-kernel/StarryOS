@@ -1230,23 +1230,44 @@ impl ReeFsDirh {
         Ok(h)
     }
 
-    /// 对应put_dirh_primitive
     pub fn put_dirh_primitive(&self, close: bool) -> TeeResult {
-        let old = self.refcount.fetch_sub(1, Ordering::AcqRel);
+        loop {
+            let current = self.refcount.load(Ordering::Acquire);
 
-        // 对应：if (ree_fs_dirh && (!ree_fs_dirh_refcount || close))
-        if old == 0 || close {
-            let h = self.handle.swap(ptr::null_mut(), Ordering::AcqRel);
-            if !h.is_null() {
-                unsafe {
-                    let mut boxed = Box::from_raw(h);
-                    close_dirh(&mut boxed)?;
-                    drop(boxed); // 释放内存
-                }
+            if current == 0 {
+                warn!("put_dirh_primitive: refcount already 0 (double free or logic error)");
+                return Ok(());
             }
-        }
 
-        Ok(())
+            // try to change refcount from current -> current - 1
+            if self
+                .refcount
+                .compare_exchange(current, current - 1, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                // 并发失败，重试
+                continue;
+            }
+
+            // Only these two cases need to be released:
+            // 1) Normal reference count reaches zero
+            // 2) close == true (force release)
+            if current == 1 || close {
+                let h = self.handle.swap(ptr::null_mut(), Ordering::AcqRel);
+                if !h.is_null() {
+                    unsafe {
+                        let mut boxed = Box::from_raw(h);
+                        close_dirh(&mut boxed)?;
+                        // drop(boxed) happens automatically
+                    }
+                }
+
+                // Ensure refcount is 0 (there may still be references in the close scenario)
+                self.refcount.store(0, Ordering::Release);
+            }
+
+            return Ok(());
+        }
     }
 
     /// 对应open_dirh
