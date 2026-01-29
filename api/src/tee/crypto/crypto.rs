@@ -12,7 +12,7 @@ use alloc::{boxed::Box, format, sync::Arc};
 use core::{default::Default, fmt, fmt::Debug};
 
 use mbedtls::{
-    cipher::raw::CipherType,
+    cipher::raw::{Cipher, CipherId, CipherMode, CipherType, Operation},
     hash::{Hmac, Md, Type as MdType},
     pk::Type as PkType,
 };
@@ -21,7 +21,7 @@ use spin::Mutex;
 use tee_raw_sys::*;
 
 use crate::tee::{
-    TeeResult,
+    TEE_ALG_SM4_XTS, TeeResult,
     crypto::crypto_impl::{
         EccAlgoKeyPair, EccComKeyPair, EccKeypair, Sm2DsaKeyPair, Sm2KepKeyPair, Sm2PkeKeyPair,
         crypto_ecc_keypair_ops, crypto_ecc_keypair_ops_generate,
@@ -458,4 +458,117 @@ pub(crate) fn crypto_mac_free(ctx: impl CryptoMacCtx) {
 pub(crate) fn crypto_mac_copy_state(ctx: &mut dyn CryptoMacCtx, src_ctx: &dyn CryptoMacCtx) {
     // Err(TEE_ERROR_NOT_IMPLEMENTED)
     ctx.copy_state(src_ctx)
+}
+
+pub(crate) fn crypto_cipher_init(
+    cs: Arc<Mutex<TeeCrypState>>,
+    key: &[u8],
+    iv: Option<&[u8]>,
+) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let mode = cs_guard.mode;
+
+    let mut cipher_id = CipherId::None;
+    let mut cipher_mode = CipherMode::None;
+    let mut cipher_op = Operation::None;
+
+    match mode {
+        TEE_OperationMode::TEE_MODE_ENCRYPT => cipher_op = Operation::Encrypt,
+        TEE_OperationMode::TEE_MODE_DECRYPT => cipher_op = Operation::Decrypt,
+        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+    }
+
+    match algo {
+        TEE_ALG_AES_ECB_NOPAD => {
+            cipher_id = CipherId::Aes;
+            cipher_mode = CipherMode::ECB;
+        }
+        TEE_ALG_AES_CBC_NOPAD => {
+            cipher_id = CipherId::Aes;
+            cipher_mode = CipherMode::CBC;
+        }
+        TEE_ALG_AES_CTR => {
+            cipher_id = CipherId::Aes;
+            cipher_mode = CipherMode::CTR;
+        }
+        TEE_ALG_AES_XTS => {
+            cipher_id = CipherId::Aes;
+            cipher_mode = CipherMode::XTS;
+        }
+        TEE_ALG_DES_ECB_NOPAD => {
+            cipher_id = CipherId::Des;
+            cipher_mode = CipherMode::ECB;
+        }
+        TEE_ALG_DES3_ECB_NOPAD => {
+            cipher_id = CipherId::Des3;
+            cipher_mode = CipherMode::ECB;
+        }
+        TEE_ALG_DES_CBC_NOPAD => {
+            cipher_id = CipherId::Des;
+            cipher_mode = CipherMode::CBC;
+        }
+        TEE_ALG_DES3_CBC_NOPAD => {
+            cipher_id = CipherId::Des3;
+            cipher_mode = CipherMode::CBC;
+        }
+        TEE_ALG_SM4_ECB_NOPAD => {
+            cipher_id = CipherId::SM4;
+            cipher_mode = CipherMode::ECB;
+        }
+        TEE_ALG_SM4_CBC_NOPAD => {
+            cipher_id = CipherId::SM4;
+            cipher_mode = CipherMode::CBC;
+        }
+        TEE_ALG_SM4_CTR => {
+            cipher_id = CipherId::SM4;
+            cipher_mode = CipherMode::CTR;
+        }
+        TEE_ALG_SM4_XTS => {
+            cipher_id = CipherId::SM4;
+            cipher_mode = CipherMode::XTS;
+        }
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
+    }
+
+    if let Ok(mut cipher) = Cipher::setup(cipher_id, cipher_mode, (key.len() * 8) as _) {
+        cipher
+            .set_key(cipher_op, key)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        if let Some(iv) = iv {
+            cipher.set_iv(iv).map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        }
+        cipher.reset().map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        cs_guard.state = CrypState::Initialized;
+        Ok(())
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+}
+
+pub(crate) fn crypto_cipher_update(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: &[u8],
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::CipherCtx(cipher) = &mut cs_guard.ctx {
+        cipher
+            .update(input, output)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_cipher_final(
+    cs: Arc<Mutex<TeeCrypState>>,
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::CipherCtx(cipher) = &mut cs_guard.ctx {
+        cipher.finish(output).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
 }
