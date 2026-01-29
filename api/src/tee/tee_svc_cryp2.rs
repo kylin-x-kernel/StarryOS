@@ -87,7 +87,11 @@ use crate::{
     tee::{
         self, TEE_ALG_DES3_CMAC, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384,
         TEE_ALG_SHA3_512, TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ERROR_NODE_DISABLED,
-        TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD, crypto,
+        TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
+        crypto::{
+            self,
+            crypto::{crypto_cipher_final, crypto_cipher_init, crypto_cipher_update},
+        },
         libmbedtls::bignum::BigNum,
         memtag::{memtag_strip_tag, memtag_strip_tag_const},
         tee_session::{with_tee_session_ctx, with_tee_session_ctx_mut},
@@ -164,8 +168,8 @@ pub(crate) struct TeeCrypState {
     // pub link: Option<NonNull<TeeCrypState<'a>>>,
     pub algo: u32,
     pub mode: TEE_OperationMode,
-    pub key1: u32,
-    pub key2: u32,
+    pub key1: Option<u32>,
+    pub key2: Option<u32>,
     pub ctx: CrypCtx,
     pub ctx_finalize: Option<TeeCrypCtxFinalizeFunc>,
     pub state: CrypState,
@@ -185,8 +189,8 @@ impl Default for TeeCrypState {
         Self {
             algo: 0,
             mode: TEE_OperationMode::TEE_MODE_DECRYPT,
-            key1: 0,
-            key2: 0,
+            key1: None,
+            key2: None,
             ctx: CrypCtx::Others,
             ctx_finalize: None,
             state: CrypState::Uninitialized,
@@ -658,31 +662,27 @@ pub fn syscall_cryp_state_alloc(
     let mut o1_ok = false;
     let mut o2_ok = false;
     if let Some(key1) = key1 {
-        let obj1 = tee_obj_get(key1 as tee_obj_id_type);
-        o1_ok = obj1.is_ok();
-        if o1_ok {
-            let obj1_arc = obj1.unwrap();
+        if let Ok(obj1_arc) = tee_obj_get(key1 as tee_obj_id_type) {
+            o1_ok = true;
             let mut o1 = obj1_arc.lock();
             if o1.busy {
                 return Err(TEE_ERROR_BUSY);
             }
             o1.busy = true;
-            cs.key1 = o1.info.objectId;
+            cs.key1 = Some(o1.info.objectId);
             tee_svc_cryp_check_key_type(&*o1, algo, mode)?;
         }
     }
 
     if let Some(key2) = key2 {
-        let obj2 = tee_obj_get(key2 as tee_obj_id_type);
-        o2_ok = obj2.is_ok();
-        if o2_ok {
-            let obj2_arc = obj2.unwrap();
+        if let Ok(obj2_arc) = tee_obj_get(key2 as tee_obj_id_type) {
+            o2_ok = true;
             let mut o2 = obj2_arc.lock();
             if o2.busy {
                 return Err(TEE_ERROR_BUSY);
             }
             o2.busy = true;
-            cs.key2 = o2.info.objectId;
+            cs.key2 = Some(o2.info.objectId);
             tee_svc_cryp_check_key_type(&*o2, algo, mode)?;
         }
     }
@@ -805,6 +805,11 @@ pub fn syscall_hash_init(id: u32) -> TeeResult {
     match tee_alg_get_class(algo) {
         TEE_OPERATION_DIGEST => crypto_hash_init(cs.clone()),
         TEE_OPERATION_MAC => {
+            let key1 = if let Some(k) = key1 {
+                k
+            } else {
+                return Err(TEE_ERROR_BAD_PARAMETERS);
+            };
             let o = tee_obj_get(key1 as tee_obj_id_type)?;
             let mut o_guard = o.lock();
             if o_guard.attr.is_empty() {
@@ -893,6 +898,98 @@ pub fn syscall_hash_final(id: u32, chunk: &[u8], hash: &mut [u8]) -> TeeResult<u
     Ok(hash_size)
 }
 
+/// optee中只支持NoPad模式
+/// NoPad模式下，需要严格保证输入数据长度与算法block_size对齐
+pub fn syscall_cipher_init(id: u32, iv: Option<&[u8]>) -> TeeResult {
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let key1 = cs_guard.key1;
+    let key2 = cs_guard.key2;
+
+    // 当key1和key2都有效时，将key1和key2密钥拼接
+    // 在XTS模式下key1和key2都有效
+    let mut key: Vec<u8> = Vec::new();
+
+    // 获取key1密钥
+    if let Some(k) = key1 {
+        let obj_key1 = tee_obj_get(k as _)?;
+        let obj_key1_guard = obj_key1.lock();
+
+        if obj_key1_guard.attr.is_empty() {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+
+        // 从tee_obj中读取密钥
+        if let TeeCryptObj::obj_secret(k) = &obj_key1_guard.attr[0] {
+            key.extend_from_slice(k.key());
+        } else {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    };
+
+    // 如果key2存在，则获取key2密钥
+    if let Some(k) = key2 {
+        // 获取key2_obj
+        if let Ok(obj_key2) = tee_obj_get(k as _) {
+            let obj_key2_guard = obj_key2.lock();
+            if obj_key2_guard.attr.is_empty() {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+
+            // 从tee_obj中读取密钥
+            if let TeeCryptObj::obj_secret(k) = &obj_key2_guard.attr[0] {
+                key.extend_from_slice(k.key());
+            } else {
+                return Err(TEE_ERROR_BAD_STATE);
+            }
+        }
+    };
+
+    crypto_cipher_init(cs.clone(), key.as_slice(), iv)
+}
+
+/// 注意：
+/// 对于ECB模式而言，每次只能传入一个块数据，即input.len() == block_size
+/// 需要多次调用syscall_cipher_update()函数
+/// 对于其他加密模式，可以一次性传入所有加密数据，也可以多次传入
+/// 多次调用时，输出区域不要重叠
+pub fn syscall_cipher_update(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
+    memtag_strip_tag_const()?;
+    memtag_strip_tag()?;
+    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+
+    if cs_guard.state != CrypState::Initialized {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    if output.len() < input.len() {
+        return Err(TEE_ERROR_SHORT_BUFFER);
+    }
+
+    crypto_cipher_update(cs.clone(), input, output)
+}
+
+pub fn syscall_cipher_final(id: u32, output: &mut [u8]) -> TeeResult<usize> {
+    memtag_strip_tag_const()?;
+    memtag_strip_tag()?;
+    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+
+    if cs_guard.state != CrypState::Initialized {
+        return Err(TEE_ERROR_BAD_STATE);
+    }
+
+    crypto_cipher_final(cs.clone(), output)
+}
+
 #[cfg(feature = "tee_test")]
 pub mod tests_cryp {
     //-------- test framework import --------
@@ -900,10 +997,12 @@ pub mod tests_cryp {
     use super::*;
     use crate::{
         assert, assert_eq, assert_ne,
-        tee::{TestDescriptor, TestResult},
+        tee::{
+            TestDescriptor, TestResult,
+            tee_svc_cryp::{syscall_cryp_obj_alloc, syscall_obj_generate_key},
+        },
         test_fn, tests, tests_name,
     };
-    use crate::tee::tee_svc_cryp::{syscall_cryp_obj_alloc, syscall_obj_generate_key};
 
     test_fn! {
         using TestResult;
@@ -967,10 +1066,10 @@ pub mod tests_cryp {
             let mut state: u32 = 0;
             let res = syscall_cryp_state_alloc(TEE_ALG_SM3, TEE_OperationMode::TEE_MODE_DIGEST, None, None, &mut state);
             assert!(res.is_ok());
-            
+
             let res = syscall_hash_init(state);
             assert!(res.is_ok());
-            
+
             let data = b"abc";
 
             let res = syscall_hash_update(state, &data[..]);
@@ -992,12 +1091,11 @@ pub mod tests_cryp {
 
         fn test_cryp_hmac_sm3(){
             let mut state: u32 = 0;
-
-            // 对于hmac来说，key的种类不影响
             let mut obj_id: c_uint = 0;
-            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_HMAC_SM3 as _, 128, &mut obj_id);
             assert!(result.is_ok());
 
+            // 随机生成密钥
             let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
             assert!(result.is_ok());
 
@@ -1006,7 +1104,7 @@ pub mod tests_cryp {
             let obj_arc = obj_arc.unwrap();
             let mut obj = obj_arc.lock();
 
-            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.objectType, TEE_TYPE_HMAC_SM3);
             assert_eq!(obj.info.maxObjectSize, 128);
             assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
             assert_eq!(obj.attr.len(), 1);
@@ -1017,8 +1115,8 @@ pub mod tests_cryp {
             secret.set_secret_data(key as &[u8]);
             assert_eq!(secret.key(), key);
 
+            // 赋值固定的key用于验证结果
             let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
-            let _ = core::mem::replace(&mut obj.info.objectType, TEE_TYPE_HMAC_SM3);
             drop(obj);
 
             let res = syscall_cryp_state_alloc(TEE_ALG_HMAC_SM3, TEE_OperationMode::TEE_MODE_MAC, Some(obj_id as _), None, &mut state);
@@ -1026,7 +1124,7 @@ pub mod tests_cryp {
 
             let res = syscall_hash_init(state);
             assert!(res.is_ok());
-            
+
             let data = b"abc";
 
             let res = syscall_hash_update(state, &data[..]);
@@ -1038,7 +1136,7 @@ pub mod tests_cryp {
             let hash_size = res.unwrap();
 
             assert_eq!(hash_size, 32);
-            assert_eq!(hash, [0x99, 0x67, 0xaf, 0x42, 0x68, 0xd7, 0xf6, 0x96, 0x40, 0xca, 0xb9, 0x99, 0x35, 0x18, 0x0f, 
+            assert_eq!(hash, [0x99, 0x67, 0xaf, 0x42, 0x68, 0xd7, 0xf6, 0x96, 0x40, 0xca, 0xb9, 0x99, 0x35, 0x18, 0x0f,
                 0xb3, 0xc6, 0x9b, 0xc5, 0x82, 0xa2, 0xb9, 0x7f, 0xa7, 0x53, 0xb2, 0x6c, 0x58, 0x10, 0xaa, 0xa0, 0x37]);
 
         }
