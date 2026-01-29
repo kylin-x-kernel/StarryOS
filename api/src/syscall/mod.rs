@@ -10,6 +10,9 @@ mod sys;
 mod task;
 mod time;
 
+// Re-export commonly used syscall functions for internal use
+pub use sys::sys_getrandom;
+
 #[cfg(not(feature = "tee"))]
 use axerrno::AxError;
 use axerrno::LinuxError;

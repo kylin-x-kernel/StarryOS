@@ -49,6 +49,8 @@ mod otp_stubs;
 mod tee_api_defines_extensions;
 mod tee_fs_key_manager;
 mod tee_time;
+#[cfg(target_arch = "x86_64")]
+mod tee_get_sealing_key;
 #[cfg(feature = "tee_test")]
 mod tee_unit_test;
 #[cfg(feature = "tee_test")]
