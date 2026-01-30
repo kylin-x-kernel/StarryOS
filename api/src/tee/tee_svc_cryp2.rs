@@ -199,6 +199,14 @@ impl Default for TeeCrypState {
     }
 }
 
+pub(crate) enum CipherPaddingMode {
+    Pkcs7,
+    IsoIec78164,
+    AnsiX923,
+    Zeros,
+    None,
+}
+
 // Rust equivalent of the tee_cryp_obj_secret struct
 #[repr(C)]
 struct TeeCrypObjSecret {
@@ -805,11 +813,7 @@ pub fn syscall_hash_init(id: u32) -> TeeResult {
     match tee_alg_get_class(algo) {
         TEE_OPERATION_DIGEST => crypto_hash_init(cs.clone()),
         TEE_OPERATION_MAC => {
-            let key1 = if let Some(k) = key1 {
-                k
-            } else {
-                return Err(TEE_ERROR_BAD_PARAMETERS);
-            };
+            let key1 = key1.ok_or(TEE_ERROR_BAD_PARAMETERS)?;
             let o = tee_obj_get(key1 as tee_obj_id_type)?;
             let mut o_guard = o.lock();
             if o_guard.attr.is_empty() {
@@ -898,9 +902,13 @@ pub fn syscall_hash_final(id: u32, chunk: &[u8], hash: &mut [u8]) -> TeeResult<u
     Ok(hash_size)
 }
 
-/// optee中只支持NoPad模式
-/// NoPad模式下，需要严格保证输入数据长度与算法block_size对齐
-pub fn syscall_cipher_init(id: u32, iv: Option<&[u8]>) -> TeeResult {
+/// optee中只支持NoPad，此处实现了Padding模式的拓展
+/// 实际使用中，若要保持ALG类型一致，请使用CipherPaddingMode::None作为参数
+pub fn syscall_cipher_init(
+    id: u32,
+    iv: Option<&[u8]>,
+    padding_mode: CipherPaddingMode,
+) -> TeeResult {
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
     let algo = cs_guard.algo;
@@ -948,14 +956,19 @@ pub fn syscall_cipher_init(id: u32, iv: Option<&[u8]>) -> TeeResult {
         }
     };
 
-    crypto_cipher_init(cs.clone(), key.as_slice(), iv)
+    drop(cs_guard);
+    crypto_cipher_init(cs.clone(), key.as_slice(), iv, padding_mode)
 }
 
-/// 注意：
+/// 注意:
 /// 对于ECB模式而言，每次只能传入一个块数据，即input.len() == block_size
 /// 需要多次调用syscall_cipher_update()函数
 /// 对于其他加密模式，可以一次性传入所有加密数据，也可以多次传入
 /// 多次调用时，输出区域不要重叠
+///
+/// 在使用除ECB外的其他模式时，请确保output长度至少比input大一个block_size
+/// 多余的一个block_size输出是为潜在的填充值所设定
+/// SM4的block_size为16字节
 pub fn syscall_cipher_update(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
@@ -972,9 +985,11 @@ pub fn syscall_cipher_update(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
         return Err(TEE_ERROR_SHORT_BUFFER);
     }
 
+    drop(cs_guard);
     crypto_cipher_update(cs.clone(), input, output)
 }
 
+/// 用于处理最后一个数据块的填充和加密
 pub fn syscall_cipher_final(id: u32, output: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
@@ -987,6 +1002,7 @@ pub fn syscall_cipher_final(id: u32, output: &mut [u8]) -> TeeResult<usize> {
         return Err(TEE_ERROR_BAD_STATE);
     }
 
+    drop(cs_guard);
     crypto_cipher_final(cs.clone(), output)
 }
 
@@ -1142,11 +1158,251 @@ pub mod tests_cryp {
         }
     }
 
+    test_fn! {
+        using TestResult;
+        fn test_cryp_sm4_ecb_encrypt(){
+            let mut state: u32 = 0;
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+
+            // 随机生成密钥
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let mut obj = obj_arc.lock();
+
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let key = b"abcdefghabcdefgh";
+            let mut secret = tee_cryp_obj_secret_wrapper::new(32);
+            secret.set_secret_data(key as &[u8]);
+            assert_eq!(secret.key(), key);
+
+            // 赋值固定的key用于验证结果
+            let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
+            drop(obj);
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM4_ECB_NOPAD, TEE_OperationMode::TEE_MODE_ENCRYPT, Some(obj_id as _), None, &mut state);
+            assert!(res.is_ok());
+
+            let data1 = b"abcdefghabcdefgh";
+            let data2 = b"1234567890987654";
+
+            let res = syscall_cipher_init(state, None, CipherPaddingMode::None);
+            assert!(res.is_ok());
+
+            let mut out = [0u8; 32];
+            let mut total_len = 0;
+
+            let res = syscall_cipher_update(state, &data1[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            let res = syscall_cipher_update(state, &data2[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            assert_eq!(total_len, 32);
+            assert_eq!(out, [0x1b, 0x22, 0x97, 0x80, 0x2e, 0x42, 0xe4, 0xe6, 0xfb, 0x7d, 0xce, 0x53, 0x25, 0xd8, 0x02, 0x09,
+                0x53, 0x34, 0x8f, 0xa1, 0xd9, 0xc7, 0x46, 0x75, 0x25, 0x3c, 0x97, 0xae, 0xfd, 0xdd, 0xa0, 0xe7]);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_cryp_sm4_ecb_decrypt(){
+            let mut state: u32 = 0;
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+
+            // 随机生成密钥
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let mut obj = obj_arc.lock();
+
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let key = b"abcdefgh12345678";
+            let mut secret = tee_cryp_obj_secret_wrapper::new(32);
+            secret.set_secret_data(key as &[u8]);
+            assert_eq!(secret.key(), key);
+
+            // 赋值固定的key用于验证结果
+            let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
+            drop(obj);
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM4_ECB_NOPAD, TEE_OperationMode::TEE_MODE_DECRYPT, Some(obj_id as _), None, &mut state);
+            assert!(res.is_ok());
+
+            let data1: [u8; 16] = [0x9b, 0x46, 0x5b, 0x81, 0x3f, 0xea, 0x31, 0xd6, 0x78, 0xe9, 0xad, 0x06, 0x00, 0x21, 0x53, 0x48];
+            let data2: [u8; 16] = [0x6e, 0x51, 0x8c, 0xae, 0xe0, 0xe1, 0x0f, 0x6e, 0xb8, 0x95, 0x5c, 0x2e, 0x38, 0x24, 0x81, 0xd7];
+
+            let res = syscall_cipher_init(state, None, CipherPaddingMode::None);
+            assert!(res.is_ok());
+
+            let mut out = [0u8; 32];
+            let mut total_len = 0;
+
+            let res = syscall_cipher_update(state, &data1[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            let res = syscall_cipher_update(state, &data2[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            assert_eq!(total_len, 32);
+            assert_eq!(out, *b"abcdefghijklmnop1234567887654321");
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_cryp_sm4_cbc_encrypt(){
+            let mut state: u32 = 0;
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+
+            // 随机生成密钥
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let mut obj = obj_arc.lock();
+
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let key = b"abcdefghabcdefgh";
+            let mut secret = tee_cryp_obj_secret_wrapper::new(32);
+            secret.set_secret_data(key as &[u8]);
+            assert_eq!(secret.key(), key);
+
+            // 赋值固定的key用于验证结果
+            let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
+            drop(obj);
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM4_CBC_NOPAD, TEE_OperationMode::TEE_MODE_ENCRYPT, Some(obj_id as _), None, &mut state);
+            assert!(res.is_ok());
+
+            let data = b"abcdefghabcdefgh1234567890987654";
+            let iv = b"1234qwerasdfzxcv";
+
+            let res = syscall_cipher_init(state, Some(&iv[..]), CipherPaddingMode::Pkcs7);
+            assert!(res.is_ok());
+
+            let mut out = [0u8; 48];
+            let mut total_len = 0;
+
+            let res = syscall_cipher_update(state, &data[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            // 处理填充
+            let res = syscall_cipher_final(state, &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            assert_eq!(total_len, 48);
+            assert_eq!(&out[..total_len], [0xce, 0x3b, 0x91, 0x3b, 0x42, 0xf3, 0x9d, 0x3d, 0x61, 0xfb, 0x75, 0x2f, 0xff, 0x81, 0x51, 0xc6,
+                0x13, 0xf1, 0x0a, 0x8b, 0xb9, 0x5c, 0x8e, 0xe1, 0x59, 0x56, 0x6c, 0xc9, 0xcb, 0x91, 0x57, 0xf8,
+                0xf3, 0x4f, 0xa5, 0xa9, 0x0c, 0x02, 0x39, 0xcc, 0x76, 0x1b, 0x4f, 0xe2, 0xb1, 0xbc, 0xd1, 0x96]);
+        }
+    }
+
+    test_fn! {
+        using TestResult;
+        fn test_cryp_sm4_cbc_decrypt(){
+            let mut state: u32 = 0;
+            let mut obj_id: c_uint = 0;
+            let result = syscall_cryp_obj_alloc(TEE_TYPE_SM4 as _, 128, &mut obj_id);
+            assert!(result.is_ok());
+
+            // 随机生成密钥
+            let result = syscall_obj_generate_key(obj_id as c_ulong, 128, core::ptr::null(), 0);
+            assert!(result.is_ok());
+
+            let obj_arc = tee_obj_get(obj_id as tee_obj_id_type);
+            assert!(obj_arc.is_ok());
+            let obj_arc = obj_arc.unwrap();
+            let mut obj = obj_arc.lock();
+
+            assert_eq!(obj.info.objectType, TEE_TYPE_SM4);
+            assert_eq!(obj.info.maxObjectSize, 128);
+            assert_eq!(obj.info.objectUsage, TEE_USAGE_DEFAULT);
+            assert_eq!(obj.attr.len(), 1);
+            assert!(matches!(obj.attr[0], TeeCryptObj::obj_secret(_)));
+
+            let key = b"abcdefghabcdefgh";
+            let mut secret = tee_cryp_obj_secret_wrapper::new(32);
+            secret.set_secret_data(key as &[u8]);
+            assert_eq!(secret.key(), key);
+
+            // 赋值固定的key用于验证结果
+            let _ = core::mem::replace(&mut obj.attr[0], TeeCryptObj::obj_secret(secret));
+            drop(obj);
+
+            let res = syscall_cryp_state_alloc(TEE_ALG_SM4_CBC_NOPAD, TEE_OperationMode::TEE_MODE_DECRYPT, Some(obj_id as _), None, &mut state);
+            assert!(res.is_ok());
+
+            // 解密的数据需要包括一个block_size大小的填充
+            let data: [u8; 48] = [0xce, 0x3b, 0x91, 0x3b, 0x42, 0xf3, 0x9d, 0x3d, 0x61, 0xfb, 0x75, 0x2f, 0xff, 0x81, 0x51, 0xc6,
+                0x13, 0xf1, 0x0a, 0x8b, 0xb9, 0x5c, 0x8e, 0xe1, 0x59, 0x56, 0x6c, 0xc9, 0xcb, 0x91, 0x57, 0xf8,
+                0xf3, 0x4f, 0xa5, 0xa9, 0x0c, 0x02, 0x39, 0xcc, 0x76, 0x1b, 0x4f, 0xe2, 0xb1, 0xbc, 0xd1, 0x96];
+            let iv = b"1234qwerasdfzxcv";
+
+            let res = syscall_cipher_init(state, Some(&iv[..]), CipherPaddingMode::Pkcs7);
+            assert!(res.is_ok());
+
+            // 输出区域大小仍然需要比输入数据大一个block_size
+            let mut out = [0u8; 64];
+            let mut total_len = 0;
+
+            let res = syscall_cipher_update(state, &data[..], &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            let res = syscall_cipher_final(state, &mut out[total_len..]);
+            assert!(res.is_ok());
+            total_len += res.unwrap();
+
+            assert_eq!(total_len, 32);
+            assert_eq!(&out[..32], *b"abcdefghabcdefgh1234567890987654");
+        }
+    }
+
     tests_name! {
         TEST_TEE_CRYP;
         //------------------------
         test_cryp_state,
         test_cryp_hash_sm3,
         test_cryp_hmac_sm3,
+        test_cryp_sm4_ecb_encrypt,
+        test_cryp_sm4_ecb_decrypt,
+        test_cryp_sm4_cbc_encrypt,
+        test_cryp_sm4_cbc_decrypt,
     }
 }

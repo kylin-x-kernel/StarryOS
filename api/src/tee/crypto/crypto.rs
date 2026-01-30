@@ -12,7 +12,7 @@ use alloc::{boxed::Box, format, sync::Arc};
 use core::{default::Default, fmt, fmt::Debug};
 
 use mbedtls::{
-    cipher::raw::{Cipher, CipherId, CipherMode, CipherType, Operation},
+    cipher::raw::{Cipher, CipherId, CipherMode, CipherPadding, CipherType, Operation},
     hash::{Hmac, Md, Type as MdType},
     pk::Type as PkType,
 };
@@ -32,7 +32,7 @@ use crate::tee::{
     },
     tee_obj::tee_obj_id_type,
     tee_svc_cryp::{CryptoAttrRef, tee_cryp_obj_secret_wrapper, tee_crypto_ops},
-    tee_svc_cryp2::{CrypCtx, CrypState, TeeCrypState},
+    tee_svc_cryp2::{CipherPaddingMode, CrypCtx, CrypState, TeeCrypState},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -464,6 +464,7 @@ pub(crate) fn crypto_cipher_init(
     cs: Arc<Mutex<TeeCrypState>>,
     key: &[u8],
     iv: Option<&[u8]>,
+    padding_mode: CipherPaddingMode,
 ) -> TeeResult {
     let mut cs_guard = cs.lock();
     let algo = cs_guard.algo;
@@ -472,6 +473,14 @@ pub(crate) fn crypto_cipher_init(
     let mut cipher_id = CipherId::None;
     let mut cipher_mode = CipherMode::None;
     let mut cipher_op = Operation::None;
+
+    let cipher_padding = match padding_mode {
+        CipherPaddingMode::None => CipherPadding::None,
+        CipherPaddingMode::Pkcs7 => CipherPadding::Pkcs7,
+        CipherPaddingMode::Zeros => CipherPadding::Zeros,
+        CipherPaddingMode::AnsiX923 => CipherPadding::AnsiX923,
+        CipherPaddingMode::IsoIec78164 => CipherPadding::IsoIec78164,
+    };
 
     match mode {
         TEE_OperationMode::TEE_MODE_ENCRYPT => cipher_op = Operation::Encrypt,
@@ -538,8 +547,10 @@ pub(crate) fn crypto_cipher_init(
         if let Some(iv) = iv {
             cipher.set_iv(iv).map_err(|_| TEE_ERROR_BAD_PARAMETERS);
         }
+        cipher.set_padding(cipher_padding);
         cipher.reset().map_err(|_| TEE_ERROR_BAD_PARAMETERS);
         cs_guard.state = CrypState::Initialized;
+        cs_guard.ctx = CrypCtx::CipherCtx(cipher);
         Ok(())
     } else {
         return Err(TEE_ERROR_BAD_PARAMETERS);
