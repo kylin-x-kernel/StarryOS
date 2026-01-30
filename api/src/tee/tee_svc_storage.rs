@@ -905,18 +905,24 @@ pub fn syscall_storage_obj_rename(
     })?;
 
     // move
-    let mut o_guard = o.lock();
-    let mut pobj = o_guard.pobj.as_ref().unwrap().write();
-    (fops.rename)(&mut pobj, &po.read(), false /* no overwrite */).inspect_err(|e| {
-        error!("syscall_storage_obj_rename: fops.rename error: {:#X?}", e);
-    })?;
+    let res = {
+        let mut o_guard = o.lock();
+        let mut pobj = o_guard.pobj.as_ref().unwrap().write();
+        (fops.rename)(&mut pobj, &po.read(), false /* no overwrite */).inspect_err(|e| {
+            error!("syscall_storage_obj_rename: fops.rename error: {:#X?}", e);
+        })?;
 
-    let po_guard = po.read();
-    let obj_id = po_guard.obj_id.as_ref();
-    let obj_id_len = po_guard.obj_id_len;
-    tee_pobj_rename(&mut pobj, obj_id, obj_id_len)?;
+        let po_guard = po.read();
+        let obj_id = po_guard.obj_id.as_ref();
+        let obj_id_len = po_guard.obj_id_len;
+        tee_pobj_rename(&mut pobj, obj_id, obj_id_len)
+    };
 
-    Ok(())
+    // Always release the new po, regardless of success or failure
+    // This matches the C implementation which calls tee_pobj_release(po) in the exit label
+    let _ = tee_pobj_release(po);
+
+    res
 }
 
 /// read data from the object
@@ -1682,7 +1688,7 @@ pub mod tests_tee_svc_storage {
 
             // step 8 : close the object
             let obj_id = obj as c_ulong;
-            let result = syscall_cryp_obj_close(obj_id);
+            let result = syscall_storage_obj_del(obj_id);
             assert!(result.is_ok());
             // check if the object is deleted
             let result = tee_obj_get(obj_id as tee_obj_id_type);
