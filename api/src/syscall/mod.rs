@@ -617,9 +617,18 @@ pub fn handle_syscall(uctx: &mut UserContext) {
             {
                 use tee_raw_sys::TEE_SUCCESS;
 
-                match handle_tee_syscall(sysno, uctx) {
+                use crate::tee_debug;
+                let result = handle_tee_syscall(sysno, uctx);
+                tee_debug!("<--- TEE syscall return sysno: {:?}", sysno);
+                match result {
                     Ok(_) => Ok(TEE_SUCCESS as isize),
-                    Err(errno) => Ok(errno as isize),
+                    Err(errno) => {
+                        error!(
+                            "TEE syscall failed: sysno: {:?}, error: {:#010X?}",
+                            sysno, errno
+                        );
+                        Ok(errno as isize)
+                    }
                 }
             }
             #[cfg(not(feature = "tee"))]

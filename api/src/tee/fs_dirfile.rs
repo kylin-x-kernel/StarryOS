@@ -410,6 +410,11 @@ pub fn tee_fs_dirfile_commit_writes(
     dirh: &mut TeeFsDirfileDirh,
     hash: Option<&mut [u8; TEE_FS_HTREE_HASH_SIZE]>,
 ) -> TeeResult {
+    tee_debug!(
+        "tee_fs_dirfile_commit_writes: dirh.fh.fd: {:?}, dirh.fh.ht.data.head.counter: {}",
+        dirh.fh.fd,
+        dirh.fh.ht.data.head.counter
+    );
     dirh.fops.commit_writes(&mut dirh.fh, hash)
 }
 

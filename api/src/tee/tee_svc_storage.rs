@@ -321,6 +321,7 @@ pub fn syscall_storage_obj_open(
     let fops =
         tee_svc_storage_file_ops(storage_id as c_uint).map_err(|_| TEE_ERROR_ITEM_NOT_FOUND)?;
 
+    tee_debug!("syscall_storage_obj_open: flags: {:#010X?}, valid_flags: {:#010X?}", flags, valid_flags);
     if flags & !valid_flags != 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
@@ -421,7 +422,7 @@ fn tee_svc_storage_init_file(
         }
         tee_obj_attr_to_binary(o, &mut [], &mut attr_size)?;
         if attr_size > 0 {
-            attr = Vec::<u8>::with_capacity(attr_size).into_boxed_slice();
+            attr = vec![0u8; attr_size].into_boxed_slice();
             tee_obj_attr_to_binary(o, &mut attr, &mut attr_size)?;
         }
     } else {

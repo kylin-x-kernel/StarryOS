@@ -1278,6 +1278,21 @@ impl ReeFsDirh {
     pub fn refcount(&self) -> usize {
         self.refcount.load(Ordering::Acquire)
     }
+
+    /// 重置 GLOBAL_DIR_HANDLE_MANAGER，清理缓存的 dirh
+    /// 在 TA 进程退出时调用，确保下次使用时从存储重新读取
+    pub fn reset(&self) -> TeeResult {
+        let h = self.handle.swap(ptr::null_mut(), Ordering::AcqRel);
+        if !h.is_null() {
+            unsafe {
+                let mut boxed = Box::from_raw(h);
+                close_dirh(&mut boxed)?;
+            }
+        }
+        self.refcount.store(0, Ordering::Release);
+        tee_debug!("ReeFsDirh::reset: cleared cached dirh");
+        Ok(())
+    }
 }
 
 // static GLOBAL_DIR_HANDLE_MANAGER: Once<ReeFsDirh> = Once::new();
@@ -1299,6 +1314,13 @@ pub fn get_dirh() -> TeeResult<*mut TeeFsDirfileDirh> {
 
 pub fn put_dirh_primitive(close: bool) -> TeeResult {
     GLOBAL_DIR_HANDLE_MANAGER.put_dirh_primitive(close)
+}
+
+/// 重置全局目录句柄缓存
+/// 在 TA 进程退出时调用，确保下次使用时从存储重新读取最新数据
+pub fn reset_global_dir_handle() -> TeeResult {
+    let _guard = REE_FS_MUTEX.lock();
+    GLOBAL_DIR_HANDLE_MANAGER.reset()
 }
 
 pub fn put_dirh(_dirh: &TeeFsDirfileDirh, close: bool) {

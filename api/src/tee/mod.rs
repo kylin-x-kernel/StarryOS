@@ -32,7 +32,7 @@ mod tee_fs;
 mod tee_misc;
 mod tee_obj;
 mod tee_pobj;
-mod tee_ree_fs;
+pub mod tee_ree_fs;
 mod tee_return;
 mod tee_session;
 mod tee_svc_cryp;
@@ -107,6 +107,27 @@ use crate::tee::{
 pub type TeeResult<T = ()> = Result<T, u32>;
 
 pub(crate) fn handle_tee_syscall(_sysno: Sysno, _uctx: &mut UserContext) -> TeeResult {
+    // back up x6, x7
+    let old_x6: usize;
+    let old_x7: usize;
+    unsafe {
+        asm!(
+            "",
+            lateout("x6") old_x6,
+            lateout("x7") old_x7,
+            options(nostack, preserves_flags),
+        );
+    }
+    tee_debug!("---> TEE syscall: sysno: {:?}", _sysno);
+    // restore x6, x7
+    unsafe {
+        asm!(
+            "",
+            in("x6") old_x6,
+            in("x7") old_x7,
+            options(nostack, preserves_flags),
+        );
+    }
     // Handle TEE-specific syscalls here
     match _sysno {
         Sysno::tee_scn_return => sys_tee_scn_return(_uctx.arg0() as _),

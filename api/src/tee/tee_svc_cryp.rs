@@ -601,6 +601,7 @@ impl TeeCryptObjAttrOps for BigNum {
     }
 
     fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
+        tee_debug!("BigNum::to_user: buffer.len(): {:#x?}, size_ref: {:x?}", buffer.len(), size_ref);
         let mut s: u64 = 0;
 
         // copy size from user
@@ -1948,6 +1949,7 @@ fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResul
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -> TeeResult {
+    tee_debug!("syscall_cryp_obj_get_info: obj_id: {:#010X?}, info: {:#010X?}", obj_id, info);
     let info = unsafe { &mut *info };
 
     let mut o_info: utee_object_info = utee_object_info::default();
@@ -2033,6 +2035,13 @@ pub fn syscall_cryp_obj_get_attr(
     buffer: *mut c_void,
     size: *mut c_ulong,
 ) -> TeeResult {
+    tee_debug!(
+        "syscall_cryp_obj_get_attr: obj_id: {:x?}, attr_id: {:x?}, buffer: {:x?}, size: {:x?}",
+        obj_id,
+        attr_id,
+        buffer,
+        size
+    );
     let mut obj_usage = 0;
     let o_arc = tee_obj_get(obj_id as tee_obj_id_type)?;
     let mut o = o_arc.lock();
