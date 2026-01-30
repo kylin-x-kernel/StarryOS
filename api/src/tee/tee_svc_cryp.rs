@@ -601,7 +601,11 @@ impl TeeCryptObjAttrOps for BigNum {
     }
 
     fn to_user(&self, buffer: &mut [u8], size_ref: &mut u64) -> TeeResult {
-        tee_debug!("BigNum::to_user: buffer.len(): {:#x?}, size_ref: {:x?}", buffer.len(), size_ref);
+        tee_debug!(
+            "BigNum::to_user: buffer.len(): {:#x?}, size_ref: {:x?}",
+            buffer.len(),
+            size_ref
+        );
         let mut s: u64 = 0;
 
         // copy size from user
@@ -1949,7 +1953,11 @@ fn check_key_size(props: &tee_cryp_obj_type_props, key_size: size_t) -> TeeResul
 /// # Returns
 /// * `TeeResult` - the result of the operation
 pub fn syscall_cryp_obj_get_info(obj_id: c_ulong, info: *mut utee_object_info) -> TeeResult {
-    tee_debug!("syscall_cryp_obj_get_info: obj_id: {:#010X?}, info: {:#010X?}", obj_id, info);
+    tee_debug!(
+        "syscall_cryp_obj_get_info: obj_id: {:#010X?}, info: {:#010X?}",
+        obj_id,
+        info
+    );
     let info = unsafe { &mut *info };
 
     let mut o_info: utee_object_info = utee_object_info::default();
@@ -2059,9 +2067,10 @@ pub fn syscall_cryp_obj_get_attr(
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }
 
-    info!(
+    tee_debug!(
         "attr_id: {:x?}, handleFlags: {:x?}",
-        attr_id, o.info.handleFlags
+        attr_id,
+        o.info.handleFlags
     );
     if attr_id & TEE_ATTR_FLAG_PUBLIC as c_ulong == 0 {
         if o.info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT != 0 {
@@ -2080,7 +2089,7 @@ pub fn syscall_cryp_obj_get_attr(
     let type_props = tee_svc_find_type_props(o.info.objectType).ok_or(TEE_ERROR_BAD_STATE)?;
 
     let idx = tee_svc_cryp_obj_find_type_attr_idx(attr_id as u32, type_props);
-    info!("idx: {}, have_attrs: {:x?}", idx, o.have_attrs);
+    tee_debug!("idx: {}, have_attrs: {:x?}", idx, o.have_attrs);
     if idx < 0 || (o.have_attrs & (1 << idx)) == 0 {
         return Err(TEE_ERROR_ITEM_NOT_FOUND);
     }

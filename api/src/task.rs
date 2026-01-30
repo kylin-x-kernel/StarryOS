@@ -164,16 +164,6 @@ pub fn do_exit(exit_code: i32, group_exit: bool) {
 
     info!("{} exit with code: {}", curr.id_name(), exit_code);
 
-    // 在进程退出时清理 TEE 全局目录句柄缓存
-    // 原因：进程退出时内核会回收文件描述符，但 GLOBAL_DIR_HANDLE_MANAGER 是全局变量不会被清理
-    // 如果不清理，下次运行时缓存的 fd 可能被复用给其他文件，导致读取错误的数据
-    #[cfg(feature = "tee")]
-    {
-        if let Err(e) = crate::tee::tee_ree_fs::reset_global_dir_handle() {
-            warn!("Failed to reset TEE global dir handle: {:?}", e);
-        }
-    }
-
     let clear_child_tid = thr.clear_child_tid() as *mut u32;
     if clear_child_tid.vm_write(0).is_ok() {
         let key = FutexKey::new_current(clear_child_tid as usize);

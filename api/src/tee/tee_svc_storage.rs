@@ -321,7 +321,11 @@ pub fn syscall_storage_obj_open(
     let fops =
         tee_svc_storage_file_ops(storage_id as c_uint).map_err(|_| TEE_ERROR_ITEM_NOT_FOUND)?;
 
-    tee_debug!("syscall_storage_obj_open: flags: {:#010X?}, valid_flags: {:#010X?}", flags, valid_flags);
+    tee_debug!(
+        "syscall_storage_obj_open: flags: {:#010X?}, valid_flags: {:#010X?}",
+        flags,
+        valid_flags
+    );
     if flags & !valid_flags != 0 {
         return Err(TEE_ERROR_BAD_PARAMETERS);
     }

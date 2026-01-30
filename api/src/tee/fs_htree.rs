@@ -246,6 +246,13 @@ impl HtreeNode {
 
 pub type Subtree = Option<Box<HtreeNode>>;
 
+// HtreeNode 使用 NonNull 作为 parent 指针，不是自动 Send 的
+// 但我们可以安全地实现 Send，因为：
+// 1. 整个 TeeFsHtree 被 Mutex 保护，所有访问都通过 Mutex 进行
+// 2. parent 指针的生命周期由 TeeFsHtree 保证，不会出现悬垂指针
+// 3. 树结构在同一线程中访问，不会出现并发修改
+unsafe impl Send for HtreeNode {}
+
 pub trait SubtreeExt {
     fn get_mut(&mut self) -> Option<&mut HtreeNode>;
 
@@ -420,11 +427,7 @@ pub fn rpc_write_head(
     vers: u8,
     head: &TeeFsHtreeImage,
 ) -> TeeResult {
-    tee_debug!(
-        "rpc_write_head: vers: {}, counter: {}",
-        vers,
-        head.counter
-    );
+    tee_debug!("rpc_write_head: vers: {}, counter: {}", vers, head.counter);
     let data_ptr: &[u8] = unsafe {
         core::slice::from_raw_parts(
             head as *const TeeFsHtreeImage as *const u8,
@@ -838,7 +841,9 @@ fn htree_sync_node_to_storage(
         meta = Some(&ht_data.imeta.meta);
         tee_debug!(
             "htree_sync_node_to_storage (root): counter: {}, root_node_vers: {}, flags: 0x{:04X}",
-            ht_data.head.counter, vers, node.node.flags
+            ht_data.head.counter,
+            vers,
+            node.node.flags
         );
     }
     let mut digest = [0u8; TEE_FS_HTREE_HASH_SIZE];
@@ -1431,17 +1436,36 @@ pub fn init_head_from_data(
         for idx in 0..2 {
             // Read version idx (0 or 1) of the head, consistent with C implementation
             rpc_read_head(storage, idx as u8, &mut heads[idx])?;
-            tee_debug!("init_head_from_data: read head[{}]: counter={}", idx, heads[idx].counter);
+            tee_debug!(
+                "init_head_from_data: read head[{}]: counter={}",
+                idx,
+                heads[idx].counter
+            );
         }
 
         let idx = get_idx_from_counter(heads[0].counter, heads[1].counter)
             .map_err(|_| TEE_ERROR_SECURITY)?;
-        tee_debug!("init_head_from_data: get_idx_from_counter result: idx={}, heads[0].counter={}, heads[1].counter={}", idx, heads[0].counter, heads[1].counter);
+        tee_debug!(
+            "init_head_from_data: get_idx_from_counter result: idx={}, heads[0].counter={}, \
+             heads[1].counter={}",
+            idx,
+            heads[0].counter,
+            heads[1].counter
+        );
 
         let node_ref = &mut ht.root.node;
-        tee_debug!("init_head_from_data: reading root node with vers: {}, heads[0].counter: {}, heads[1].counter: {}", idx, heads[0].counter, heads[1].counter);
+        tee_debug!(
+            "init_head_from_data: reading root node with vers: {}, heads[0].counter: {}, \
+             heads[1].counter: {}",
+            idx,
+            heads[0].counter,
+            heads[1].counter
+        );
         rpc_read_node(storage, 1, idx, node_ref)?;
-        tee_debug!("init_head_from_data: root node loaded, flags: 0x{:04X}", node_ref.flags);
+        tee_debug!(
+            "init_head_from_data: root node loaded, flags: 0x{:04X}",
+            node_ref.flags
+        );
 
         ht.data.head = heads[idx as usize];
     }
@@ -1562,8 +1586,12 @@ pub fn tee_fs_htree_sync_to_storage(
     let counter_after = ht.data.head.counter;
     let head_vers = (ht.data.head.counter & 1) as u8;
     tee_debug!(
-        "tee_fs_htree_sync_to_storage: counter_before: {}, counter_after: {}, head_vers: {}, root_flags: 0x{:04X}",
-        counter_before, counter_after, head_vers, ht.root.node.flags
+        "tee_fs_htree_sync_to_storage: counter_before: {}, counter_after: {}, head_vers: {}, \
+         root_flags: 0x{:04X}",
+        counter_before,
+        counter_after,
+        head_vers,
+        ht.root.node.flags
     );
 
     let storage = ht.storage.as_ref();
@@ -1751,8 +1779,13 @@ pub fn tee_fs_htree_read_block(
             0
         };
 
-        tee_debug!("tee_fs_htree_read_block: node.node.flags: 0x{:04X}, HTREE_NODE_COMMITTED_BLOCK: 0x{:04X}, block_vers: {}", 
-            node.node.flags, HTREE_NODE_COMMITTED_BLOCK as u16, vers);
+        tee_debug!(
+            "tee_fs_htree_read_block: node.node.flags: 0x{:04X}, HTREE_NODE_COMMITTED_BLOCK: \
+             0x{:04X}, block_vers: {}",
+            node.node.flags,
+            HTREE_NODE_COMMITTED_BLOCK as u16,
+            vers
+        );
 
         // extract iv and tag (these are Copy types, can be used directly)
         (vers, node.node.iv, node.node.tag)
@@ -1866,8 +1899,15 @@ pub fn tee_fs_htree_write_block(
             } else {
                 0
             };
-            tee_debug!("tee_fs_htree_write_block: block_num: {}, block_updated: {}, flags_before: 0x{:04X}, flags_after: 0x{:04X}, block_vers: {}", 
-                block_num, node.block_updated, flags_before, node.node.flags, vers);
+            tee_debug!(
+                "tee_fs_htree_write_block: block_num: {}, block_updated: {}, flags_before: \
+                 0x{:04X}, flags_after: 0x{:04X}, block_vers: {}",
+                block_num,
+                node.block_updated,
+                flags_before,
+                node.node.flags,
+                vers
+            );
             vers
         };
 

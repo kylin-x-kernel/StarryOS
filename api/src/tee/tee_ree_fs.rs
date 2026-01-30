@@ -12,15 +12,9 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{
-    any::Any,
-    ffi::c_uint,
-    fmt::Debug,
-    ptr,
-    sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
-};
+use core::{any::Any, ffi::c_uint, fmt::Debug, ptr};
 
-use lazy_static::lazy_static;
+use scope_local::scope_local;
 use spin::{Mutex, RwLock};
 use tee_raw_sys::{TEE_STORAGE_PRIVATE, *};
 
@@ -309,7 +303,7 @@ pub fn ree_fs_rpc_write_init() -> TeeResult {
     Ok(())
 }
 
-pub trait TeeFsHtreeStorageOps: Debug + Any {
+pub trait TeeFsHtreeStorageOps: Debug + Any + Send + Sync {
     fn block_size(&self) -> usize;
 
     fn rpc_read_init(&self) -> TeeResult;
@@ -1196,133 +1190,110 @@ fn commit_dirh_writes(dirh: &mut TeeFsDirfileDirh) -> TeeResult {
     tee_fs_dirfile_commit_writes(dirh, None)
 }
 
-/// 完全对应C代码的语义
+/// Process level directory handle cache
+/// Using scope_local! to implement, the directory handle will be automatically cleaned up when the process exits, solving the fd invalid problem
+///
+/// Different from OP-TEE:
+/// - OP-TEE: ree_fs_dirh is a global variable in the TEE kernel, shared by multiple TAs
+/// - StarryOS: DIR_HANDLE_MANAGER is a process level variable, each process is independent
+///
+/// This design has the following advantages:
+/// 1. The fd and cache life cycle are consistent, and the cache will be automatically cleaned up when the process exits
+/// 2. No need to manually call reset
+/// 3. Code is more concise
+///
+/// TODO: multi-process support must be implemented
 pub struct ReeFsDirh {
-    /// 对应ree_fs_dirh_refcount
-    refcount: AtomicUsize,
-    /// 对应ree_fs_dirh
-    handle: AtomicPtr<TeeFsDirfileDirh>,
+    /// Directory handle cache
+    handle: Option<Box<TeeFsDirfileDirh>>,
+    /// Reference count (for compatibility with the put_dirh semantic of the C version)
+    refcount: usize,
+}
+
+impl Default for ReeFsDirh {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReeFsDirh {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            refcount: AtomicUsize::new(0),
-            handle: AtomicPtr::new(ptr::null_mut()),
+            handle: None,
+            refcount: 0,
         }
     }
 
-    /// 对应get_dirh
-    pub fn get_dirh(&self) -> TeeResult<*mut TeeFsDirfileDirh> {
-        let mut h = self.handle.load(Ordering::Acquire);
-        if h.is_null() {
-            let a = open_dirh()?;
-            h = Box::into_raw(a);
-            self.handle.store(h, Ordering::Release);
+    /// Get directory handle, if not exist, open it
+    pub fn get_dirh(&mut self) -> TeeResult<*mut TeeFsDirfileDirh> {
+        if self.handle.is_none() {
+            let dirh = open_dirh()?;
+            self.handle = Some(dirh);
         }
-        self.refcount.fetch_add(1, Ordering::AcqRel);
+        self.refcount += 1;
 
+        let h = self.handle.as_mut().unwrap().as_mut() as *mut TeeFsDirfileDirh;
         tee_debug!(
             "get_dirh: h with refcount: {:?} and h: {:?}",
-            self.refcount.load(Ordering::Acquire),
+            self.refcount,
             h
         );
         Ok(h)
     }
 
-    pub fn put_dirh_primitive(&self, close: bool) -> TeeResult {
-        loop {
-            let current = self.refcount.load(Ordering::Acquire);
-
-            if current == 0 {
-                warn!("put_dirh_primitive: refcount already 0 (double free or logic error)");
-                return Ok(());
-            }
-
-            // try to change refcount from current -> current - 1
-            if self
-                .refcount
-                .compare_exchange(current, current - 1, Ordering::AcqRel, Ordering::Acquire)
-                .is_err()
-            {
-                // 并发失败，重试
-                continue;
-            }
-
-            // Only these two cases need to be released:
-            // 1) Normal reference count reaches zero
-            // 2) close == true (force release)
-            if current == 1 || close {
-                let h = self.handle.swap(ptr::null_mut(), Ordering::AcqRel);
-                if !h.is_null() {
-                    unsafe {
-                        let mut boxed = Box::from_raw(h);
-                        close_dirh(&mut boxed)?;
-                        // drop(boxed) happens automatically
-                    }
-                }
-
-                // Ensure refcount is 0 (there may still be references in the close scenario)
-                self.refcount.store(0, Ordering::Release);
-            }
-
+    /// Release directory handle reference
+    pub fn put_dirh_primitive(&mut self, close: bool) -> TeeResult {
+        if self.refcount == 0 {
+            warn!("put_dirh_primitive: refcount already 0 (double free or logic error)");
             return Ok(());
         }
-    }
 
-    /// 对应open_dirh
-    pub fn set_handle(&self, handle: *mut TeeFsDirfileDirh) {
-        self.handle.store(handle, Ordering::Release);
-    }
+        self.refcount -= 1;
 
-    pub fn refcount(&self) -> usize {
-        self.refcount.load(Ordering::Acquire)
-    }
-
-    /// 重置 GLOBAL_DIR_HANDLE_MANAGER，清理缓存的 dirh
-    /// 在 TA 进程退出时调用，确保下次使用时从存储重新读取
-    pub fn reset(&self) -> TeeResult {
-        let h = self.handle.swap(ptr::null_mut(), Ordering::AcqRel);
-        if !h.is_null() {
-            unsafe {
-                let mut boxed = Box::from_raw(h);
-                close_dirh(&mut boxed)?;
+        // Only these two cases need to be released:
+        // 1) Normal reference count reaches zero
+        // 2) close == true (force release)
+        if self.refcount == 0 || close {
+            if let Some(mut dirh) = self.handle.take() {
+                close_dirh(&mut dirh)?;
             }
+            self.refcount = 0;
         }
-        self.refcount.store(0, Ordering::Release);
-        tee_debug!("ReeFsDirh::reset: cleared cached dirh");
+
         Ok(())
     }
 }
 
-// static GLOBAL_DIR_HANDLE_MANAGER: Once<ReeFsDirh> = Once::new();
-
-// pub fn get_global_manager() -> &'static ReeFsDirh {
-//     GLOBAL_DIR_HANDLE_MANAGER.call_once(|| ReeFsDirh::new())
-// }
-
-// GLOBAL_DIR_HANDLE_MANAGER 不需要锁进行保护，
-// ree_fs_ 系列函数会使用mutex保证线程安全
-lazy_static! {
-    pub static ref GLOBAL_DIR_HANDLE_MANAGER: ReeFsDirh = ReeFsDirh::new();
+impl Drop for ReeFsDirh {
+    fn drop(&mut self) {
+        // 进程退出时自动清理
+        if let Some(mut dirh) = self.handle.take() {
+            tee_debug!("ReeFsDirh::drop: cleaning up cached dirh");
+            let _ = close_dirh(&mut dirh);
+        }
+    }
 }
 
-// /// get_dirh
+// 进程级目录句柄管理器
+// 使用 scope_local! 实现进程级存储，进程退出时自动清理
+// 使用 Arc<Mutex<...>> 与 TEE_FD_TABLE 的设计保持一致
+scope_local! {
+    /// 进程级目录句柄缓存
+    /// 使用 Arc<Mutex<...>> 保证线程安全，与 TEE_FD_TABLE 设计一致
+    pub static DIR_HANDLE_MANAGER: Arc<Mutex<ReeFsDirh>> = Arc::new(Mutex::new(ReeFsDirh::new()));
+}
+
+/// 获取目录句柄
 pub fn get_dirh() -> TeeResult<*mut TeeFsDirfileDirh> {
-    GLOBAL_DIR_HANDLE_MANAGER.get_dirh()
+    DIR_HANDLE_MANAGER.lock().get_dirh()
 }
 
+/// 释放目录句柄引用
 pub fn put_dirh_primitive(close: bool) -> TeeResult {
-    GLOBAL_DIR_HANDLE_MANAGER.put_dirh_primitive(close)
+    DIR_HANDLE_MANAGER.lock().put_dirh_primitive(close)
 }
 
-/// 重置全局目录句柄缓存
-/// 在 TA 进程退出时调用，确保下次使用时从存储重新读取最新数据
-pub fn reset_global_dir_handle() -> TeeResult {
-    let _guard = REE_FS_MUTEX.lock();
-    GLOBAL_DIR_HANDLE_MANAGER.reset()
-}
-
+/// 释放目录句柄
 pub fn put_dirh(_dirh: &TeeFsDirfileDirh, close: bool) {
     let _ = put_dirh_primitive(close);
 }
