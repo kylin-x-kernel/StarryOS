@@ -583,3 +583,115 @@ pub(crate) fn crypto_cipher_final(
         Err(TEE_ERROR_BAD_PARAMETERS)
     }
 }
+
+/// mbedtls不支持CCM模式的流式加密
+/// 暂不支持CCM模式
+pub(crate) fn crypto_authenc_init(
+    cs: Arc<Mutex<TeeCrypState>>,
+    key: &[u8],
+    nonce: &[u8],
+    padding_mode: CipherPaddingMode,
+) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let mode = cs_guard.mode;
+
+    let mut cipher_id = CipherId::None;
+    let mut cipher_mode = CipherMode::None;
+    let mut cipher_op = Operation::None;
+
+    let cipher_padding = match padding_mode {
+        CipherPaddingMode::None => CipherPadding::None,
+        CipherPaddingMode::Pkcs7 => CipherPadding::Pkcs7,
+        CipherPaddingMode::Zeros => CipherPadding::Zeros,
+        CipherPaddingMode::AnsiX923 => CipherPadding::AnsiX923,
+        CipherPaddingMode::IsoIec78164 => CipherPadding::IsoIec78164,
+    };
+
+    match mode {
+        TEE_OperationMode::TEE_MODE_ENCRYPT => cipher_op = Operation::Encrypt,
+        TEE_OperationMode::TEE_MODE_DECRYPT => cipher_op = Operation::Decrypt,
+        _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+    }
+
+    match algo {
+        TEE_ALG_AES_GCM => {
+            cipher_id = CipherId::Aes;
+            cipher_mode = CipherMode::GCM;
+        }
+        TEE_ALG_SM4_GCM => {
+            cipher_id = CipherId::SM4;
+            cipher_mode = CipherMode::GCM;
+        }
+        _ => return Err(TEE_ERROR_NOT_IMPLEMENTED),
+    }
+
+    if let Ok(mut cipher) = Cipher::setup(cipher_id, cipher_mode, (key.len() * 8) as _) {
+        cipher
+            .set_key(cipher_op, key)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        cipher.set_iv(nonce).map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        cipher.set_padding(cipher_padding);
+        cipher.reset().map_err(|_| TEE_ERROR_BAD_PARAMETERS);
+        cs_guard.state = CrypState::Initialized;
+        cs_guard.ctx = CrypCtx::CipherCtx(cipher);
+        Ok(())
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    }
+}
+
+pub(crate) fn crypto_authenc_update_aad(cs: Arc<Mutex<TeeCrypState>>, aad: &[u8]) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::CipherCtx(cipher) = &mut cs_guard.ctx {
+        cipher.update_ad(aad).map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_authenc_enc_final(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: Option<&[u8]>,
+    output: &mut [u8],
+    tag: &mut [u8],
+) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+    let mut res: usize = 0;
+    if let CrypCtx::CipherCtx(cipher) = &mut cs_guard.ctx {
+        if let Some(input) = input {
+            res = cipher
+                .update(input, output)
+                .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+        }
+        cipher
+            .write_tag(tag)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+        Ok(res)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_authenc_dec_final(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: Option<&[u8]>,
+    output: &mut [u8],
+    tag: &[u8],
+) -> TeeResult<usize> {
+    let mut cs_guard = cs.lock();
+    let mut res: usize = 0;
+    if let CrypCtx::CipherCtx(cipher) = &mut cs_guard.ctx {
+        if let Some(input) = input {
+            res = cipher
+                .update(input, output)
+                .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+        }
+        cipher
+            .check_tag(tag)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+        Ok(res)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
