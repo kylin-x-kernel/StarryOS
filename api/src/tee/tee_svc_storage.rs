@@ -32,6 +32,7 @@ use super::{
     },
     user_access::{
         bb_memdup_user_private, copy_to_user, copy_to_user_private, copy_to_user_struct,
+        copy_to_user_u64,
     },
     uuid::Uuid,
 };
@@ -1323,7 +1324,8 @@ pub fn syscall_storage_next_enum(
         let mut obj_guard = e.lock();
         let mut dir = obj_guard.dir.as_mut().ok_or(TEE_ERROR_BAD_STATE)?;
         let mut d = tee_fs_dirent::default();
-        (fops.readdir)(dir, &mut d)?;
+        (fops.readdir)(dir, &mut d)
+            .inspect_err(|e| error!("syscall_storage_next_enum: readdir error: {:#010X?}", e))?;
         drop(obj_guard); // 释放 e 的锁，避免在 tee_pobj_get 中持有多个锁
 
         o = Some(Box::new(tee_obj::default()));
@@ -1378,13 +1380,8 @@ pub fn syscall_storage_next_enum(
         let l = pobj_guard.obj_id_len as u64;
         drop(pobj_guard);
 
-        let l_bytes: &[u8] = unsafe {
-            core::slice::from_raw_parts(l as *const u64 as *const u8, core::mem::size_of::<u64>())
-        };
-        let len_bytes: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(len as *mut u64 as *mut u8, core::mem::size_of::<u64>())
-        };
-        copy_to_user_private(len_bytes, l_bytes, core::mem::size_of::<u64>())?;
+        let len_ref = unsafe { &mut *len };
+        copy_to_user_u64(len_ref, &l)?;
 
         Ok(())
     })();
