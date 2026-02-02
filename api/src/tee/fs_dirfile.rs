@@ -248,52 +248,63 @@ pub fn tee_fs_dirfile_open(
     dirh.fh = *fd;
 
     tee_debug!("tee_fs_dirfile_open: dirh.fh: {:?}", dirh.fh);
-    let mut n = 0;
 
-    let result = (|| {
-        for idx in 0.. {
-            n = idx;
+    let mut n: usize = 0;
 
-            let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
-            match read_dent(&mut *dirh, idx, &mut dent) {
-                Err(TEE_ERROR_ITEM_NOT_FOUND) => {
-                    // 读到末尾正常退出循环
-                    tee_debug!("read_dent: TEE_ERROR_ITEM_NOT_FOUND at idx: {:?}", idx);
-                    break;
-                }
-                Err(e) => {
-                    // 其他错误直接返回
-                    return Err(e);
-                }
-                Ok(()) => {}
+    let res: TeeResult<()> = loop {
+        let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
+
+        match read_dent(&mut *dirh, n, &mut dent) {
+            Err(TEE_ERROR_ITEM_NOT_FOUND) => {
+                tee_debug!(
+                    "read_dent: TEE_ERROR_ITEM_NOT_FOUND at idx {}",
+                    n
+                );
+                break Ok(());
             }
-
-            if dent.oid_len == 0 {
-                continue;
-            }
-
-            if test_file(&mut *dirh, dent.file_number as usize) {
-                // 清除重复文件号
-                let mut zero_dent: DirFileEntry = unsafe { core::mem::zeroed() };
-                write_dent(&mut *dirh, n, &mut zero_dent)?;
-                continue;
-            }
-            set_file(&mut *dirh, dent.file_number as usize)?;
+            Err(e) => break Err(e),
+            Ok(()) => {}
         }
-        Ok(())
-    })();
 
-    match result {
-        Ok(()) => (),
+        /* if (is_free(&dent)) */
+        if is_free(&dent) {
+            n += 1;
+            continue;
+        }
+
+        /* if (test_file(dirh, dent.file_number)) */
+        if test_file(&mut *dirh, dent.file_number as usize) {
+            tee_debug!(
+                "clearing duplicate file number {}",
+                dent.file_number
+            );
+            let mut zero_dent: DirFileEntry = unsafe { core::mem::zeroed() };
+            if let Err(e) = write_dent(&mut *dirh, n, &mut zero_dent) {
+                break Err(e);
+            }
+            n += 1;
+            continue;
+        }
+
+        /* res = set_file(dirh, dent.file_number); */
+        if let Err(e) = set_file(&mut *dirh, dent.file_number as usize) {
+            break Err(e);
+        }
+
+        n += 1;
+    };
+
+    match res {
+        Ok(()) => {
+            dirh.ndents = n;
+            tee_debug!("tee_fs_dirfile_open: dirh.ndents: {}", dirh.ndents);
+            Ok(dirh)
+        }
         Err(e) => {
-            // tee_fs_dirfile_close(&mut *dirh)?;
-            return Err(e);
+            tee_fs_dirfile_close(&mut *dirh);
+            Err(e)
         }
     }
-
-    dirh.ndents = n;
-    tee_debug!("tee_fs_dirfile_open: dirh.ndents: {:?}", dirh.ndents);
-    Ok(dirh)
 }
 
 pub fn tee_fs_dirfile_find(
@@ -305,14 +316,19 @@ pub fn tee_fs_dirfile_find(
     let mut dent: DirFileEntry = unsafe { core::mem::zeroed() };
     let mut n: usize = 0;
 
-    for n in 0.. {
+    // Note: Do NOT use `for n in 0..` here! In Rust, that creates a new
+    // loop variable that shadows the outer `n`. We need to use `loop`
+    // and manually increment `n` to match the C behavior.
+    loop {
         read_dent(dirh, n, &mut dent)?;
 
         if is_free(&dent) {
+            n += 1;
             continue;
         }
 
         if dent.oid_len as usize != oidlen {
+            n += 1;
             continue;
         }
 
@@ -321,6 +337,7 @@ pub fn tee_fs_dirfile_find(
         if &dent.uuid == uuid && &dent.oid[..oidlen] == oid {
             break;
         }
+        n += 1;
     }
 
     let mut dfh = TeeFsDirfileFileh {
@@ -373,6 +390,11 @@ pub fn tee_fs_dirfile_remove(dirh: &mut TeeFsDirfileDirh, dfh: &TeeFsDirfileFile
 
     dent = unsafe { core::mem::zeroed() };
     write_dent(dirh, dfh.idx as usize, &mut dent)?;
+    tee_debug!(
+        "tee_fs_dirfile_remove: after write_dent, dirh.fh.ht.data.dirty: {}, dfh.idx: {}",
+        dirh.fh.ht.data.dirty,
+        dfh.idx
+    );
     clear_file(dirh, file_number as usize);
 
     Ok(())
