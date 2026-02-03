@@ -79,10 +79,10 @@ starry-vm = "0.2"
 
 starry-core = { path = "./core" }
 starry-api = { path = "./api" }
-mbedtls = { version = "0.13.3", package = "mbedtls", default-features = false, features = [
+mbedtls = { version = "0.13.4", package = "mbedtls-smx", default-features = false, features = [
     "no_std_deps",
 ] }
-mbedtls-sys-auto = { version = "2.28.12", package = "mbedtls-sys-auto", default-features = false, features = [
+mbedtls-sys-auto = { version = "2.28.13", package = "mbedtls-sys-auto-smx", default-features = false, features = [
 ] }
 
 [package]
@@ -191,8 +191,8 @@ axplat-aarch64-peripherals = { git = "https://github.com/kylin-x-kernel/axplat_c
 fdtree_rs = { path = "local_crates/fdtree-rs" }
 arm-gic = { git = "https://github.com/kylin-x-kernel/arm-gic.git", branch = "main" }
 tee_raw_sys = { path = "local_crates/tee_raw_sys" }
-mbedtls = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }
-mbedtls-sys-auto = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }
+mbedtls-smx = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }
+mbedtls-sys-auto-smx = { git = "https://gitee.com/openkylin/rust-mbedtls.git", branch = "smx-mbedtls-sys-auto_v2.28.12" }
 
 [package.metadata.vendor-filter]
 platforms = ["riscv64gc-unknown-none-elf", "loongarch64-unknown-none-softfloat"]
