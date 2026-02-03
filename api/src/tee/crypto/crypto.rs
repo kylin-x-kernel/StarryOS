@@ -12,9 +12,10 @@ use alloc::{boxed::Box, format, sync::Arc};
 use core::{default::Default, fmt, fmt::Debug};
 
 use mbedtls::{
+    bignum::Mpi,
     cipher::raw::{Cipher, CipherId, CipherMode, CipherPadding, CipherType, Operation},
     hash::{Hmac, Md, Type as MdType},
-    pk::Type as PkType,
+    pk::{Pk, RsaPadding, RsaPrivateComponents, RsaPublicComponents, Type as PkType},
 };
 use mbedtls_sys_auto::mpi_write_binary;
 use spin::Mutex;
@@ -30,8 +31,9 @@ use crate::tee::{
         bignum::{BigNum, crypto_bignum_allocate},
         ecc::{EcdOps, Sm2DsaOps, Sm2KepOps, Sm2PkeOps},
     },
-    tee_obj::tee_obj_id_type,
-    tee_svc_cryp::{CryptoAttrRef, tee_cryp_obj_secret_wrapper, tee_crypto_ops},
+    rng_software::TeeSoftwareRng,
+    tee_obj::{tee_obj_get, tee_obj_id_type},
+    tee_svc_cryp::{CryptoAttrRef, TeeCryptObj, tee_cryp_obj_secret_wrapper, tee_crypto_ops},
     tee_svc_cryp2::{CipherPaddingMode, CrypCtx, CrypState, TeeCrypState},
 };
 
@@ -218,6 +220,38 @@ impl tee_crypto_ops for rsa_keypair {
         }
     }
 }
+
+pub struct rsa_public_key {
+    pub e: BigNum, // Public exponent
+    pub n: BigNum, // Modulus
+}
+
+impl Debug for rsa_public_key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("rsa_public_key")
+            .field("e", &self.e)
+            .field("n", &self.n)
+            .finish()
+    }
+}
+
+impl tee_crypto_ops for rsa_public_key {
+    fn new(key_type: u32, key_size_bits: usize) -> TeeResult<Self> {
+        Ok(rsa_public_key {
+            e: crypto_bignum_allocate(key_size_bits)?,
+            n: crypto_bignum_allocate(key_size_bits)?,
+        })
+    }
+
+    fn get_attr_by_id(&mut self, attr_id: tee_obj_id_type) -> TeeResult<CryptoAttrRef<'_>> {
+        match attr_id as u32 {
+            TEE_ATTR_RSA_MODULUS => Ok(CryptoAttrRef::BigNum(&mut self.n)),
+            TEE_ATTR_RSA_PUBLIC_EXPONENT => Ok(CryptoAttrRef::BigNum(&mut self.e)),
+            _ => Err(TEE_ERROR_ITEM_NOT_FOUND),
+        }
+    }
+}
+
 pub fn crypto_acipher_gen_ecc_key(
     key: &mut ecc_keypair,
     key_size_bits: usize,
@@ -691,6 +725,102 @@ pub(crate) fn crypto_authenc_dec_final(
             .check_tag(tag)
             .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
         Ok(res)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub fn crypto_rsa_init(
+    cs: Arc<Mutex<TeeCrypState>>,
+    padding_mode: RsaPadding,
+    mode: TEE_OperationMode,
+) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let key1 = cs_guard.key1;
+
+    if let Some(k) = key1 {
+        let obj_key1 = tee_obj_get(k as _)?;
+        let obj_key1_guard = obj_key1.lock();
+
+        if obj_key1_guard.attr.is_empty() {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+
+        match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => {
+                if let TeeCryptObj::rsa_public_key(rsa_key) = &obj_key1_guard.attr[0] {
+                    let rsa = RsaPublicComponents {
+                        n: &rsa_key.n,
+                        e: &rsa_key.e,
+                    };
+                    let mut pk = Pk::public_from_rsa_components(rsa)
+                        .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    pk.set_options(mbedtls::pk::Options::Rsa {
+                        padding: padding_mode,
+                    });
+                    cs_guard.ctx = CrypCtx::AsyCtx(pk);
+                } else {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+            }
+            TEE_OperationMode::TEE_MODE_DECRYPT => {
+                if let TeeCryptObj::rsa_keypair(rsa_key) = &obj_key1_guard.attr[0] {
+                    let rsa = RsaPrivateComponents::WithPrimes {
+                        p: &rsa_key.p,
+                        q: &rsa_key.q,
+                        e: &rsa_key.e,
+                    };
+                    let mut pk = Pk::private_from_rsa_components(rsa)
+                        .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    pk.set_options(mbedtls::pk::Options::Rsa {
+                        padding: padding_mode,
+                    });
+                    cs_guard.ctx = CrypCtx::AsyCtx(pk);
+                } else {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+            }
+            _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+        }
+    } else {
+        return Err(TEE_ERROR_BAD_PARAMETERS);
+    };
+    Ok(())
+}
+
+pub(crate) fn crypto_acipher_rsanopad_encrypt(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: &[u8],
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    crypto_rsa_init(
+        cs.clone(),
+        RsaPadding::None,
+        TEE_OperationMode::TEE_MODE_ENCRYPT,
+    )?;
+    if let CrypCtx::AsyCtx(pk) = &mut cs.lock().ctx {
+        let mut rng = TeeSoftwareRng::new();
+        pk.encrypt_extend(input, output, &mut rng, None)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_acipher_rsanopad_decrypt(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: &[u8],
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    crypto_rsa_init(
+        cs.clone(),
+        RsaPadding::None,
+        TEE_OperationMode::TEE_MODE_DECRYPT,
+    )?;
+    if let CrypCtx::AsyCtx(pk) = &mut cs.lock().ctx {
+        let mut rng = TeeSoftwareRng::new();
+        pk.decrypt_extend(input, output, &mut rng, None)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
     } else {
         Err(TEE_ERROR_BAD_PARAMETERS)
     }

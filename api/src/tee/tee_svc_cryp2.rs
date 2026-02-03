@@ -30,7 +30,7 @@ use lazy_static::lazy_static;
 use mbedtls::{
     cipher::raw::Cipher,
     hash::{Hmac, Md},
-    pk::Pk,
+    pk::{Pk, RsaPadding},
 };
 use spin::Mutex;
 use tee_raw_sys::{libc_compat::size_t, *};
@@ -85,12 +85,14 @@ use super::{
 use crate::{
     mm::vm_load_string,
     tee::{
-        self, TEE_ALG_DES3_CMAC, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384,
+        self, TEE_ALG_DES3_CMAC, TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5,
+        TEE_ALG_RSASSA_PKCS1_PSS_MGF1_MD5, TEE_ALG_SHA3_224, TEE_ALG_SHA3_256, TEE_ALG_SHA3_384,
         TEE_ALG_SHA3_512, TEE_ALG_SHAKE128, TEE_ALG_SHAKE256, TEE_ERROR_NODE_DISABLED,
         TEE_TYPE_CONCAT_KDF_Z, TEE_TYPE_HKDF_IKM, TEE_TYPE_PBKDF2_PASSWORD,
         crypto::{
             self,
             crypto::{
+                crypto_acipher_rsanopad_decrypt, crypto_acipher_rsanopad_encrypt,
                 crypto_authenc_dec_final, crypto_authenc_enc_final, crypto_authenc_init,
                 crypto_authenc_update_aad, crypto_cipher_final, crypto_cipher_init,
                 crypto_cipher_update,
@@ -1108,6 +1110,54 @@ pub fn syscall_authenc_dec_final(
 
     drop(cs_guard);
     crypto_authenc_dec_final(cs.clone(), input, output, tag)
+}
+
+pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
+    memtag_strip_tag_const()?;
+    memtag_strip_tag()?;
+    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+
+    let mut cs = tee_cryp_state_get(id)?;
+    let cs_guard = cs.lock();
+    let algo = cs_guard.algo;
+    let mode = cs_guard.mode;
+
+    drop(cs_guard);
+    match algo {
+        TEE_ALG_RSA_NOPAD => match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => {
+                crypto_acipher_rsanopad_encrypt(cs.clone(), input, output)
+            }
+            TEE_OperationMode::TEE_MODE_DECRYPT => {
+                crypto_acipher_rsanopad_decrypt(cs.clone(), input, output)
+            }
+            _ => Err(TEE_ERROR_GENERIC),
+        },
+        TEE_ALG_SM2_PKE => Ok((0)),
+        TEE_ALG_RSAES_PKCS1_V1_5
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA1
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA224
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA256
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA384
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA512 => Ok((0)),
+        TEE_ALG_RSASSA_PKCS1_V1_5_MD5
+        | TEE_ALG_RSASSA_PKCS1_V1_5_SHA1
+        | TEE_ALG_RSASSA_PKCS1_V1_5_SHA224
+        | TEE_ALG_RSASSA_PKCS1_V1_5_SHA256
+        | TEE_ALG_RSASSA_PKCS1_V1_5_SHA384
+        | TEE_ALG_RSASSA_PKCS1_V1_5_SHA512
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_MD5
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA1
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA224
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA256
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA384
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA512 => Ok((0)),
+        TEE_ALG_DSA_SHA1 | TEE_ALG_DSA_SHA224 | TEE_ALG_DSA_SHA256 => Ok((0)),
+        TEE_ALG_ECDSA_SHA1 | TEE_ALG_ECDSA_SHA224 | TEE_ALG_ECDSA_SHA256 | TEE_ALG_ECDSA_SHA384
+        | TEE_ALG_ECDSA_SHA512 | TEE_ALG_SM2_DSA_SM3 => Ok((0)),
+        _ => Err(TEE_ERROR_NOT_SUPPORTED),
+    }
 }
 
 #[cfg(feature = "tee_test")]
