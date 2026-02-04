@@ -58,7 +58,6 @@ use super::{
         bb_alloc, bb_free, copy_from_user, copy_from_user_struct, copy_from_user_u64, copy_to_user,
         copy_to_user_struct, copy_to_user_u64,
     },
-    user_mode_ctx_struct::user_mode_ctx,
     user_ta::user_ta_ctx,
     utils::{bit, bit32, slice_fmt},
     vm::vm_check_access_rights,
@@ -2162,7 +2161,6 @@ fn copy_in_attrs(
             // TODO: need to implement vm_check_access_rights
             buf = memtag_strip_tag_vaddr(buf as *const c_void) as u64;
             vm_check_access_rights(
-                &mut user_mode_ctx::default(),
                 flags,
                 buf as usize,
                 len as usize,

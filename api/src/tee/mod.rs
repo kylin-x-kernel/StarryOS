@@ -57,7 +57,6 @@ mod tee_unit_test;
 mod test;
 mod types_ext;
 mod user_access;
-mod user_mode_ctx_struct;
 mod user_ta;
 mod utils;
 mod uuid;

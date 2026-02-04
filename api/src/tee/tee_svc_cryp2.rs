@@ -66,7 +66,6 @@ use super::{
     //     ts_get_current_session, ts_get_current_session_may_fail, ts_push_current_session, ts_pop_current_session, ts_get_calling_session,
     // }
     user_access::{enter_user_access, exit_user_access},
-    user_mode_ctx_struct::user_mode_ctx,
     user_ta::{
         user_ta_ctx, // to_user_ta_ctx
     },
@@ -842,7 +841,7 @@ pub fn syscall_hash_init(id: u32) -> TeeResult {
 
 pub fn syscall_hash_update(id: u32, chunk: &[u8]) -> TeeResult {
     memtag_strip_tag_const()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -865,7 +864,7 @@ pub fn syscall_hash_update(id: u32, chunk: &[u8]) -> TeeResult {
 pub fn syscall_hash_final(id: u32, chunk: &[u8], hash: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -978,7 +977,7 @@ pub fn syscall_cipher_init(
 pub fn syscall_cipher_update(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -999,7 +998,7 @@ pub fn syscall_cipher_update(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
 pub fn syscall_cipher_final(id: u32, output: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -1045,7 +1044,7 @@ pub fn syscall_authenc_init(id: u32, nonce: &[u8], padding_mode: CipherPaddingMo
 
 pub fn syscall_authenc_update_aad(id: u32, aad: &[u8]) -> TeeResult {
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -1078,7 +1077,7 @@ pub fn syscall_authenc_enc_final(
 ) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -1099,7 +1098,7 @@ pub fn syscall_authenc_dec_final(
 ) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
@@ -1115,7 +1114,7 @@ pub fn syscall_authenc_dec_final(
 pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
-    vm_check_access_rights(&mut user_mode_ctx::default(), 0, 0, 0)?;
+    vm_check_access_rights(0, 0, 0)?;
 
     let mut cs = tee_cryp_state_get(id)?;
     let cs_guard = cs.lock();
