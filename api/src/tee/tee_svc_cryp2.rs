@@ -91,10 +91,7 @@ use crate::{
         crypto::{
             self,
             crypto::{
-                crypto_acipher_rsanopad_decrypt, crypto_acipher_rsanopad_encrypt,
-                crypto_authenc_dec_final, crypto_authenc_enc_final, crypto_authenc_init,
-                crypto_authenc_update_aad, crypto_cipher_final, crypto_cipher_init,
-                crypto_cipher_update,
+                crypto_acipher_rsaes_decrypt, crypto_acipher_rsaes_encrypt, crypto_acipher_rsanopad_decrypt, crypto_acipher_rsanopad_encrypt, crypto_acipher_rsassa_sign, crypto_acipher_sm2_pke_decrypt, crypto_acipher_sm2_pke_encrypt, crypto_authenc_dec_final, crypto_authenc_enc_final, crypto_authenc_init, crypto_authenc_update_aad, crypto_cipher_final, crypto_cipher_init, crypto_cipher_update
             },
         },
         libmbedtls::bignum::BigNum,
@@ -1111,7 +1108,7 @@ pub fn syscall_authenc_dec_final(
     crypto_authenc_dec_final(cs.clone(), input, output, tag)
 }
 
-pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeResult<usize> {
+pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8], label: Option<&[u8]>) -> TeeResult<usize> {
     memtag_strip_tag_const()?;
     memtag_strip_tag()?;
     vm_check_access_rights(0, 0, 0)?;
@@ -1120,26 +1117,34 @@ pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
     let cs_guard = cs.lock();
     let algo = cs_guard.algo;
     let mode = cs_guard.mode;
+    let label = match label {
+        Some(label) => label,
+        None => &[],
+    };
 
     drop(cs_guard);
     match algo {
         TEE_ALG_RSA_NOPAD => match mode {
-            TEE_OperationMode::TEE_MODE_ENCRYPT => {
-                crypto_acipher_rsanopad_encrypt(cs.clone(), input, output)
-            }
-            TEE_OperationMode::TEE_MODE_DECRYPT => {
-                crypto_acipher_rsanopad_decrypt(cs.clone(), input, output)
-            }
+            TEE_OperationMode::TEE_MODE_ENCRYPT => crypto_acipher_rsanopad_encrypt(cs.clone(), input, output),
+            TEE_OperationMode::TEE_MODE_DECRYPT => crypto_acipher_rsanopad_decrypt(cs.clone(), input, output),
             _ => Err(TEE_ERROR_GENERIC),
         },
-        TEE_ALG_SM2_PKE => Ok((0)),
+        TEE_ALG_SM2_PKE => match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => crypto_acipher_sm2_pke_encrypt(cs.clone(), input, output),
+            TEE_OperationMode::TEE_MODE_DECRYPT => crypto_acipher_sm2_pke_decrypt(cs.clone(), input, output),
+            _ => Err(TEE_ERROR_GENERIC),
+        },
         TEE_ALG_RSAES_PKCS1_V1_5
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA1
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA224
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA256
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA384
-        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA512 => Ok((0)),
+        | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA512 => match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => crypto_acipher_rsaes_encrypt(cs.clone(), input, output, label),
+            TEE_OperationMode::TEE_MODE_DECRYPT => crypto_acipher_rsaes_decrypt(cs.clone(), input, output, label),
+            _ => Err(TEE_ERROR_GENERIC),
+        },
         TEE_ALG_RSASSA_PKCS1_V1_5_MD5
         | TEE_ALG_RSASSA_PKCS1_V1_5_SHA1
         | TEE_ALG_RSASSA_PKCS1_V1_5_SHA224
@@ -1151,8 +1156,8 @@ pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA224
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA256
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA384
-        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA512 => Ok((0)),
-        TEE_ALG_DSA_SHA1 | TEE_ALG_DSA_SHA224 | TEE_ALG_DSA_SHA256 => Ok((0)),
+        | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA512 => crypto_acipher_rsassa_sign(cs.clone(), input, output),
+        TEE_ALG_DSA_SHA1 | TEE_ALG_DSA_SHA224 | TEE_ALG_DSA_SHA256 => Err(TEE_ERROR_NOT_SUPPORTED), /* mbedtls no support for DSA */
         TEE_ALG_ECDSA_SHA1 | TEE_ALG_ECDSA_SHA224 | TEE_ALG_ECDSA_SHA256 | TEE_ALG_ECDSA_SHA384
         | TEE_ALG_ECDSA_SHA512 | TEE_ALG_SM2_DSA_SM3 => Ok((0)),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),
