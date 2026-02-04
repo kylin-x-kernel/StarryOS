@@ -92,6 +92,7 @@ use crate::{
             self,
             crypto::{
                 crypto_acipher_rsanopad_decrypt, crypto_acipher_rsanopad_encrypt,
+                crypto_acipher_sm2_pke_decrypt, crypto_acipher_sm2_pke_encrypt,
                 crypto_authenc_dec_final, crypto_authenc_enc_final, crypto_authenc_init,
                 crypto_authenc_update_aad, crypto_cipher_final, crypto_cipher_init,
                 crypto_cipher_update,
@@ -1132,7 +1133,15 @@ pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
             }
             _ => Err(TEE_ERROR_GENERIC),
         },
-        TEE_ALG_SM2_PKE => Ok((0)),
+        TEE_ALG_SM2_PKE => match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => {
+                crypto_acipher_sm2_pke_encrypt(cs.clone(), input, output)
+            }
+            TEE_OperationMode::TEE_MODE_DECRYPT => {
+                crypto_acipher_sm2_pke_decrypt(cs.clone(), input, output)
+            }
+            _ => Err(TEE_ERROR_GENERIC),
+        },
         TEE_ALG_RSAES_PKCS1_V1_5
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_MD5
         | TEE_ALG_RSAES_PKCS1_OAEP_MGF1_SHA1
@@ -1152,7 +1161,7 @@ pub fn syscall_asymm_operate(id: u32, input: &[u8], output: &mut [u8]) -> TeeRes
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA256
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA384
         | TEE_ALG_RSASSA_PKCS1_PSS_MGF1_SHA512 => Ok((0)),
-        TEE_ALG_DSA_SHA1 | TEE_ALG_DSA_SHA224 | TEE_ALG_DSA_SHA256 => Ok((0)),
+        TEE_ALG_DSA_SHA1 | TEE_ALG_DSA_SHA224 | TEE_ALG_DSA_SHA256 => Err(TEE_ERROR_NOT_SUPPORTED), /* mbedtls no support for DSA */
         TEE_ALG_ECDSA_SHA1 | TEE_ALG_ECDSA_SHA224 | TEE_ALG_ECDSA_SHA256 | TEE_ALG_ECDSA_SHA384
         | TEE_ALG_ECDSA_SHA512 | TEE_ALG_SM2_DSA_SM3 => Ok((0)),
         _ => Err(TEE_ERROR_NOT_SUPPORTED),

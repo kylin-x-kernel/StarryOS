@@ -14,8 +14,12 @@ use core::{default::Default, fmt, fmt::Debug};
 use mbedtls::{
     bignum::Mpi,
     cipher::raw::{Cipher, CipherId, CipherMode, CipherPadding, CipherType, Operation},
+    ecp::EcPoint,
     hash::{Hmac, Md, Type as MdType},
-    pk::{Pk, RsaPadding, RsaPrivateComponents, RsaPublicComponents, Type as PkType},
+    pk::{
+        EcGroup, EcGroupId, Pk, RsaPadding, RsaPrivateComponents, RsaPublicComponents,
+        Type as PkType,
+    },
 };
 use mbedtls_sys_auto::mpi_write_binary;
 use spin::Mutex;
@@ -730,7 +734,7 @@ pub(crate) fn crypto_authenc_dec_final(
     }
 }
 
-pub fn crypto_rsa_init(
+pub(crate) fn crypto_rsa_init(
     cs: Arc<Mutex<TeeCrypState>>,
     padding_mode: RsaPadding,
     mode: TEE_OperationMode,
@@ -750,8 +754,8 @@ pub fn crypto_rsa_init(
             TEE_OperationMode::TEE_MODE_ENCRYPT => {
                 if let TeeCryptObj::rsa_public_key(rsa_key) = &obj_key1_guard.attr[0] {
                     let rsa = RsaPublicComponents {
-                        n: &rsa_key.n,
-                        e: &rsa_key.e,
+                        n: rsa_key.n.as_mpi(),
+                        e: rsa_key.e.as_mpi(),
                     };
                     let mut pk = Pk::public_from_rsa_components(rsa)
                         .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
@@ -766,9 +770,9 @@ pub fn crypto_rsa_init(
             TEE_OperationMode::TEE_MODE_DECRYPT => {
                 if let TeeCryptObj::rsa_keypair(rsa_key) = &obj_key1_guard.attr[0] {
                     let rsa = RsaPrivateComponents::WithPrimes {
-                        p: &rsa_key.p,
-                        q: &rsa_key.q,
-                        e: &rsa_key.e,
+                        p: rsa_key.p.as_mpi(),
+                        q: rsa_key.q.as_mpi(),
+                        e: rsa_key.e.as_mpi(),
                     };
                     let mut pk = Pk::private_from_rsa_components(rsa)
                         .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
@@ -798,7 +802,8 @@ pub(crate) fn crypto_acipher_rsanopad_encrypt(
         RsaPadding::None,
         TEE_OperationMode::TEE_MODE_ENCRYPT,
     )?;
-    if let CrypCtx::AsyCtx(pk) = &mut cs.lock().ctx {
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::AsyCtx(pk) = &mut cs_guard.ctx {
         let mut rng = TeeSoftwareRng::new();
         pk.encrypt_extend(input, output, &mut rng, None)
             .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
@@ -817,9 +822,95 @@ pub(crate) fn crypto_acipher_rsanopad_decrypt(
         RsaPadding::None,
         TEE_OperationMode::TEE_MODE_DECRYPT,
     )?;
-    if let CrypCtx::AsyCtx(pk) = &mut cs.lock().ctx {
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::AsyCtx(pk) = &mut cs_guard.ctx {
         let mut rng = TeeSoftwareRng::new();
         pk.decrypt_extend(input, output, &mut rng, None)
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_sm2_init(cs: Arc<Mutex<TeeCrypState>>) -> TeeResult {
+    let mut cs_guard = cs.lock();
+    let key1 = cs_guard.key1;
+    let mode = cs_guard.mode;
+
+    if let Some(k) = key1 {
+        let obj_key1 = tee_obj_get(k as _)?;
+        let obj_key1_guard = obj_key1.lock();
+
+        if obj_key1_guard.attr.is_empty() {
+            return Err(TEE_ERROR_BAD_STATE);
+        }
+
+        match mode {
+            TEE_OperationMode::TEE_MODE_ENCRYPT => {
+                if let TeeCryptObj::ecc_public_key(ecc_key) = &obj_key1_guard.attr[0] {
+                    let public_point = EcPoint::from_components(
+                        ecc_key.x.clone().into_mpi(),
+                        ecc_key.y.clone().into_mpi(),
+                    )
+                    .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    let ec_group = EcGroup::new(EcGroupId::from(ecc_key.curve))
+                        .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    let mut pk = Pk::public_from_ec_components_extend(
+                        ec_group,
+                        public_point,
+                        PkType::SM2.into(),
+                    )
+                    .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    cs_guard.ctx = CrypCtx::AsyCtx(pk);
+                } else {
+                    return Err(TEE_ERROR_BAD_STATE);
+                }
+            }
+            TEE_OperationMode::TEE_MODE_DECRYPT => {
+                if let TeeCryptObj::ecc_keypair(ecc_key) = &obj_key1_guard.attr[0] {
+                    let mut ec_group = EcGroup::new(EcGroupId::from(ecc_key.curve))
+                        .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    let mut pk = Pk::private_from_ec_components_extend(
+                        ec_group,
+                        ecc_key.d.clone().into_mpi(),
+                        PkType::SM2.into(),
+                    )
+                    .map_err(|_| TEE_ERROR_BAD_PARAMETERS)?;
+                    cs_guard.ctx = CrypCtx::AsyCtx(pk);
+                }
+            }
+            _ => return Err(TEE_ERROR_BAD_PARAMETERS),
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn crypto_acipher_sm2_pke_encrypt(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: &[u8],
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    crypto_sm2_init(cs.clone())?;
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::AsyCtx(pk) = &mut cs_guard.ctx {
+        let mut rng = TeeSoftwareRng::new();
+        pk.encrypt_extend(input, output, &mut rng, Some(MdType::SM3 as _))
+            .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
+    } else {
+        Err(TEE_ERROR_BAD_PARAMETERS)
+    }
+}
+
+pub(crate) fn crypto_acipher_sm2_pke_decrypt(
+    cs: Arc<Mutex<TeeCrypState>>,
+    input: &[u8],
+    output: &mut [u8],
+) -> TeeResult<usize> {
+    crypto_sm2_init(cs.clone())?;
+    let mut cs_guard = cs.lock();
+    if let CrypCtx::AsyCtx(pk) = &mut cs_guard.ctx {
+        let mut rng = TeeSoftwareRng::new();
+        pk.decrypt_extend(input, output, &mut rng, Some(MdType::SM3 as _))
             .map_err(|_| TEE_ERROR_BAD_PARAMETERS)
     } else {
         Err(TEE_ERROR_BAD_PARAMETERS)
