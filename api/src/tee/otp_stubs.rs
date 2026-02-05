@@ -6,6 +6,8 @@
 
 use super::utee_defines::HW_UNIQUE_KEY_LENGTH;
 use crate::tee::TeeResult;
+#[cfg(target_arch = "x86_64")]
+use super::tee_get_sealing_key::vmmcall_get_sealing_key;
 
 #[repr(C)]
 pub struct TeeHwUniqueKey {
@@ -15,5 +17,8 @@ pub struct TeeHwUniqueKey {
 // TODO: need to be implement
 pub fn tee_otp_get_hw_unique_key(hwkey: &mut TeeHwUniqueKey) -> TeeResult {
     hwkey.data.fill(0xAA);
+    #[cfg(target_arch = "x86_64")]
+    let _ = unsafe { vmmcall_get_sealing_key(hwkey.data.as_mut_ptr(), HW_UNIQUE_KEY_LENGTH) };
+
     Ok(())
 }
